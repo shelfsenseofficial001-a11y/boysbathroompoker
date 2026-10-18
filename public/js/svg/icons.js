@@ -1,0 +1,24 @@
+// Small inline SVG UI icons. They use currentColor so they follow button text.
+const svg = (body, vb = '0 0 24 24') =>
+  `<svg class="icon" viewBox="${vb}" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+
+export const icons = {
+  fold: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
+  check: svg('<path d="M4 12.5 9 17.5 20 6.5"/>'),
+  call: svg('<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>'),
+  raise: svg('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>'),
+  allin: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor"/></svg>',
+  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
+  leave: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>'),
+  robot: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7.5" width="17" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="13.5" r="1.8" fill="currentColor"/><circle cx="15" cy="13.5" r="1.8" fill="currentColor"/><path d="M12 7.5V4M9.5 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="3" r="1.4" fill="currentColor"/></svg>',
+  soundOn: svg('<path d="M4 9.5h3L12 5v14l-5-4.5H4z" fill="currentColor" stroke-linejoin="round"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>'),
+  soundOff: svg('<path d="M4 9.5h3L12 5v14l-5-4.5H4z" fill="currentColor" stroke-linejoin="round"/><path d="M17 10l4 4M21 10l-4 4"/>'),
+  sparkle: svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>'),
+  clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  chevron: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 9z" fill="currentColor"/></svg>',
+  logo: `<svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+    <rect x="3" y="3" width="26" height="26" rx="7" fill="#0f5c42" stroke="#e6b450" stroke-width="1.5"/>
+    <path d="M16 8s-6 4.4-6 7.3c0 1.8 1.4 3 3 3 1.1 0 1.9-.6 2.4-1.3-.1 1.4-.6 2.3-1.6 3h4.4c-1-.7-1.5-1.6-1.6-3 .5.7 1.3 1.3 2.4 1.3 1.6 0 3-1.2 3-3C22 12.4 16 8 16 8z" fill="#e6b450"/>
+  </svg>`,
+};
