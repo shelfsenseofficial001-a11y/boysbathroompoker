@@ -42,10 +42,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         </section>
         <section class="panel">
           <h2 class="h2">Join a game</h2>
-          <p class="help-text">Enter the 5-letter code your host shared.</p>
+          <p class="help-text">Enter the 5-letter code your host shared. They set everyone's chips.</p>
           <div class="field-row">
             <div class="field"><label for="join-code">Room code</label><input id="join-code" type="text" maxlength="5" autocomplete="off" placeholder="ABCDE" style="text-transform:uppercase;letter-spacing:.2em;font-weight:700"></div>
-            <div class="field"><label for="buyin-join">Starting chips</label>${numberFieldHTML({ id: 'buyin-join', value: 1000, min: 1, step: 100, label: 'starting chips' })}</div>
           </div>
           <button class="btn btn-lg" id="join-room">Join room</button>
           <div class="micro" style="margin-top:22px">Open tables</div>
@@ -223,7 +222,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     errEl.textContent = '';
     if (!code) return fail(new Error('Enter a room code.'));
     try {
-      const res = await emitAck('joinRoom', { code, buyIn: Number($('#buyin-join').value) });
+      // No buy-in is sent: the host sets every player's stack, in the waiting
+      // room or - for someone arriving mid-game - from their late-join figure.
+      const res = await emitAck('joinRoom', { code });
       // Walking into a game already running: the host's stake applies, so say
       // so rather than letting the chips field silently mean nothing.
       onEnterRoom(res.code, res.waiting ? `Joining with ${Number(res.chips).toLocaleString('en-US')} chips — you'll be dealt in next hand.` : null);
