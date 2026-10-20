@@ -101,6 +101,10 @@ browser" below if you only have one machine handy.
 - **At showdown** every player still in the hand turns their cards face-up and
   their seat is labelled with what they made ("Kings full of Sevens", "Flush,
   Ace high"), with the winning five cards highlighted on the board.
+- **Table settings** in the lobby control the peek camera: turn the zoom off
+  entirely, or set how strong (1x-2.2x) and how fast (80-800 ms) it is. A
+  live miniature table below the sliders previews both. The table keeps
+  playing while you peek — cards keep coming and bots keep acting.
 - **Sounds** play for dealing, chips, checks, folds, your turn, the last five
   seconds of the clock, and winning. The speaker button in the top bar mutes
   them; the choice is remembered. They're synthesised in the browser, so there
@@ -149,6 +153,32 @@ twice across a full hand, correct card counts per street, exhausted-deck
 errors instead of reuse, RNG distribution across repeated shuffles, and hand
 evaluation correctness (straight flush, wheel straight, quads vs. full house,
 kicker tiebreaks, split-pot ties).
+
+## Deploying
+
+The game needs a host that runs a **long-lived Node process**. Every live
+table is held in memory and each player keeps a Socket.IO connection open for
+the whole hand, so static hosts and serverless platforms — Netlify, GitHub
+Pages, Vercel's static output — can't run it. They can serve `public/`, but
+there'd be no server to deal the cards.
+
+[`render.yaml`](render.yaml) is a ready-made blueprint for
+[Render](https://render.com), whose free tier keeps WebSockets open:
+
+1. Push this repo to GitHub.
+2. On Render, choose **New > Blueprint** and select the repo.
+3. Accept the plan it reads from `render.yaml` and deploy.
+
+It builds with `npm ci`, starts with `npm start`, pins Node to the version
+`better-sqlite3` is compiled against, generates a `SESSION_SECRET`, and sets
+`SKIP_AUTH=true` so friends can join with just a room code.
+
+Two things to know about the free plan: the service sleeps after a spell with
+no traffic, so the first visit afterwards takes a few seconds to wake, and it
+has no persistent disk, so `data/poker.db` is rebuilt on each restart. Neither
+matters much in guest mode — live tables are in memory regardless. To keep the
+database, attach a disk on a paid instance and set `DB_FILE` to a path on it;
+`render.yaml` carries the snippet.
 
 ## Testing with one browser
 

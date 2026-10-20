@@ -92,3 +92,38 @@ test('busted players sit out the next hand and are not dealt in', () => {
   assert.equal(t.seats[2].holeCards.length, 0);
   assert.ok(t.seats[2].sittingOut);
 });
+
+test('showdown tells players their kicker when they share a hand', () => {
+  const t = tableWith([500, 500, 500]);
+  t.startHand();
+  // Rig the hands so two players make the same pair and a kicker settles it.
+  t.seats[0].holeCards = ['Ks', 'Ad'];
+  t.seats[1].holeCards = ['Kh', 'Qc'];
+  t.seats[2].holeCards = ['7s', '3d'];
+  t.board = ['Kd', '9h', '4c', '8s', '2d'];
+  // Everyone has put the same in, so all three contest the one pot.
+  for (const p of t.seats.filter(Boolean)) p.committed = 10;
+  t._runShowdown();
+
+  const summary = t.lastHandSummary;
+  const by = (uid) => summary.showdownHands.find((h) => h.userId === uid);
+  assert.equal(by(1).evaluation.description, 'Pair of Kings');
+  assert.equal(by(2).evaluation.description, 'Pair of Kings');
+  assert.equal(by(1).kicker, 'Kickers Ace, Nine, Eight');
+  assert.equal(by(2).kicker, 'Kickers Queen, Nine, Eight');
+  // The odd one out made a different hand, so no kicker is shown for them.
+  assert.equal(by(3).kicker, '');
+  // The winner carries it too, for the banner under the pot.
+  assert.equal(summary.winners[0].userId, 1);
+  assert.equal(summary.winners[0].kicker, 'Kickers Ace, Nine, Eight');
+});
+
+test('a hand nobody else matched shows no kicker', () => {
+  const t = tableWith([500, 500]);
+  t.startHand();
+  t.seats[0].holeCards = ['As', 'Ah'];
+  t.seats[1].holeCards = ['7s', '3d'];
+  t.board = ['Kd', '9h', '4c', '8s', '2d'];
+  t._runShowdown();
+  for (const h of t.lastHandSummary.showdownHands) assert.equal(h.kicker, '');
+});

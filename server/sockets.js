@@ -93,7 +93,7 @@ function attachSockets(io, sessionMiddleware) {
           }
         }
         broadcastRoom(room);
-      }, bot.thinkingTime());
+      }, bot.thinkingTime(p.botLevel));
       return;
     }
 
@@ -181,7 +181,7 @@ function attachSockets(io, sessionMiddleware) {
       const room = roomFor(userId);
       ack?.({
         ok: true,
-        user: { id: user.id, username: user.username, bankroll: user.bankroll },
+        user: { id: user.id, username: db.displayName(user), accountName: user.username, bankroll: user.bankroll },
         currentRoom: room ? room.code : null,
       });
     });
@@ -191,15 +191,34 @@ function attachSockets(io, sessionMiddleware) {
     });
 
     // Display names always come from the database, never from the client payload.
-    const username = db.getUserById(userId).username;
+    const nameOf = () => db.displayName(db.getUserById(userId));
+
+    socket.on('setName', ({ name } = {}, ack) => {
+      const clean = String(name ?? '').trim().replace(/\s+/g, ' ');
+      if (!/^[\p{L}\p{N} _.'-]{2,20}$/u.test(clean)) {
+        return ack?.({ ok: false, error: 'Use 2-20 letters, numbers, spaces or _ . - characters.' });
+      }
+      db.setDisplayName(userId, clean);
+      // Carry the new name into any room this player is already sitting in.
+      const room = roomFor(userId);
+      if (room) {
+        const entry = room.lobby.get(userId);
+        if (entry) entry.username = clean;
+        const seat = room.table.seats.find((s) => s && s.userId === userId);
+        if (seat) seat.username = clean;
+        if (room.hostUserId === userId) room.hostUsername = clean;
+        broadcastRoom(room);
+      }
+      ack?.({ ok: true, name: clean });
+    });
 
     socket.on('createRoom', ({ buyIn, smallBlind, bigBlind } = {}, ack) => {
       try {
         if (roomFor(userId)) throw new Error('Leave your current room first.');
         const sb = Math.max(1, Math.floor(Number(smallBlind)) || 5);
         const bb = Math.max(sb * 2, Math.floor(Number(bigBlind)) || 10);
-        const room = manager.createRoom(userId, username, { smallBlind: sb, bigBlind: bb });
-        room.addToLobby(userId, username, Math.max(1, Math.floor(Number(buyIn)) || 1000));
+        const room = manager.createRoom(userId, nameOf(), { smallBlind: sb, bigBlind: bb });
+        room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
         attachTableEvents(room);
         ack?.({ ok: true, code: room.code });
         broadcastRoom(room);
@@ -218,7 +237,7 @@ function attachSockets(io, sessionMiddleware) {
         return broadcastRoom(room);
       }
       if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already in progress.' });
-      room.addToLobby(userId, username, Math.max(1, Math.floor(Number(buyIn)) || 1000));
+      room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
       ack?.({ ok: true, code: room.code });
       broadcastRoom(room);
     });
@@ -241,7 +260,7 @@ function attachSockets(io, sessionMiddleware) {
       broadcastRoom(room);
     });
 
-    socket.on('addBot', ({ buyIn } = {}, ack) => {
+    socket.on('addBot', ({ buyIn, level } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can add bots.' });
@@ -249,7 +268,8 @@ function attachSockets(io, sessionMiddleware) {
       if (room.lobby.size >= room.table.maxSeats) return ack?.({ ok: false, error: 'Table is full.' });
       const taken = [...room.lobby.values()].map((p) => p.username);
       const seatedBuyIn = Math.max(1, Math.floor(Number(buyIn)) || room.lobby.get(userId)?.buyIn || 1000);
-      room.addToLobby(bot.makeBotId(), bot.pickBotName(taken), seatedBuyIn, true);
+      const botLevel = bot.normalizeLevel(level);
+      room.addToLobby(bot.makeBotId(), bot.pickBotName(taken, botLevel), seatedBuyIn, true, botLevel);
       ack?.({ ok: true });
       broadcastRoom(room);
     });

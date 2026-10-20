@@ -3,7 +3,7 @@
 // hidden cards or manipulate outcomes. Chips are fake/play-money only.
 const EventEmitter = require('events');
 const { Deck } = require('./deck');
-const { evaluateHand, compareHands } = require('./handEvaluator');
+const { evaluateHand, compareHands, kickers, sameHandRank, describeKickers } = require('./handEvaluator');
 
 const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
@@ -30,7 +30,7 @@ class Table {
 
   // ---- Seating ----
 
-  addPlayer(userId, username, buyIn, isBot = false) {
+  addPlayer(userId, username, buyIn, isBot = false, botLevel = null) {
     const seat = this.seats.findIndex((s) => s === null);
     if (seat === -1) throw new Error('Table is full.');
     this.seats[seat] = {
@@ -38,6 +38,7 @@ class Table {
       userId,
       username,
       isBot,
+      botLevel,
       chips: buyIn,
       holeCards: [],
       betThisStreet: 0,
@@ -432,6 +433,17 @@ class Table {
       evaluations[p.userId] = evaluateHand([...p.holeCards, ...this.board]);
     }
 
+    // When two players turn over the same hand - both a pair of Kings, both
+    // two pair - the side cards are what decided it, so each of them is told
+    // which kicker they were playing. On a hand with no kicker (a straight,
+    // a full house) this stays empty and nothing is shown.
+    const kickerByUser = {};
+    for (const p of inHand) {
+      const mine = evaluations[p.userId];
+      const shared = inHand.some((q) => q.userId !== p.userId && sameHandRank(mine, evaluations[q.userId]));
+      kickerByUser[p.userId] = shared ? describeKickers(kickers(mine)) : '';
+    }
+
     this.pots = this._buildPots();
     const winningsByUser = {};
     const potResults = [];
@@ -480,13 +492,14 @@ class Table {
       pots: potResults,
       winners: Object.entries(winningsByUser).map(([userId, amount]) => {
         const p = this.seats.find((s) => s && s.userId === Number(userId));
-        return { userId: Number(userId), username: p.username, amount, hand: evaluations[userId] };
+        return { userId: Number(userId), username: p.username, amount, hand: evaluations[userId], kicker: kickerByUser[userId] || '' };
       }),
       showdownHands: inHand.map((p) => ({
         userId: p.userId,
         username: p.username,
         holeCards: p.holeCards,
         evaluation: evaluations[p.userId],
+        kicker: kickerByUser[p.userId],
       })),
     };
     this.events.emit('handEnded', this.lastHandSummary);
@@ -532,6 +545,7 @@ class Table {
           hasCards: p.holeCards.length > 0,
           left: !!p.left,
           isBot: !!p.isBot,
+          botLevel: p.botLevel || null,
           peeking: !isViewer && p.peekUntil > Date.now(),
         };
       }),

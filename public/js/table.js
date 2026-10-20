@@ -9,22 +9,54 @@ import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { motionReduced, toggleMotion } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
+import { userPillHTML, wireNameEditor } from './name.js';
+import { getSettings, setSetting } from './settings.js';
+import { numberFieldHTML, wireSteppers } from './stepper.js';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
+// The tag played as each street lands ('turn' is already the it's-your-turn
+// chime, so the turn card gets its own name).
+const STREET_SOUND = { flop: 'flop', turn: 'turnCard', river: 'river' };
 // Table landmarks, in % of the camera box. Portrait (phones) stacks the
 // board lower so it clears the upper seats' bets.
 const CENTER = { x: 50, y: 50 };
 const LANDMARKS = {
-  landscape: { board: { x: 50, y: 44 }, pot: { x: 50, y: 60 }, muck: { x: 64, y: 60 }, betK: 0.56, myBetK: 0.56, cardsK: 0.3 },
-  portrait: { board: { x: 50, y: 50 }, pot: { x: 50, y: 63 }, muck: { x: 73, y: 63 }, betK: 0.45, myBetK: 0.5, cardsK: 0.33 },
+  // boardHalf is the space the community cards occupy, as a half-width and
+  // half-height in % of the camera; nothing else is allowed to sit inside it.
+  // cardPad widens the board's keep-out box by roughly half a pair of cards,
+  // because clearOfBoard only knows where a hand's centre point is: without it
+  // a seat whose cards sit diagonally off the board still ends up touching it.
+  landscape: { board: { x: 50, y: 44 }, pot: { x: 50, y: 60 }, muck: { x: 64, y: 60 }, betK: 0.56, myBetK: 0.56, cardsK: 0.4, boardHalf: { w: 21, h: 12 }, cardPad: { w: 7, h: 11 } },
+  portrait: { board: { x: 50, y: 50 }, pot: { x: 50, y: 63 }, muck: { x: 73, y: 63 }, betK: 0.45, myBetK: 0.5, cardsK: 0.37, boardHalf: { w: 27, h: 10 }, cardPad: { w: 10, h: 7 } },
 };
+
+// Nudges a point out of the board's footprint, straight away from its centre,
+// so bets and other players' cards never land on the community cards.
+function clearOfBoard(p, half, margin = 1.2) {
+  const dx = p.x - BOARD.x;
+  const dy = p.y - BOARD.y;
+  const spread = Math.hypot(dx / half.w, dy / half.h);
+  if (spread >= margin) return p;
+  if (spread < 0.001) return { x: p.x, y: BOARD.y + half.h * margin }; // dead centre
+  const k = margin / spread;
+  return { x: BOARD.x + dx * k, y: BOARD.y + dy * k };
+}
 let BOARD = LANDMARKS.landscape.board;
 let POT = LANDMARKS.landscape.pot;
 let MUCK = LANDMARKS.landscape.muck;
 let DECK = BOARD;
 
 let reduceMotion = motionReduced();
+const BOT_LEVELS = [
+  { id: 'beginner', label: 'Beginner', desc: 'Calls almost anything, never bluffs' },
+  { id: 'casual', label: 'Casual', desc: 'Folds weak hands, raises strong ones' },
+  { id: 'solid', label: 'Solid', desc: 'Picky, bets for value, hard to bluff' },
+  { id: 'expert', label: 'Expert', desc: 'Counts the odds, bluffs and traps' },
+];
+const levelLabel = (id) => BOT_LEVELS.find((l) => l.id === id)?.label || 'Bot';
+// Each difficulty carries its own colour through the whole UI.
+const levelClass = (id) => `lvl-${BOT_LEVELS.some((l) => l.id === id) ? id : 'casual'}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -70,7 +102,43 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   let turnTotal = 0;
   let lastTouchCheck = 0;
   let lastTickSec = -1;
+  let renderedHand = 0; // hand number the cards on screen belong to
+  let renderedBoard = 0; // community cards already on the felt, for this hand
+  let renderedShowdown = 0; // hand number whose showdown reveal has been drawn
+  let botLevel = 'casual'; // difficulty used for the next bot the host adds
+  let foldArmed = false; // Fold needs a second click to confirm
+  let foldArmTimer = null;
   const timers = new Set();
+
+  // Whether my hole cards sit face up for the whole hand (a player setting,
+  // toggled from the top bar or the lobby). Read fresh rather than cached, so
+  // flipping it takes effect on the very next draw.
+  const autoReveal = () => getSettings().autoReveal;
+
+  // Finished hands, newest first, for the sidebar. Kept per room in this
+  // browser so a refresh doesn't wipe the record of the session.
+  const HISTORY_KEY = `bbp-history-${roomCode}`;
+  const HISTORY_MAX = 60;
+  const history = loadHistory();
+  const expanded = new Set(); // hands whose cards are showing
+  let historyOpen = getSettings().showHistory;
+
+  function loadHistory() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+      return Array.isArray(raw) ? raw.slice(0, HISTORY_MAX) : [];
+    } catch {
+      return []; // unreadable or unavailable storage: start fresh
+    }
+  }
+
+  function saveHistory() {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      // Full or unavailable storage: the list still works for this visit.
+    }
+  }
 
   const later = (fn, ms) => {
     const id = setTimeout(() => {
@@ -122,12 +190,13 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     } else {
       turnEndsAt = 0;
     }
-    if (peeking || dragging || holding) return; // applied once the gesture ends
+    // The table keeps playing while you look at your cards: updates are drawn
+    // as they arrive, and drawTable keeps the cards you're holding in place.
     draw();
   }
 
   function draw() {
-    const prev = shown;
+    const prev = shown === latest ? null : shown; // null = redraw, not a step forward
     shown = latest;
     if (shown.table.phase === 'waiting') {
       mode = 'waiting';
@@ -138,6 +207,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     if (mode !== 'table') {
       buildTable();
       mode = 'table';
+      renderedHand = 0; // fresh table: let the first hand deal in
       drawTable(null, shown);
       return;
     }
@@ -167,8 +237,9 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
       <div class="topbar-user">
-        <span class="user-pill">${avatarSVG(user.username)}<span class="user-name">${esc(user.username)}</span></span>
+        ${userPillHTML(user)}
         <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds">${soundMuted() ? icons.soundOff : icons.soundOn}</button>
+        <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span></button>
         <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span></button>
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
@@ -177,12 +248,32 @@ export function renderTable(root, { user, roomCode, onLeave }) {
 
   function wireTopbar() {
     root.querySelector('[data-leave]').addEventListener('click', leaveRoom);
+    wireNameEditor(root, user);
     const sound = root.querySelector('[data-sound]');
     sound.addEventListener('click', () => {
       const off = toggleSound();
       sound.classList.toggle('is-off', off);
       sound.setAttribute('aria-pressed', String(!off));
       sound.innerHTML = off ? icons.soundOff : icons.soundOn;
+    });
+    const hist = root.querySelector('[data-history]');
+    hist?.addEventListener('click', () => {
+      historyOpen = !historyOpen;
+      setSetting('showHistory', historyOpen);
+      applyHistoryOpen();
+      play('click');
+    });
+    const reveal = root.querySelector('[data-reveal]');
+    reveal.addEventListener('click', () => {
+      const on = !autoReveal();
+      setSetting('autoReveal', on);
+      reveal.classList.toggle('is-off', !on);
+      reveal.setAttribute('aria-pressed', String(on));
+      const label = reveal.querySelector('span');
+      if (label) label.textContent = `Cards ${on ? 'up' : 'hidden'}`;
+      if (peeking) endPeek(); // a peek in progress has just become pointless
+      play('flip');
+      draw(); // turn the cards over straight away rather than next update
     });
     const btn = root.querySelector('[data-motion]');
     btn.addEventListener('click', () => {
@@ -192,6 +283,74 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       btn.setAttribute('aria-pressed', String(!reduceMotion));
       const label = btn.querySelector('span');
       if (label) label.textContent = `Animations ${reduceMotion ? 'off' : 'on'}`;
+    });
+  }
+
+  // --- Difficulty picker ---------------------------------------------------
+  // A custom listbox rather than a native <select>, so each difficulty can
+  // carry its own colour and a line explaining how it plays.
+  function levelSelectHTML(selected, disabled) {
+    const current = BOT_LEVELS.find((l) => l.id === selected) || BOT_LEVELS[1];
+    return `<div class="picker ${levelClass(current.id)}" data-picker>
+      <button type="button" class="picker-btn" data-picker-btn aria-haspopup="listbox" aria-expanded="false" ${disabled ? 'disabled' : ''}>
+        <span class="dot"></span>
+        <span class="picker-label">${current.label}</span>
+        ${icons.chevron}
+      </button>
+      <ul class="picker-menu" role="listbox" aria-label="Bot difficulty" hidden>
+        ${BOT_LEVELS.map(
+          (l) => `<li role="option" tabindex="-1" data-value="${l.id}" class="${levelClass(l.id)}" aria-selected="${l.id === current.id}">
+            <span class="dot"></span>
+            <span class="picker-text"><b>${l.label}</b><em>${esc(l.desc)}</em></span>
+          </li>`
+        ).join('')}
+      </ul>
+    </div>`;
+  }
+
+  function wirePicker(onPick) {
+    const picker = root.querySelector('[data-picker]');
+    if (!picker) return;
+    const btn = picker.querySelector('[data-picker-btn]');
+    const menu = picker.querySelector('.picker-menu');
+    const options = [...menu.querySelectorAll('li')];
+
+    const open = (yes) => {
+      menu.hidden = !yes;
+      picker.classList.toggle('is-open', yes);
+      btn.setAttribute('aria-expanded', String(yes));
+      if (yes) (options.find((o) => o.getAttribute('aria-selected') === 'true') || options[0]).focus();
+    };
+    const choose = (li) => {
+      const id = li.dataset.value;
+      picker.className = `picker ${levelClass(id)}`;
+      picker.querySelector('.picker-label').textContent = levelLabel(id);
+      options.forEach((o) => o.setAttribute('aria-selected', String(o === li)));
+      open(false);
+      btn.focus();
+      onPick(id);
+    };
+
+    btn.addEventListener('click', () => open(menu.hidden));
+    options.forEach((li) => {
+      li.addEventListener('click', () => choose(li));
+      li.addEventListener('keydown', (e) => {
+        const i = options.indexOf(li);
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          choose(li);
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          options[(i + (e.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length].focus();
+        } else if (e.key === 'Escape') {
+          open(false);
+          btn.focus();
+        }
+      });
+    });
+    // Clicking anywhere else closes it.
+    document.addEventListener('pointerdown', (e) => {
+      if (!picker.contains(e.target)) open(false);
     });
   }
 
@@ -213,15 +372,22 @@ export function renderTable(root, { user, roomCode, onLeave }) {
             <div><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
             <button class="btn btn-ghost btn-sm" data-copy>${icons.copy}<span>Copy</span></button>
           </div>
-          <div class="meta-row"><span>Blinds <b>${fmt(t.smallBlind)} / ${fmt(t.bigBlind)}</b></span><span><b>${n}</b> of ${t.maxSeats || 9} seats taken</span></div>
+          <div class="meta-row">
+            <span>Blinds <b>${fmt(t.smallBlind)} / ${fmt(t.bigBlind)}</b></span>
+            <span><b>${n}</b> of ${t.maxSeats || 9} seats taken</span>
+            ${isHost ? `<span class="add-bot">
+              ${levelSelectHTML(botLevel, n >= (t.maxSeats || 9))}
+              <button class="btn btn-ghost btn-sm" data-add-bot ${n >= (t.maxSeats || 9) ? 'disabled' : ''}>${icons.robot}Add bot</button>
+            </span>` : ''}
+          </div>
           <ul class="player-list">
             ${state.lobby.map((p) => `
               <li class="player-row${p.isBot ? ' is-bot' : ''}">
                 <span class="avatar-sm">${p.isBot ? icons.robot : avatarSVG(p.username)}</span>
-                <span class="pname">${esc(p.username)}${p.isBot ? '<span class="badge bot">Bot</span>' : ''}${p.userId === state.hostUserId ? '<span class="badge">Host</span>' : ''}${p.userId === user.id ? '<span class="badge you">You</span>' : ''}</span>
+                <span class="pname">${esc(p.username)}${p.isBot ? `<span class="badge bot ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}${p.userId === state.hostUserId ? '<span class="badge">Host</span>' : ''}${p.userId === user.id ? '<span class="badge you">You</span>' : ''}</span>
                 <span class="buyin">
                   ${isHost
-                    ? `<input class="input num" type="number" min="1" step="1" inputmode="numeric" value="${p.buyIn}" data-buyin="${p.userId}" aria-label="Starting chips for ${esc(p.username)}">`
+                    ? numberFieldHTML({ value: p.buyIn, min: 1, step: 100, label: `starting chips for ${esc(p.username)}`, attrs: `data-buyin="${p.userId}"`, wide: false })
                     : `<span class="amt">${fmt(p.buyIn)}</span>`}
                   <span class="micro">chips</span>
                   ${isHost && p.userId !== user.id ? `<button class="btn btn-ghost btn-icon" data-remove="${p.userId}" title="Remove ${esc(p.username)}" aria-label="Remove ${esc(p.username)}">${icons.fold}</button>` : '<span class="btn-icon-spacer"></span>'}
@@ -229,10 +395,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
               </li>`).join('')}
           </ul>
           ${isHost
-            ? `<div class="waiting-actions">
-                 <button class="btn btn-ghost" data-add-bot ${n >= (t.maxSeats || 9) ? 'disabled' : ''}>${icons.robot}Add bot</button>
-                 <button class="btn btn-primary" data-start ${n < 2 ? 'disabled' : ''}>Deal first hand</button>
-               </div>
+            ? `<button class="btn btn-primary btn-lg" data-start ${n < 2 ? 'disabled' : ''}>Deal first hand</button>
                <p class="help-text">${n < 2 ? 'Add a bot or wait for a friend — you need at least 2 players.' : 'Play money only — chips have no real value.'}</p>`
             : '<p class="help-text">Waiting for the host to start<span class="dots"></span></p>'}
         </section>
@@ -241,6 +404,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     </div>`;
 
     wireTopbar();
+    wireSteppers(root);
     const copyBtn = root.querySelector('[data-copy]');
     copyBtn.addEventListener('click', async () => {
       try {
@@ -268,11 +432,14 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         }
       });
     });
+    wirePicker((id) => {
+      botLevel = id; // remembered for the next bot added
+    });
     root.querySelector('[data-add-bot]')?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
       const mine = state.lobby.find((p) => p.userId === user.id);
       try {
-        await emitAck('addBot', { buyIn: mine?.buyIn });
+        await emitAck('addBot', { buyIn: mine?.buyIn, level: botLevel });
       } catch (err) {
         showError(err.message);
         e.currentTarget.disabled = false;
@@ -296,6 +463,12 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     const t = latest.table;
     root.innerHTML = `<div class="table-screen">
       ${topbarHTML(t)}
+      <div class="table-body">
+      <button class="history-toggle${historyOpen ? '' : ' is-off'}" data-history aria-pressed="${historyOpen}" title="Show or hide the hand history" aria-label="Hand history">${icons.history}</button>
+      <aside class="history" id="history" aria-label="Hand history">
+        <div class="history-head">Hand history</div>
+        <ol class="history-list" id="history-list"></ol>
+      </aside>
       <main class="stage" id="stage">
         <div class="camera" id="camera">
           <div class="felt">${tableFeltSVG()}</div>
@@ -308,6 +481,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
           <div class="fx" id="fx"></div>
         </div>
       </main>
+      </div>
       <footer class="dock" id="dock"></footer>
       <div class="toast-host" id="toast-host"></div>
     </div>`;
@@ -316,9 +490,20 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       stage: $('stage'), camera: $('camera'), board: $('board'), phase: $('phase'), pot: $('pot'),
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
       handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
+      history: $('history'), historyList: $('history-list'),
     };
     buildDock();
     wireTopbar();
+    applyHistoryOpen();
+    drawHistory();
+    els.historyList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cards]');
+      if (!btn) return;
+      const no = Number(btn.dataset.cards);
+      if (expanded.has(no)) expanded.delete(no);
+      else expanded.add(no);
+      redrawEntry(no);
+    });
 
     // My cards: hold to peek, drag and throw toward the middle to fold.
     els.camera.addEventListener('pointerdown', onHandPointerDown);
@@ -392,6 +577,14 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     if (start < 0) start = 0;
     const ordered = [...list.slice(start), ...list.slice(0, start)];
     const n = ordered.length;
+    const cardKeepOut = { w: lm.boardHalf.w + lm.cardPad.w, h: lm.boardHalf.h + lm.cardPad.h };
+    // How far a seat's chips must sit from its cards to stay visible: half a
+    // pair of cards plus the chip and its label. --card-o in the stylesheet
+    // is clamp(26px, 7.4cqmin, 54px).
+    const camW = els.camera.clientWidth || 1;
+    const camH = els.camera.clientHeight || 1;
+    const cardW = Math.min(54, Math.max(26, 0.074 * Math.min(camW, camH)));
+    const minBetGap = cardW * 0.9 + 24;
     const rx = portrait ? 36 : 44;
     const ry = 43;
     const map = new Map();
@@ -399,10 +592,23 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       // Seat 0 (me) at the bottom; others follow clockwise in action order.
       const a = ((90 + (i * 360) / n) * Math.PI) / 180;
       const pod = { x: 50 + rx * Math.cos(a), y: 50 + ry * Math.sin(a) };
-      const toward = (k) => ({ x: pod.x + (CENTER.x - pod.x) * k, y: pod.y + (CENTER.y - pod.y) * k });
       const isMe = p.userId === user.id;
-      const cards = toward(lm.cardsK);
-      const bet = toward(isMe ? lm.myBetK : lm.betK);
+      // My own cards, my “Your turn” tag and my nameplate stack up in the same
+      // narrow strip at the bottom. The plate drops a little and cardsK lifts
+      // my hand (there's only a few pixels between the plate and the edge of
+      // the table, so the room has to come from above) to leave the tag
+      // between them readable as the cards grow with the screen.
+      if (isMe) pod.y += portrait ? 2.5 : 1.5;
+      const toward = (k) => ({ x: pod.x + (CENTER.x - pod.x) * k, y: pod.y + (CENTER.y - pod.y) * k });
+      // Cards sit on the felt in front of each seat — far enough in to be
+      // clearly visible rather than hiding behind the nameplate.
+      // In front of the seat, but kept off the community cards by the board's
+      // keep-out box widened by the cards' own size. Overlapping the nameplate
+      // is fine - the cards are drawn on top of it, so you can still see them
+      // tilt when that player peeks.
+      const cards = isMe
+        ? toward(lm.cardsK)
+        : clearOfBoard(toward(portrait ? 0.3 : 0.32), cardKeepOut, 1.12);
       const vx = CENTER.x - pod.x;
       const vy = CENTER.y - pod.y;
       const len = Math.hypot(vx, vy) || 1;
@@ -415,9 +621,32 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         px = -px;
         py = -py;
       }
+      let bet = isMe ? toward(lm.myBetK) : clearOfBoard(toward(lm.betK), lm.boardHalf);
+      // Cards and bet both sit on the line from the seat to the middle, so for
+      // seats near the board they can land on top of each other and hide the
+      // chips. Measured in real pixels — an x percentage is of the camera's
+      // width and a y percentage of its height, so the two can't be compared
+      // directly — and the bet slides sideways, away from the dealer button,
+      // until it clears the cards.
+      const apart = Math.hypot(((cards.x - bet.x) / 100) * camW, ((cards.y - bet.y) / 100) * camH);
+      if (apart < minBetGap) {
+        const push = ((minBetGap - apart) / camW) * 100;
+        const slid = { x: bet.x - px * push, y: bet.y - py * push };
+        bet = isMe ? slid : clearOfBoard(slid, lm.boardHalf);
+      }
       const dealer = { x: cards.x + px * off, y: cards.y + py * off };
+      // Portrait is tight: pull side seats out to the rail and keep them clear
+      // of the band across the middle where the board sits.
+      let side = null;
+      if (portrait && !isMe) {
+        if (Math.abs(pod.y - 50) < 15) pod.y = 50 + (pod.y >= 50 ? 15 : -15);
+        if (Math.abs(pod.x - 50) > 12) {
+          side = pod.x < 50 ? 'left' : 'right';
+          pod.x = side === 'left' ? 2 : 98;
+        }
+      }
       const stack = { x: pod.x + (portrait ? 9 : 5), y: pod.y };
-      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, index: i });
+      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i });
     });
     return { portrait, n, map };
   }
@@ -440,7 +669,11 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     const t = cur.table;
     const pt = prev ? prev.table : null;
     layout = computeLayout(t);
-    const newHand = !pt || pt.handNumber !== t.handNumber;
+    els.camera.classList.toggle('is-portrait', layout.portrait);
+    els.camera.classList.toggle('is-crowded', layout.n >= 5);
+    // Only a genuinely new hand deals cards in. Plain redraws (cancelling a
+    // fold, ending a peek, resizing) must not replay everyone's deal.
+    const newHand = t.handNumber !== renderedHand;
     const summary = t.phase === 'showdown' ? t.lastHandSummary : null;
     const ctx = {
       t,
@@ -448,25 +681,161 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       summary,
       winners: new Set((summary?.winners || []).map((w) => w.userId)),
       winCards: winningCards(summary),
-      justShowdown: t.phase === 'showdown' && (!pt || pt.phase !== 'showdown'),
+      // Keyed off what's already drawn, not off `pt`: a plain redraw (taking
+      // back a fold, ending a peek) passes no previous state, and must not
+      // flip everyone's cards over a second time.
+      justShowdown: t.phase === 'showdown' && renderedShowdown !== t.handNumber,
     };
 
     els.handChip.hidden = !t.handNumber;
     els.handNo.textContent = `#${t.handNumber}`;
+
+    // A peek or drag owns the live hand element (it holds the pointer capture
+    // and the lifted/dragging state), so that node is carried across the
+    // redraw rather than replaced. A new hand deals new cards, so it ends the
+    // gesture instead.
+    const gesture = peeking || holding || dragging;
+    const keptHand = gesture && !newHand ? els.seats.querySelector('[data-mine]') : null;
+    if (gesture && newHand) endPeek();
+
     els.seats.innerHTML = t.seats.filter(Boolean).map((p) => seatHTML(p, layout.map.get(p.seat), ctx)).join('');
-    drawBoard(pt, t, newHand, ctx.winCards);
+
+    if (keptHand) {
+      const fresh = els.seats.querySelector('[data-mine]');
+      if (fresh) fresh.replaceWith(keptHand);
+      else keptHand.remove(); // I folded mid-gesture; let the cards go
+    }
+    drawBoard(t, newHand, ctx.winCards);
     drawPot(t, summary);
     drawMuck(t);
     drawDock(cur);
     drawPending();
     tickClock();
+    renderedHand = t.handNumber;
+    renderedBoard = t.board.length;
+    if (ctx.justShowdown) {
+      renderedShowdown = t.handNumber;
+      recordHand(t.lastHandSummary);
+    }
+    // Sound is deliberately not tied to the animation pass: the table is
+    // meant to be followable by ear alone, so it still plays with animations
+    // turned off (and when the player isn't looking at the screen at all).
+    if (pt) playEffects(pt, t);
     if (pt && !reduceMotion) runEffects(pt, t);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hand history sidebar
+  // ---------------------------------------------------------------------------
+  // Called once per hand, the first time its showdown is drawn.
+  function recordHand(summary) {
+    if (!summary || !summary.winners?.length) return;
+    if (history[0]?.hand === summary.handNumber) return; // already logged
+    const shown = new Map((summary.showdownHands || []).map((h) => [h.userId, h]));
+    history.unshift({
+      hand: summary.handNumber,
+      uncontested: !!summary.uncontested,
+      split: summary.winners.length > 1,
+      board: summary.uncontested ? [] : summary.board || [],
+      winners: summary.winners.map((w) => ({
+        name: w.username,
+        amount: w.amount,
+        mine: w.userId === user.id,
+        // An uncontested pot was never shown down, so there's no hand to name
+        // and no cards to show - nobody at the table got to see them either.
+        desc: summary.uncontested ? '' : w.hand?.description || w.hand?.name || '',
+        kicker: summary.uncontested ? '' : w.kicker || '',
+        cards: summary.uncontested ? [] : shown.get(w.userId)?.holeCards || [],
+      })),
+    });
+    if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
+    saveHistory();
+    prependEntry(history[0]);
+  }
+
+  function drawHistory() {
+    if (!els?.historyList) return;
+    if (!history.length) {
+      setHTML(els.historyList, '<li class="history-empty">Finished hands show up here.</li>');
+      return;
+    }
+    setHTML(els.historyList, history.map(entryHTML).join(''));
+  }
+
+  // A finished hand is added on its own rather than by rebuilding the list:
+  // replacing the markup threw away whatever the player was reading. The new
+  // entry goes on top, so anyone scrolled into the older hands is nudged down
+  // by its height to keep the same hands under their eyes.
+  function prependEntry(h) {
+    const list = els?.historyList;
+    if (!list) return;
+    if (history.length === 1 || !list.querySelector('.hh')) {
+      drawHistory(); // first entry replaces the placeholder
+      return;
+    }
+    const before = list.scrollHeight;
+    const top = list.scrollTop;
+    list.insertAdjacentHTML('afterbegin', entryHTML(h));
+    list.querySelectorAll('.hh').forEach((li, i) => i >= HISTORY_MAX && li.remove());
+    list._html = null; // the cached markup no longer matches the DOM
+    if (top > 0) list.scrollTop = top + (list.scrollHeight - before);
+  }
+
+  // Opening or closing one hand's cards only rewrites that hand.
+  function redrawEntry(no) {
+    const list = els?.historyList;
+    const li = list?.querySelector(`.hh-eye[data-cards="${no}"]`)?.closest('.hh');
+    const h = history.find((x) => x.hand === no);
+    if (!li || !h) return drawHistory();
+    li.outerHTML = entryHTML(h);
+    list._html = null;
+  }
+
+  function entryHTML(h) {
+    // Only hands that were actually shown down have cards to look at.
+    const cards = h.winners.some((w) => w.cards?.length);
+    const open = expanded.has(h.hand);
+    const note = h.uncontested ? 'Everyone else folded' : h.split ? 'Split pot' : '';
+    // The eye rides on the first winner's row, beside what they won. On a
+    // split pot one eye still opens every winner's cards, so it isn't
+    // repeated down the rows.
+    const eye = `<button type="button" class="hh-eye" data-cards="${h.hand}" data-tip="View"
+      aria-expanded="${open}" aria-label="${open ? 'Hide' : 'View'} the cards from hand ${h.hand}">${icons.eye}</button>`;
+    const wins = h.winners
+      .map(
+        (w, i) => `<div class="hh-win${w.mine ? ' is-me' : ''}">
+          <span class="hh-who">${esc(w.name)}</span>
+          <span class="hh-amt">+${fmt(w.amount)}</span>
+          ${i === 0 && cards ? eye : ''}
+        </div>
+        ${w.desc ? `<div class="hh-hand">${esc(w.desc)}${w.kicker ? `<span class="hh-kick">${esc(w.kicker)}</span>` : ''}</div>` : ''}
+        ${open && w.cards?.length ? `<div class="hh-cards">${w.cards.map((c) => cardHTML(c, { simple: true })).join('')}</div>` : ''}`
+      )
+      .join('');
+    return `<li class="hh">
+      <div class="hh-no">Hand #${h.hand}</div>
+      ${wins}
+      ${note ? `<div class="hh-note">${note}</div>` : ''}
+      ${open && h.board?.length ? `<div class="hh-board"><span class="hh-label">Board</span><div class="hh-cards">${h.board.map((c) => cardHTML(c, { simple: true })).join('')}</div></div>` : ''}
+    </li>`;
+  }
+
+  function applyHistoryOpen() {
+    root.querySelector('.table-screen')?.classList.toggle('show-history', historyOpen);
+    if (els?.history) els.history.setAttribute('aria-hidden', String(!historyOpen));
+    const btn = root.querySelector('[data-history]');
+    if (btn) {
+      btn.classList.toggle('is-off', !historyOpen);
+      btn.setAttribute('aria-pressed', String(historyOpen));
+    }
   }
 
   function seatTag(p, { acting, isMe, isWinner, t, summary }) {
     if (isWinner) {
+      // The green glow and the crown already say "winner", so the label only
+      // needs to carry the hand itself — keeps the pill small.
       const w = summary?.winners.find((x) => x.userId === p.userId);
-      return { text: w?.hand ? `Winner · ${w.hand.description || w.hand.name}` : 'Winner', cls: 't-win' };
+      return { text: w?.hand ? w.hand.description || w.hand.name : 'Winner', cls: 't-win', icon: icons.crown, kicker: w?.kicker };
     }
     if (p.left) return { text: 'Left', cls: 't-away' };
     if (p.sittingOut) return { text: 'Out', cls: 't-away' };
@@ -475,7 +844,9 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     // At a real showdown the hand they made matters more than how they got there.
     if (summary && !summary.uncontested) {
       const sh = summary.showdownHands.find((h) => h.userId === p.userId);
-      if (sh) return { text: sh.evaluation.description || sh.evaluation.name, cls: 't-hand' };
+      // The kicker rides along only when someone else made the same hand —
+      // that's the card that actually settled it.
+      if (sh) return { text: sh.evaluation.description || sh.evaluation.name, cls: 't-hand', kicker: sh.kicker };
     }
     if (p.allIn) return { text: 'All-in', cls: 't-allin' };
     return describeAction(p.lastAction);
@@ -486,7 +857,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
     const isWinner = ctx.winners.has(p.userId);
     const away = p.left || p.sittingOut;
-    const cls = ['anchor', 'pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner']
+    const cls = ['anchor', 'pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
       .filter(Boolean)
       .join(' ');
     const tag = seatTag(p, { acting, isMe: L.isMe, isWinner, t, summary: ctx.summary });
@@ -501,7 +872,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
       <div class="who"><span class="name">${esc(p.username)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}
-      ${tag ? `<span class="tag ${tag.cls}">${esc(tag.text)}</span>` : ''}
+      ${p.isBot ? `<span class="bot-level ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}
+      ${tag ? `<span class="tag ${tag.cls}">${tag.icon || ''}${esc(tag.text)}${tag.kicker ? `<span class="tag-kick">${esc(tag.kicker)}</span>` : ''}</span>` : ''}
       ${acting && !L.isMe ? `<span class="turn-marker">${icons.chevron}</span>` : ''}
     </div>`;
     html += handHTML(p, L, ctx);
@@ -525,14 +897,14 @@ export function renderTable(root, { user, roomCode, onLeave }) {
 
   // `flip: true` builds a two-sided card that turns over in 3D (used for my
   // own hole cards, which flip face-up while I peek).
-  function cardHTML(code, { cls = '', style = '', face = true, flip = false } = {}) {
+  function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = false } = {}) {
     if (flip) {
       return `<div class="card ${cls}" style="${style}"><div class="flip">
         <div class="back">${cardBackSVG()}</div>
-        <div class="face">${cardFaceSVG(code)}</div>
+        <div class="face">${cardFaceSVG(code, { simple })}</div>
       </div></div>`;
     }
-    const faceLayer = face ? `<div class="face">${cardFaceSVG(code)}</div>` : '';
+    const faceLayer = face ? `<div class="face">${cardFaceSVG(code, { simple })}</div>` : '';
     return `<div class="card ${cls}" style="${style}">${faceLayer}<div class="back">${cardBackSVG()}</div></div>`;
   }
 
@@ -545,9 +917,17 @@ export function renderTable(root, { user, roomCode, onLeave }) {
 
     if (L.isMe && p.holeCards) {
       const faceUp = t.phase === 'showdown' && summary && !summary.uncontested;
-      return `<div class="anchor hand mine${faceUp ? ' shown' : ''}" style="${pos}" data-mine ${faceUp ? '' : 'role="button" tabindex="0" aria-label="Hold to peek at your cards"'}>
-        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (deal ? 'deal' : '') + winCls(c), style: `${deal ? dealStyle(L, i) : ''};--fd:${i * 70}ms`, flip: !faceUp })).join('')}
-        ${faceUp ? '' : '<span class="peek-hint">Hold to peek · throw to fold</span>'}
+      // “Turn my cards up as they're dealt”: they sit open for the whole hand,
+      // so there's nothing to peek at. They can still be thrown to fold, which
+      // is why this isn't the `shown` class used at showdown — that one ends
+      // the gesture along with the hand.
+      const open = !faceUp && autoReveal();
+      const up = faceUp || open;
+      const cls = faceUp ? ' shown' : open ? ' is-open' : '';
+      const label = open ? 'Throw your cards to fold' : 'Hold to peek at your cards';
+      return `<div class="anchor hand mine${cls}" style="${pos}" data-mine ${faceUp ? '' : `role="button" tabindex="0" aria-label="${label}"`}>
+        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (deal ? 'deal' : '') + winCls(c), style: `${deal ? dealStyle(L, i) : ''};--fd:${i * 70}ms`, flip: !up })).join('')}
+        ${faceUp ? '' : `<span class="peek-hint">${open ? 'Throw to fold' : 'Hold to peek · throw to fold'}</span>`}
       </div>`;
     }
     if (p.holeCards) {
@@ -563,8 +943,12 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     </div>`;
   }
 
-  function drawBoard(pt, t, newHand, winCards) {
-    const prevLen = !pt || newHand ? 0 : pt.board.length;
+  function drawBoard(t, newHand, winCards) {
+    // Only cards that weren't on the felt a moment ago flip in. This counts
+    // what's actually drawn rather than comparing against a previous state,
+    // because redraws that aren't a step forward (taking back a fold, ending
+    // a peek, resizing) come through with no previous state at all.
+    const prevLen = newHand ? 0 : Math.min(renderedBoard, t.board.length);
     let html = '';
     for (let i = 0; i < 5; i++) {
       const c = t.board[i];
@@ -585,7 +969,16 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       const key = `sd-${t.handNumber}`;
       if (els.pot.dataset.key === key) return; // keep the banner's entrance animation from replaying
       els.pot.dataset.key = key;
-      const names = [...new Set(summary.winners.map((w) => w.hand?.description || w.hand?.name).filter(Boolean))].join(' / ');
+      const names = [
+        ...new Set(
+          summary.winners
+            .map((w) => {
+              const d = w.hand?.description || w.hand?.name;
+              return d && w.kicker ? `${d} · ${w.kicker}` : d;
+            })
+            .filter(Boolean)
+        ),
+      ].join(' / ');
       const split = summary.winners.length > 1;
       els.pot.className = 'anchor banner';
       els.pot.innerHTML = `${summary.winners.map((w) => `<div class="banner-line">${esc(w.username)} wins <b>${fmt(w.amount)}</b></div>`).join('')}
@@ -660,7 +1053,11 @@ export function renderTable(root, { user, roomCode, onLeave }) {
           </div>
           <div class="amount-row">
             <input class="range" type="range" id="amt-range" step="1" aria-label="Bet amount">
-            <input class="input num" type="number" id="amt-input" step="1" inputmode="numeric" aria-label="Bet amount">
+            <div class="stepper">
+              <button type="button" class="step-btn" data-step="-1" aria-label="Decrease bet">${icons.minus}</button>
+              <input class="input num" type="number" id="amt-input" step="1" inputmode="numeric" aria-label="Bet amount">
+              <button type="button" class="step-btn" data-step="1" aria-label="Increase bet">${icons.plus}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -669,8 +1066,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         <button class="act act-call" data-act="check" id="call-btn"><span class="act-label"><span class="ic" id="call-ic">${icons.check}</span><span id="call-label">Check</span><span class="kbd">C</span></span><span class="act-amt" id="call-amt"></span></button>
         <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span></button>
         <button class="act act-allin" data-act="allin" id="allin-btn"><span class="act-label">${icons.allin}All-in</span><span class="act-amt" id="allin-amt"></span></button>
-      </div>
-      <div class="dock-help">Click your cards to peek · Throw them onto the felt to fold · Double-click the felt to check · Drag chips onto the table to bet</div>`;
+      </div>`;
   }
 
   // Only touch the DOM when content actually changes, so the countdown
@@ -692,6 +1088,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       if (turnKey) play('turn'); // it just became my turn
       myTurnKey = turnKey;
       pendingTotal = null;
+      if (foldArmed) setFoldArmed(false);
     }
     els.dock.classList.toggle('not-turn', !m.myTurn);
 
@@ -705,19 +1102,19 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     } else if (m.myTurn) {
       main = `<span class="turn-badge">Your turn<span class="turn-clock" id="turn-clock">${icons.clock}<span id="turn-secs">–</span></span></span>`;
       sub = `${m.toCall > 0
-        ? `<span class="to-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span>`
-        : '<span class="to-call is-free">No bet to you</span>'} <span class="sep">·</span> Pot <b>${fmt(m.total)}</b>`;
+        ? `<span class="stat stat-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span>`
+        : '<span class="stat stat-free">No bet to you</span>'}<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     } else {
       const who = m.actor ? `Waiting for <b>${esc(m.actor.username)}</b>` : 'Dealing<span class="dots"></span>';
       main = me.folded ? 'You folded' : me.allIn ? 'You’re all-in' : who;
-      sub = `${m.actor ? `<span class="clock-inline">${icons.clock}<b id="turn-secs">–</b>s</span> <span class="sep">·</span> ` : ''}${
-        m.toCall > 0 && !me.folded && !me.allIn ? `<span class="to-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span> <span class="sep">·</span> ` : ''
-      }Bet <b>${fmt(t.currentBet)}</b> <span class="sep">·</span> Pot <b>${fmt(m.total)}</b>`;
+      sub = `${m.actor ? `<span class="stat stat-clock">${icons.clock}<b id="turn-secs">–</b>s</span>` : ''}${
+        m.toCall > 0 && !me.folded && !me.allIn ? `<span class="stat stat-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span>` : ''
+      }<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     }
     setHTML(q('st-main'), main);
     setHTML(q('st-sub'), sub);
 
-    const canPeek = !!me && me.hasCards && !me.folded && t.phase !== 'showdown';
+    const canPeek = !!me && me.hasCards && !me.folded && t.phase !== 'showdown' && !autoReveal();
     els.dock.querySelector('[data-peek]').classList.toggle('is-hidden', !canPeek);
 
     const off = !m.myTurn;
@@ -730,7 +1127,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     q('call-amt').textContent = m.toCall > 0 ? fmt(Math.min(m.toCall, me.chips)) : '';
     q('allin-btn').disabled = off;
     q('allin-amt').textContent = me ? fmt(me.chips) : '';
-    els.dock.querySelectorAll('.chip-btn, .quick-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
+    els.dock.querySelectorAll('.quick-btn, .step-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
     syncAmount();
   }
 
@@ -755,6 +1152,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       els.dock.querySelector('#raise-label').textContent = m?.isRaise ? 'Raise' : 'Bet';
       els.dock.querySelector('#raise-amt').textContent = '';
       els.dock.querySelectorAll('[data-quick]').forEach((b) => b.classList.remove('is-selected'));
+      updateChips();
       drawPending();
       return;
     }
@@ -780,16 +1178,30 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       const allIn = amt >= m.maxTotal;
       const below = amt < m.minTotal;
       btn.disabled = below;
-      label.textContent = allIn ? 'All-in' : m.isRaise ? 'Raise to' : 'Bet';
+      label.textContent = allIn ? 'All-in' : m.isRaise ? 'Raise' : 'Bet';
       amtEl.textContent = below ? `min ${fmt(m.minTotal)}` : fmt(Math.min(amt, m.maxTotal));
     }
     els.dock.querySelectorAll('[data-quick]').forEach((b) => b.classList.toggle('is-selected', pendingTotal !== null && quickValue(b.dataset.quick) === amt));
+    updateChips();
     drawPending();
   }
 
+  // Greys out chips worth more than you have left to put in, so you can't
+  // reach for a 500 chip holding 80.
+  function updateChips() {
+    const m = model;
+    const left = m?.canRaise ? m.maxTotal - (pendingTotal ?? m.me.betThisStreet) : 0;
+    els.dock.querySelectorAll('[data-chip]').forEach((btn) => {
+      const denom = Number(btn.dataset.chip);
+      const tooBig = denom > left;
+      btn.disabled = !m?.canRaise || tooBig;
+      btn.title = tooBig && m?.canRaise ? `You only have ${fmt(left)} left to bet` : `Add ${fmt(denom)} chip`;
+    });
+  }
+
   // Chips you've tossed out but not committed yet, shown on the felt with the
-  // button that commits them: "Confirm call" when they exactly cover the call,
-  // otherwise "Raise to"/"Bet".
+  // button that commits them: "Call" when they exactly cover the call,
+  // otherwise "Raise"/"Bet".
   function drawPending() {
     const m = model;
     const L = myLayout();
@@ -810,14 +1222,24 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     let kind;
     let label;
     if (allIn) [kind, label] = ['allin', 'All-in'];
-    else if (exactCall) [kind, label] = ['call', 'Confirm call'];
+    else if (exactCall) [kind, label] = ['call', 'Call'];
     else if (short) [kind, label] = [null, `Add ${fmt(m.minTotal - capped)} more`];
-    else [kind, label] = ['raise', m.isRaise ? 'Raise to' : 'Bet'];
+    else [kind, label] = ['raise', m.isRaise ? 'Raise' : 'Bet'];
 
     // Beside my own cards (I'm always the bottom seat), clear of the pot.
+    // Sits just below and to the side of my own cards — clear of the board,
+    // the other seats and my nameplate.
     el.classList.remove('is-empty');
-    el.style.left = `${L.cards.x + (layout.portrait ? 19 : 12)}%`;
-    el.style.top = `${L.cards.y - 1}%`;
+    // On a phone there isn't room to centre it near the cards without landing
+    // on them, so it's hung off their right-hand edge instead: `is-side`
+    // anchors the box by its left edge, level with the cards.
+    el.classList.toggle('is-side', layout.portrait);
+    // 16% clears the full width of my own cards (--card-me is ~13% of the
+    // camera across the pair) with a little air left over.
+    const x = layout.portrait ? clamp(L.cards.x + 16, 12, 66) : clamp(L.cards.x + 12, 12, 86);
+    const y = layout.portrait ? L.cards.y : L.cards.y - 1;
+    el.style.left = `${x}%`;
+    el.style.top = `${clamp(y, 8, 92)}%`;
     // setHTML keeps the button from being rebuilt (and re-animating) on every
     // unrelated table update.
     setHTML(el, `
@@ -830,16 +1252,61 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       </div>`);
   }
 
+  // Folding is the one move you can't take back, so it asks first: the
+  // button arms on the first click and only folds on the second.
+  function setFoldArmed(on) {
+    foldArmed = on;
+    const btn = els?.dock.querySelector('[data-act="fold"]');
+    if (!btn) return;
+    btn.classList.toggle('is-armed', on);
+    const label = btn.querySelector('.act-label');
+    if (label) label.innerHTML = on ? `${icons.fold}Sure?<span class="kbd">F</span>` : `${icons.fold}Fold<span class="kbd">F</span>`;
+    const amt = btn.querySelector('.act-amt');
+    if (amt) amt.textContent = on ? 'Tap again' : '';
+    clearTimeout(foldArmTimer);
+    if (on) foldArmTimer = setTimeout(() => setFoldArmed(false), 4000);
+  }
+
+  function requestFold() {
+    if (!model?.myTurn) return;
+    if (!foldArmed) {
+      setFoldArmed(true);
+      play('click');
+      return;
+    }
+    setFoldArmed(false);
+    doAction('fold');
+  }
+
   function onDockClick(e) {
     const act = e.target.closest('[data-act]');
-    if (act && !act.disabled) return doAction(act.dataset.act);
+    if (act && !act.disabled) {
+      if (act.dataset.act === 'fold') return requestFold();
+      setFoldArmed(false); // any other action cancels a pending fold
+      return doAction(act.dataset.act);
+    }
     const q = e.target.closest('[data-quick]');
     if (q && !q.disabled) {
       pendingTotal = quickValue(q.dataset.quick);
       syncAmount();
       return;
     }
+    const step = e.target.closest('[data-step]');
+    if (step && !step.disabled) return nudgeAmount(Number(step.dataset.step));
     if (e.target.closest('[data-peek]')) peekBriefly();
+  }
+
+  // Steps the bet by one big blind, which is how players actually think
+  // about sizing, and snaps onto that grid if the amount is off it.
+  function nudgeAmount(dir) {
+    const m = model;
+    if (!m?.canRaise) return;
+    const step = Math.max(1, m.t.bigBlind);
+    const from = currentAmount();
+    const snapped = dir > 0 ? Math.floor(from / step) * step : Math.ceil(from / step) * step;
+    pendingTotal = clamp(snapped + dir * step, m.minTotal, m.maxTotal);
+    play('chip');
+    syncAmount();
   }
 
   function onDockInput(e) {
@@ -963,7 +1430,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       if (b && !b.disabled) doAction(kind);
     };
     if (k === 'p') peekBriefly();
-    else if (k === 'f') press('fold');
+    else if (k === 'f') requestFold();
+    else if (k === 'escape') setFoldArmed(false);
     else if (k === 'c') press(model?.toCall > 0 ? 'call' : 'check');
     else if (k === 'r') press('raise');
   }
@@ -992,16 +1460,46 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   function startPeek(hand = currentHand()) {
     const L = myLayout();
     if (!hand || !L || peeking) return false;
+    // Cards are already face up: nothing to lift, nothing to zoom into, and
+    // no “they're looking” tell to send the rest of the table.
+    if (autoReveal()) return false;
     peeking = true;
-    if (!reduceMotion) {
+    const prefs = getSettings();
+    if (!reduceMotion && prefs.peekZoom && prefs.zoomLevel > 1.01) {
       const cam = els.camera;
       const W = cam.offsetWidth;
       const H = cam.offsetHeight;
-      const ox = (L.cards.x / 100) * W;
-      const oy = (L.cards.y / 100) * H;
-      const scale = layout.portrait ? 1.55 : 1.45;
+      // Frame my cards together with the board, so the community cards stay
+      // on screen while I'm looking. With no board yet, zoom in on my cards.
+      const camRect = cam.getBoundingClientRect();
+      const k = W / (camRect.width || W); // screen px -> camera px
+      const box = (el) => {
+        const r = el.getBoundingClientRect();
+        return { top: (r.top - camRect.top) * k, bottom: (r.bottom - camRect.top) * k };
+      };
+      const mine = box(hand);
+      const pad = H * 0.05;
+      let top = mine.top - pad;
+      let bottom = mine.bottom + pad;
+      if (shown?.table.board.length) {
+        const b = box(els.board);
+        top = Math.min(top, b.top - pad);
+        bottom = Math.max(bottom, b.bottom + pad);
+      }
+      // Never zoom past what the player asked for, and never so far that the
+      // framed area stops fitting on screen.
+      const maxScale = prefs.zoomLevel * (layout.portrait ? 1.07 : 1);
+      const scale = clamp(H / Math.max(1, bottom - top), 1.02, maxScale);
+      const ox = W / 2;
+      const oy = (top + bottom) / 2;
+      cam.style.transitionDuration = `${prefs.zoomSpeed}ms`;
       cam.style.transformOrigin = `${ox}px ${oy}px`;
-      cam.style.transform = `translate(${W / 2 - ox}px, ${H * 0.54 - oy}px) scale(${scale})`;
+      cam.style.transform = `translate(0px, ${H / 2 - oy}px) scale(${scale})`;
+      // The further in we zoom, the more the surroundings fall away.
+      const lean = clamp((scale - 1) / 0.6, 0, 1);
+      els.stage.style.setProperty('--vig-dark', (0.68 + lean * 0.24).toFixed(2));
+      els.stage.style.setProperty('--vig-clear', `${(46 - lean * 12).toFixed(0)}%`);
+      els.stage.style.setProperty('--peek-ms', `${prefs.zoomSpeed}ms`); // fade in step with the zoom
       els.stage.classList.add('is-peeking');
     }
     hand.classList.add('lifted');
@@ -1018,10 +1516,6 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     emitAck('peek', { on: false }).catch(() => {});
     els.camera.style.transform = '';
     els.stage.classList.remove('is-peeking');
-    // Let the cards flip back before redrawing, so they don't snap face-down.
-    later(() => {
-      if (!peeking && !holding && latest !== shown) draw();
-    }, reduceMotion ? 0 : 320);
   }
 
   // Keyboard (P) and the Peek button: a timed look, since there's nothing to hold.
@@ -1090,7 +1584,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       hand.classList.remove('dragging');
       const d = delta(ev);
       if (!cancelled && isThrow(d) && model?.myTurn) {
-        throwHand(hand, L, d);
+        // Throwing asks before mucking, same as the Fold button does.
+        confirmThrow(hand, L, d);
         return;
       }
       if (!cancelled && isThrow(d)) showError('You can only fold on your turn.');
@@ -1115,6 +1610,38 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     window.addEventListener('pointercancel', cancel);
   }
 
+  // Holds the thrown cards over the felt and asks before they're mucked.
+  function confirmThrow(hand, L, d) {
+    hand.style.transform = `translate(calc(-50% + ${d.dx * 0.55}px), calc(-50% + ${d.dy * 0.55}px)) rotate(${d.dx * 0.05}deg)`;
+    hand.classList.add('awaiting-fold');
+    els.foldZone.classList.add('is-visible', 'is-hot', 'is-confirm');
+    els.foldZone.innerHTML = `<div class="fold-confirm">
+      <span>Fold this hand?</span>
+      <button class="pending-btn is-allin" data-fold-yes>${icons.fold}Fold</button>
+      <button class="pending-btn is-clear" data-fold-no aria-label="Keep my cards">${icons.leave}</button>
+    </div>`;
+    play('click');
+
+    const done = (fold) => {
+      els.foldZone.classList.remove('is-visible', 'is-hot', 'is-confirm');
+      els.foldZone.innerHTML = `<span id="fold-zone-label">Release to fold</span>`;
+      els.foldLabel = root.querySelector('#fold-zone-label');
+      hand.classList.remove('awaiting-fold');
+      if (fold) {
+        throwHand(hand, L, d);
+      } else {
+        hand.style.transform = '';
+        later(endDrag, 260);
+      }
+    };
+    els.foldZone.querySelector('[data-fold-yes]').addEventListener('click', () => done(true));
+    els.foldZone.querySelector('[data-fold-no]').addEventListener('click', () => done(false));
+    // Don't leave the hand stranded if they walk away from the decision.
+    later(() => {
+      if (els.foldZone.classList.contains('is-confirm')) done(false);
+    }, 6000);
+  }
+
   async function throwHand(hand, L, d) {
     const W = els.camera.offsetWidth;
     const H = els.camera.offsetHeight;
@@ -1133,8 +1660,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   function endDrag() {
     dragging = false;
     if (holding || peeking) return;
-    if (latest !== shown) draw();
-    else drawTable(shown, shown);
+    draw(); // redraw from the newest state, putting the cards back in place
   }
 
   // ---------------------------------------------------------------------------
@@ -1212,6 +1738,44 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     }
   }
 
+  // The whole hand, told in sound: cards going out, each action as it's made,
+  // each street as it lands, and how the pot was settled. Runs on every
+  // update, animations or not, so the table can be followed without watching.
+  function playEffects(pt, t) {
+    const cur = t.seats.filter(Boolean);
+
+    if (pt.handNumber !== t.handNumber) {
+      cur.forEach((_, i) => play('deal', 0.09 * i)); // cards going round the table
+      return;
+    }
+
+    // Whoever just acted. My own actions are announced by doAction as they're
+    // sent, so they aren't played a second time here.
+    if (t.actionCount !== pt.actionCount && pt.actingSeat >= 0) {
+      const actor = t.seats[pt.actingSeat];
+      if (actor && actor.userId !== user.id) playForAction(actor.lastAction);
+    }
+
+    const streetChanged = pt.phase !== t.phase;
+
+    // Community cards hitting the felt, then the street's own tag once the
+    // last one has landed, so a flop, a turn and a river are told apart.
+    if (streetChanged && t.board.length > pt.board.length) {
+      const dealt = t.board.length - pt.board.length;
+      for (let i = 0; i < dealt; i++) play('deal', 0.12 * i);
+      if (STREET_SOUND[t.phase]) play(STREET_SOUND[t.phase], 0.12 * (dealt - 1));
+    }
+
+    if (streetChanged && t.phase === 'showdown' && t.lastHandSummary) {
+      const summary = t.lastHandSummary;
+      if (!summary.uncontested) {
+        const others = cur.filter((p) => !p.folded && p.userId !== user.id).length;
+        for (let i = 0; i < others; i++) play('flip', 0.12 * i);
+      }
+      play(summary.winners.some((w) => w.userId === user.id) ? 'win' : 'lose', 0.55);
+    }
+  }
+
   function runEffects(pt, t) {
     const prevSeats = new Map(pt.seats.filter(Boolean).map((p) => [p.userId, p]));
     const cur = t.seats.filter(Boolean);
@@ -1222,7 +1786,6 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         const L = layout.map.get(p.seat);
         if (p.betThisStreet > 0) flyChips(L.stack, L.bet, p.betThisStreet, 200);
       }
-      cur.forEach((_, i) => play('deal', 0.09 * i)); // cards going round the table
       return;
     }
 
@@ -1236,7 +1799,6 @@ export function renderTable(root, { user, roomCode, onLeave }) {
         actionToast(L, actor.lastAction);
         if (actor.lastAction?.startsWith('check') && !L.isMe) knock(L);
       }
-      if (actor && !L?.isMe) playForAction(actor.lastAction);
     }
 
     for (const p of cur) {
@@ -1254,19 +1816,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       if (streetChanged && q.betThisStreet > 0) flyChips(L.bet, POT, q.betThisStreet, 120);
     }
 
-    // Community cards hitting the felt.
-    if (streetChanged && t.board.length > pt.board.length) {
-      for (let i = 0; i < t.board.length - pt.board.length; i++) play('deal', 0.12 * i);
-    }
-
     if (streetChanged && t.phase === 'showdown' && t.lastHandSummary) {
       const summary = t.lastHandSummary;
-      if (!summary.uncontested) {
-        const others = cur.filter((p) => !p.folded && p.userId !== user.id).length;
-        for (let i = 0; i < others; i++) play('flip', 0.12 * i);
-      }
-      const iWon = summary.winners.some((w) => w.userId === user.id);
-      play(iWon ? 'win' : 'lose', 0.55);
       for (const w of summary.winners) {
         const p = cur.find((s) => s.userId === w.userId);
         const L = p && layout.map.get(p.seat);
@@ -1280,7 +1831,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     if (action.startsWith('check')) play('check');
     else if (action === 'fold' || action === 'timed out' || action === 'left') play('fold');
     else if (action.includes('all-in')) play('allin');
-    else if (action.startsWith('raise') || action.startsWith('bet')) play('bet');
-    else if (action.startsWith('call') || action.includes('blind')) play('chip');
+    else if (action.startsWith('raise') || action.startsWith('bet')) play('raise');
+    else if (action.startsWith('call')) play('call');
+    else if (action.includes('blind')) play('chip');
   }
 }

@@ -109,15 +109,54 @@ const plural = (v) => (v === 6 ? 'Sixes' : `${RANK_NAME[v]}s`);
 function describe({ category, tiebreakers: t }) {
   switch (category) {
     case CATEGORY.STRAIGHT_FLUSH: return t[0] === 14 ? 'Royal Flush' : `Straight Flush, ${RANK_NAME[t[0]]} high`;
-    case CATEGORY.QUADS: return `Four ${plural(t[0])}`;
-    case CATEGORY.FULL_HOUSE: return `${plural(t[0])} full of ${plural(t[1])}`;
+    case CATEGORY.QUADS: return `Four of a Kind, ${plural(t[0])}`;
+    case CATEGORY.FULL_HOUSE: return `Full House, ${plural(t[0])} full of ${plural(t[1])}`;
     case CATEGORY.FLUSH: return `Flush, ${RANK_NAME[t[0]]} high`;
     case CATEGORY.STRAIGHT: return `Straight, ${RANK_NAME[t[0]]} high`;
-    case CATEGORY.TRIPS: return `Three ${plural(t[0])}`;
-    case CATEGORY.TWO_PAIR: return `${plural(t[0])} and ${plural(t[1])}`;
+    case CATEGORY.TRIPS: return `Three of a Kind, ${plural(t[0])}`;
+    case CATEGORY.TWO_PAIR: return `Two Pair, ${plural(t[0])} and ${plural(t[1])}`;
     case CATEGORY.PAIR: return `Pair of ${plural(t[0])}`;
-    default: return `${RANK_NAME[t[0]]} high`;
+    default: return `High Card, ${RANK_NAME[t[0]]}`;
   }
+}
+
+// How many leading tiebreakers make up the hand proper. Anything after them is
+// a kicker: a side card that only decides things when two players hold the
+// same hand. Straights, straight flushes and full houses are fully described
+// by their own ranks, so they never have one.
+const PRIMARY_LEN = {
+  [CATEGORY.HIGH_CARD]: 1,
+  [CATEGORY.PAIR]: 1,
+  [CATEGORY.TWO_PAIR]: 2,
+  [CATEGORY.TRIPS]: 1,
+  [CATEGORY.STRAIGHT]: 5,
+  [CATEGORY.FLUSH]: 1,
+  [CATEGORY.FULL_HOUSE]: 5,
+  [CATEGORY.QUADS]: 1,
+  [CATEGORY.STRAIGHT_FLUSH]: 5,
+};
+
+// The kicker ranks of a hand, best first; empty when the hand has none.
+function kickers(ranked) {
+  return ranked.tiebreakers.slice(PRIMARY_LEN[ranked.category]);
+}
+
+// True when two hands are the same hand apart from their kickers — both a pair
+// of Kings, both two pair Nines and Fours — which is when a kicker matters.
+function sameHandRank(a, b) {
+  if (a.category !== b.category) return false;
+  const n = PRIMARY_LEN[a.category];
+  for (let i = 0; i < n; i++) {
+    if ((a.tiebreakers[i] || 0) !== (b.tiebreakers[i] || 0)) return false;
+  }
+  return true;
+}
+
+// "Ace kicker", "Kickers Queen, Nine" — or '' when the hand has no kicker.
+function describeKickers(ranks) {
+  if (!ranks.length) return '';
+  const names = ranks.map((v) => RANK_NAME[v]);
+  return names.length === 1 ? `${names[0]} kicker` : `Kickers ${names.join(', ')}`;
 }
 
 // Finds the best 5-card hand among 5-7 cards. Returns the ranked result plus
@@ -141,4 +180,4 @@ function compareHands(a, b) {
   return compareRanked(a, b);
 }
 
-module.exports = { evaluateHand, compareHands, CATEGORY, CATEGORY_NAME, combinations };
+module.exports = { evaluateHand, compareHands, kickers, sameHandRank, describeKickers, CATEGORY, CATEGORY_NAME, combinations };

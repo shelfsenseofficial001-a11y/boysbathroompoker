@@ -44,8 +44,24 @@ db.exec(`
   );
 `);
 
+// Players can pick a display name without changing the account they log in
+// with. Added here so existing databases upgrade on startup.
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'display_name')) {
+  db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+}
+
+// The name other players see: their chosen one, else the account name.
+function displayName(user) {
+  return user ? user.display_name || user.username : '';
+}
+
 module.exports = {
   db,
+  displayName,
+
+  setDisplayName(userId, name) {
+    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, userId);
+  },
 
   createUser(username, passwordHash, bankroll = 1000) {
     const stmt = db.prepare(

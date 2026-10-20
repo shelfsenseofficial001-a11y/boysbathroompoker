@@ -24,8 +24,8 @@ class Room {
     this.handTimer = null;
   }
 
-  addToLobby(userId, username, buyIn, isBot = false) {
-    this.lobby.set(userId, { username, buyIn, ready: true, isBot });
+  addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
+    this.lobby.set(userId, { username, buyIn, ready: true, isBot, botLevel });
   }
 
   botCount() {
@@ -78,7 +78,7 @@ class GameManager {
   startGame(room) {
     if (room.table.seatedCount() === 0) {
       for (const [userId, info] of room.lobby.entries()) {
-        room.table.addPlayer(userId, info.username, info.buyIn, info.isBot);
+        room.table.addPlayer(userId, info.username, info.buyIn, info.isBot, info.botLevel);
       }
     }
     if (!room.table.canStartHand()) throw new Error('Need at least 2 players to start.');

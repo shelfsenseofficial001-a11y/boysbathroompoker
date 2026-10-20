@@ -1,0 +1,43 @@
+# Render blueprint: one always-on Node process serving the static files, the
+# REST endpoints and the Socket.IO connection the table runs on.
+#
+# Netlify and friends can't host this: the game keeps every live table in
+# memory and talks to players over a WebSocket held open for the whole hand,
+# which needs a real process rather than a static CDN or a serverless function.
+#
+# To deploy: push this repo to GitHub, then on Render pick
+# New > Blueprint and point it at the repo. Everything below is applied for you.
+services:
+  - type: web
+    name: boysbathroompoker
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    # "/" serves index.html, so a 200 here means the app is really up.
+    healthCheckPath: /
+    envVars:
+      # better-sqlite3 is a native module and is compiled during the build, so
+      # the Node version is pinned to the one the lockfile was resolved with.
+      - key: NODE_VERSION
+        value: 22.13.1
+      # Generated once by Render and kept thereafter; never commit a real one.
+      - key: SESSION_SECRET
+        generateValue: true
+      # Guest mode: every browser tab plays under its own name, no sign-up.
+      # Set to false to turn the account system back on.
+      - key: SKIP_AUTH
+        value: "true"
+
+# The free plan has no persistent disk, so data/poker.db is rebuilt whenever the
+# service restarts or redeploys. That costs nothing in guest mode, where the
+# database only holds throwaway guest rows and finished-hand records — live
+# tables live in memory either way.
+#
+# On a paid instance, attach a disk and point the database at it by adding a
+# DB_FILE env var of /var/data/poker.db alongside:
+#
+#    disk:
+#      name: poker-data
+#      mountPath: /var/data
+#      sizeGB: 1

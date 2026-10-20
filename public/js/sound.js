@@ -90,15 +90,22 @@ const SOUNDS = {
   deal: (t) => noise(t, { dur: 0.16, gain: 0.3, freq: 1200, sweepTo: 4000, q: 0.7 }),
   // Card turning over.
   flip: (t) => noise(t, { dur: 0.1, gain: 0.22, freq: 2600, sweepTo: 900, q: 0.8 }),
-  // Cards tossed into the muck.
+  // Cards skidding into the muck and settling — a sweep away from the table,
+  // with a low thud under it so a fold reads as final.
   fold: (t) => {
-    noise(t, { dur: 0.2, gain: 0.28, freq: 900, sweepTo: 300, q: 0.6 });
-    noise(t + 0.07, { dur: 0.16, gain: 0.2, freq: 700, sweepTo: 260, q: 0.6 });
+    noise(t, { dur: 0.22, gain: 0.3, freq: 1100, sweepTo: 260, q: 0.6 });
+    noise(t + 0.08, { dur: 0.18, gain: 0.22, freq: 800, sweepTo: 220, q: 0.6 });
+    // Falling, where a raise climbs — a hand leaving the table.
+    tone(t + 0.04, { freq: 380, to: 110, dur: 0.26, type: 'triangle', gain: 0.13 });
   },
-  // Knuckles on the table.
-  check: (t) => {
+  // Knuckles on the table: two taps, the way a check is actually made.
+  knock: (t) => {
     tone(t, { freq: 180, to: 90, dur: 0.07, type: 'triangle', gain: 0.25 });
     noise(t, { dur: 0.05, gain: 0.18, freq: 400, q: 1.5, type: 'lowpass' });
+  },
+  check: (t) => {
+    SOUNDS.knock(t);
+    SOUNDS.knock(t + 0.14);
   },
   // Chips landing on chips.
   chip: (t) => {
@@ -108,6 +115,20 @@ const SOUNDS = {
   // A bigger pile of chips pushed in.
   bet: (t) => {
     for (let i = 0; i < 3; i++) SOUNDS.chip(t + i * 0.045);
+  },
+  // Chips matched, nothing more: two even chips over a flat note. Deliberately
+  // the plainest of the three betting sounds — a call changes nothing.
+  call: (t) => {
+    SOUNDS.chip(t);
+    SOUNDS.chip(t + 0.085);
+    tone(t + 0.02, { freq: 440, dur: 0.18, type: 'triangle', gain: 0.09 });
+  },
+  // Chips pushed in and the bet lifted: the note climbs an octave, which is
+  // what separates a raise from a call without looking at the table.
+  raise: (t) => {
+    for (let i = 0; i < 4; i++) SOUNDS.chip(t + i * 0.04);
+    tone(t + 0.03, { freq: 420, to: 840, dur: 0.26, type: 'triangle', gain: 0.13 });
+    tone(t + 0.16, { freq: 840, dur: 0.16, type: 'sine', gain: 0.07 });
   },
   allin: (t) => {
     for (let i = 0; i < 6; i++) SOUNDS.chip(t + i * 0.04);
@@ -130,6 +151,23 @@ const SOUNDS = {
   // Someone else took it.
   lose: (t) => {
     tone(t, { freq: 320, to: 180, dur: 0.34, type: 'sine', gain: 0.12 });
+  },
+  // The three community streets, each a card-on-felt brush with a short
+  // musical tag over it. They climb in pitch so you can hear which street
+  // just landed without looking up: flop is a chord, turn and river single
+  // notes a step higher each time.
+  flop: (t) => {
+    [523.25, 659.25, 783.99].forEach((f, i) =>
+      tone(t + 0.1 + i * 0.015, { freq: f, dur: 0.42, type: 'triangle', gain: 0.1 })
+    );
+  },
+  turnCard: (t) => {
+    tone(t + 0.06, { freq: 880, dur: 0.28, type: 'triangle', gain: 0.13 });
+    tone(t + 0.06, { freq: 1318.5, dur: 0.28, type: 'sine', gain: 0.06 });
+  },
+  river: (t) => {
+    tone(t + 0.06, { freq: 1046.5, dur: 0.36, type: 'triangle', gain: 0.13 });
+    tone(t + 0.14, { freq: 1567.98, dur: 0.32, type: 'sine', gain: 0.07 });
   },
   click: (t) => tone(t, { freq: 900, to: 1400, dur: 0.05, type: 'sine', gain: 0.1 }),
 };

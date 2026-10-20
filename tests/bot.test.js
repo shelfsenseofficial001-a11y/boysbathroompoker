@@ -53,7 +53,70 @@ test('bot names and ids are unique', () => {
   const ids = new Set();
   for (let i = 0; i < 50; i++) ids.add(bot.makeBotId());
   assert.equal(ids.size, 50);
+
+  // Filling every seat must never produce two bots with the same name.
   const taken = [];
-  for (let i = 0; i < bot.BOT_NAMES.length; i++) taken.push(bot.pickBotName(taken));
-  assert.equal(new Set(taken).size, bot.BOT_NAMES.length);
+  for (let i = 0; i < 9; i++) {
+    const level = bot.LEVELS[i % bot.LEVELS.length];
+    taken.push(bot.pickBotName(taken, level));
+  }
+  assert.equal(new Set(taken).size, taken.length);
+});
+
+test('each level is offered a name from its own set', () => {
+  for (const level of bot.LEVELS) {
+    assert.ok(bot.NAMES[level].includes(bot.pickBotName([], level)));
+  }
+});
+
+test('unknown levels fall back to casual', () => {
+  assert.equal(bot.normalizeLevel('wizard'), 'casual');
+  assert.equal(bot.normalizeLevel(undefined), 'casual');
+  assert.equal(bot.normalizeLevel('expert'), 'expert');
+});
+
+test('every level plays legal poker and conserves chips', () => {
+  for (const level of bot.LEVELS) {
+    const t = new Table({ smallBlind: 5, bigBlind: 10 });
+    for (let i = 0; i < 3; i++) t.addPlayer(bot.makeBotId(), `${level}${i}`, 1000, true, level);
+    for (let hand = 0; hand < 3; hand++) {
+      if (t.seats.filter((p) => p && p.chips > 0).length < 2) break;
+      playBotHand(t);
+      const total = t.seats.filter(Boolean).reduce((s, p) => s + p.chips, 0);
+      assert.equal(total, 3000, `${level} must not create or lose chips`);
+    }
+  }
+});
+
+// How often a level keeps playing 7-2 on an A-K-Q board facing a big bet.
+function stayRate(level, trials = 40) {
+  let stayed = 0;
+  for (let i = 0; i < trials; i++) {
+    const t = new Table({ smallBlind: 5, bigBlind: 10 });
+    t.addPlayer(-910, 'a', 1000, true, level);
+    t.addPlayer(-911, 'b', 1000, true, level);
+    t.startHand();
+    const me = t.seats[t.actingSeat];
+    me.holeCards = ['2c', '7d']; // trash
+    t.board = ['Ah', 'Kd', 'Qc']; // misses it completely
+    t.currentBet = 120;
+    me.betThisStreet = 0;
+    if (bot.decide(t, me).type !== 'fold') stayed++;
+  }
+  return stayed / trials;
+}
+
+test('beginners chase hopeless hands; experts let them go', () => {
+  assert.ok(stayRate('beginner') > stayRate('expert'), 'beginner should be the looser caller');
+  assert.ok(stayRate('expert') < 0.25, 'expert should mostly fold trash to a big bet');
+  assert.ok(stayRate('solid') < 0.35, 'solid should fold trash too');
+});
+
+test('expert equity: the nuts beats a random hand nearly always', () => {
+  // Holding quad aces on this board, almost nothing can beat us.
+  const eq = bot.equity(['As', 'Ah'], ['Ad', 'Ac', '7h'], 1, 150);
+  assert.ok(eq > 0.95, `expected a near-certain win, got ${eq}`);
+  // Holding the worst possible hand against three opponents.
+  const bad = bot.equity(['2c', '7d'], ['As', 'Kh', 'Qd'], 3, 150);
+  assert.ok(bad < 0.3, `expected a weak hand, got ${bad}`);
 });

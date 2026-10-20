@@ -10,6 +10,10 @@ const { router: authRouter, requireAuth } = require('./auth');
 const { attachSockets } = require('./sockets');
 
 const app = express();
+// Hosts like Render terminate TLS at a proxy and forward plain HTTP, so
+// Express has to be told to believe X-Forwarded-* - without this req.secure
+// is always false and a secure session cookie would never be sent.
+if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server);
 
@@ -22,6 +26,8 @@ const sessionMiddleware = session({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
+    // HTTPS-only once deployed; left off locally, where there's no TLS.
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 1000 * 60 * 60 * 12, // 12 hours
   },
 });

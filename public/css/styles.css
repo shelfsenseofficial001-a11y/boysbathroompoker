@@ -42,6 +42,38 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Always reserve the scrollbar's space, so the layout never jumps sideways
+   when a page becomes scrollable (or stops being). */
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #2f6b55 rgba(0, 0, 0, 0.3); /* Firefox */
+}
+
+/* Felt-green scrollbars that turn gold as you grab them, so they belong to
+   the table rather than looking like the browser's default grey. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 1px solid var(--line);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #2f6b55, #1b4536);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--gold), var(--gold-lo));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -178,8 +210,18 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .meta-chip b { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }
 .meta-chip b.code { color: var(--gold); letter-spacing: 0.12em; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
-.user-pill { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--text-2); }
+.user-pill {
+  display: flex; align-items: center; gap: 8px; font: 600 13px var(--font-ui); color: var(--text-2);
+  background: none; border: 1px solid transparent; border-radius: 999px; padding: 3px 10px 3px 3px; cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.user-pill:hover { color: var(--text-1); background: var(--bg-2); border-color: var(--line-2); }
 .user-pill svg { width: 26px; height: 26px; }
+.user-pill .icon { width: 14px; height: 14px; opacity: 0; transition: opacity 0.15s; }
+.user-pill:hover .icon { opacity: 0.7; }
+.name-edit { display: inline-flex; align-items: center; }
+.name-edit input { width: 160px; }
+.name-edit[data-error] input { border-color: var(--red); }
 .topbar > * { min-width: 0; }
 @media (max-width: 1100px) {
   .topbar .hide-md { display: none; }
@@ -207,7 +249,41 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .lobby-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 760px) { .lobby-grid { grid-template-columns: 1fr; } .page { padding-top: 26px; } }
 
-.room-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; margin-top: 10px; }
+/* Settings rows */
+.switch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--text-2); margin: 4px 0 14px; }
+.switch-row input { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+.switch-row:hover { color: var(--text-1); }
+.slider-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.slider-row .field { min-width: 180px; }
+.slider-row label { display: flex; justify-content: space-between; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-3); }
+.slider-row label b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.slider-row .range { width: 100%; }
+
+/* Live preview of the peek zoom: a miniature table that zooms at the chosen
+   strength, plus a bar that fills over exactly the chosen duration. */
+.zoom-preview { margin-top: 16px; }
+.pv-felt {
+  position: relative; height: 96px; border-radius: var(--r-m); overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, #157a5c, #0b4d3c 70%, #073624);
+  border: 1px solid var(--line);
+}
+.pv-stage { position: absolute; inset: 0; transform-origin: 50% 62%; }
+.pv-board, .pv-hand { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; }
+.pv-board { top: 26px; }
+.pv-hand { top: 56px; gap: 2px; }
+.pv-board span, .pv-hand span {
+  width: 14px; height: 20px; border-radius: 2px;
+  background: linear-gradient(180deg, #fbf8f1, #e6e0d2); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.pv-hand span { background: linear-gradient(180deg, #7d2030, #6d1a26); border: 1px solid rgba(230, 180, 80, 0.5); }
+.pv-hand span:first-child { transform: rotate(-6deg); }
+.pv-hand span:last-child { transform: rotate(6deg); }
+.pv-timing { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.pv-bar { flex: 1; height: 4px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.pv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-hi)); transform-origin: left center; transform: scaleX(0); }
+.pv-timing .micro { letter-spacing: 0.04em; text-transform: none; white-space: nowrap; }
+
+.room-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; margin-top: 10px; }
 .room-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-m); padding: 10px 12px;
@@ -238,8 +314,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .room-code { font-size: 38px; font-weight: 800; letter-spacing: 0.22em; color: var(--gold-hi); font-variant-numeric: tabular-nums; line-height: 1; }
-.meta-row { display: flex; gap: 18px; color: var(--text-3); font-size: var(--fs-small); margin-bottom: 14px; }
+/* Blinds · seats taken, with Add bot pushed to the right-hand end. */
+.meta-row { display: flex; align-items: center; gap: 18px; color: var(--text-3); font-size: var(--fs-small); margin-bottom: 14px; }
 .meta-row b { color: var(--text-1); }
+.meta-row .btn { margin-left: auto; }
 .player-list { list-style: none; padding: 0; margin: 0 0 20px; display: flex; flex-direction: column; gap: 8px; }
 .player-row {
   display: flex; align-items: center; gap: 12px;
@@ -254,14 +332,51 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   background: rgba(230, 180, 80, 0.15); color: var(--gold);
 }
 .badge.you { background: rgba(74, 168, 232, 0.16); color: var(--blue); }
-.badge.bot { background: rgba(60, 194, 127, 0.16); color: var(--green); }
+/* Each difficulty has its own colour, used by the picker, the lobby badges
+   and the tag under each bot's seat. */
+.lvl-beginner { --lvl: #3cc27f; }
+.lvl-casual { --lvl: #4aa8e8; }
+.lvl-solid { --lvl: #e6b450; }
+.lvl-expert { --lvl: #e0564f; }
+
+.badge.bot { background: color-mix(in srgb, var(--lvl, var(--green)) 18%, transparent); color: var(--lvl, var(--green)); }
+
+/* Custom difficulty picker (replaces a native select). */
+.picker { position: relative; }
+.picker-btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px;
+  background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-s);
+  color: var(--text-1); font: 600 13px var(--font-ui); cursor: pointer; min-width: 132px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.picker-btn:hover:not(:disabled) { border-color: var(--lvl); }
+.picker-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.picker.is-open .picker-btn { border-color: var(--lvl); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lvl) 20%, transparent); }
+.picker-label { flex: 1; text-align: left; }
+.picker-btn .icon { width: 14px; height: 14px; color: var(--text-3); transition: transform 0.18s; }
+.picker.is-open .picker-btn .icon { transform: rotate(180deg); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lvl); flex: none; box-shadow: 0 0 8px var(--lvl); }
+
+.picker-menu {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 50; margin: 0; padding: 5px; list-style: none;
+  min-width: 232px; border-radius: var(--r-m); background: var(--bg-2);
+  border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
+  animation: popIn2 0.14s ease-out;
+}
+.picker-menu li {
+  display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--r-s);
+  cursor: pointer; outline: none;
+}
+.picker-menu li:hover, .picker-menu li:focus-visible { background: color-mix(in srgb, var(--lvl) 16%, transparent); }
+.picker-menu li[aria-selected='true'] { background: color-mix(in srgb, var(--lvl) 12%, transparent); }
+.picker-menu li[aria-selected='true'] .picker-text b { color: var(--lvl); }
+.picker-text { display: flex; flex-direction: column; line-height: 1.25; }
+.picker-text b { font-size: 13px; font-weight: 700; color: var(--text-1); }
+.picker-text em { font-style: normal; font-size: 11.5px; color: var(--text-3); }
 .player-row.is-bot .avatar-sm { display: grid; place-items: center; color: var(--green); background: rgba(60, 194, 127, 0.12); border-radius: 50%; }
 .player-row.is-bot .avatar-sm .icon { width: 20px; height: 20px; }
 .btn-icon { width: 34px; height: 34px; padding: 0; flex: none; }
 .btn-icon-spacer { width: 34px; flex: none; }
-.waiting-actions { display: flex; gap: 10px; }
-.waiting-actions .btn { flex: 1; height: 52px; font-size: 15px; }
-.waiting-actions .btn-ghost { flex: 0 0 auto; padding: 0 18px; }
 .buyin { display: flex; align-items: center; gap: 8px; }
 .buyin input { width: 110px; height: 36px; text-align: right; }
 .buyin .amt { font-weight: 700; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
@@ -283,13 +398,108 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 
 /* The stage is a size container: the camera (table) fits inside it by both
    width and height, so the table never pushes the betting dock off screen. */
+/* The stage and the history sidebar sit side by side in the middle row; the
+   stage keeps its own size container so the table still scales to whatever
+   room is left once the sidebar takes its share. */
+.table-body { position: relative; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
 .stage {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   container: stage / size;
   display: grid;
   place-items: center;
   overflow: hidden;
+}
+
+/* ---------- Hand history ---------- */
+/* Closed is width 0 rather than display:none, so opening and closing it
+   slides instead of snapping and the list keeps its scroll position. */
+.history {
+  flex: 0 0 auto; width: 0; min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: rgba(6, 12, 9, 0.75); border-right: 1px solid var(--line-2);
+  transition: width 0.25s var(--ease-out);
+}
+.show-history .history { width: min(252px, 32vw); }
+/* Sits in the top-left corner under the navbar, and stays put when the panel
+   opens underneath it - which is why the panel's heading is indented. */
+.history-toggle {
+  position: absolute; top: 8px; left: 8px; z-index: 32;
+  width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer;
+  border-radius: var(--r-s); border: 1px solid var(--line-2);
+  background: rgba(6, 12, 9, 0.9); color: var(--gold-hi);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.history-toggle:hover { background: var(--bg-3); border-color: rgba(230, 180, 80, 0.5); }
+.history-toggle.is-off { color: var(--text-3); }
+.history-toggle .icon { width: 17px; height: 17px; }
+.history-head {
+  flex: none; padding: 14px 14px 10px 50px; font: 800 11px var(--font-ui);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
+  border-bottom: 1px solid var(--line-2);
+}
+.history-list {
+  flex: 1 1 auto; margin: 0; padding: 8px; list-style: none;
+  overflow-y: auto; overscroll-behavior: contain; min-width: 252px;
+}
+.history-empty { padding: 14px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+.hh {
+  padding: 9px 10px; border-radius: var(--r-s); margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2);
+}
+.hh-no { font: 800 10.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); margin-bottom: 5px; }
+.hh-win { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text-1); }
+.hh-win.is-me .hh-who { color: var(--green); }
+.hh-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hh-amt { flex: none; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.hh-hand { font-size: 11.5px; color: var(--text-2); line-height: 1.35; margin-top: 1px; }
+.hh-kick { display: block; color: var(--text-3); }
+.hh-note { margin-top: 4px; font-size: 11px; color: var(--text-3); font-style: italic; }
+.hh-cards { display: flex; gap: 3px; margin: 5px 0 2px; }
+/* Small enough that two hole cards and a five-card board both fit the
+   column without wrapping. */
+.hh-cards .card { --cw: 26px; filter: none; }
+/* These are a record of cards already turned over, so they're always faces:
+   the back layer would otherwise sit on top and hide them. */
+.hh-cards .card > .back { display: none; }
+.hh-board { margin-top: 6px; }
+.hh-label { font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+/* Sits on the winner's row, right after what they won. */
+.hh-eye {
+  position: relative; flex: none; display: grid; place-items: center; cursor: pointer;
+  width: 30px; height: 30px; margin-left: 4px; padding: 0;
+  border-radius: 6px; border: 1px solid var(--line-2); background: transparent; color: var(--text-3);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.hh-eye:hover, .hh-eye:focus-visible { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: rgba(230, 180, 80, 0.1); }
+.hh-eye[aria-expanded='true'] { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.45); }
+.hh-eye .icon { width: 18px; height: 18px; }
+/* The label on hover. It hangs below and to the right edge of the button
+   because the list scrolls vertically, which clips anything reaching past
+   the side of the column. */
+.hh-eye::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 5px); right: 0; z-index: 5;
+  padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+  background: #0b1410; border: 1px solid var(--line-2); color: var(--text-1);
+  font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s;
+}
+.hh-eye:hover::after, .hh-eye:focus-visible::after { opacity: 1; }
+
+/* Phones have no width to give away, so the sidebar floats over the felt
+   instead of squeezing it. */
+@media (max-width: 760px) {
+  .history {
+    position: absolute; inset: 0 auto 0 0; z-index: 30;
+    width: min(280px, 84vw); transform: translateX(-100%);
+    background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
+    transition: transform 0.25s var(--ease-out);
+  }
+  .show-history .history { width: min(280px, 84vw); transform: none; }
+  .history-list { min-width: 0; }
 }
 .camera {
   position: relative;
@@ -300,6 +510,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   transition: transform 0.3s cubic-bezier(0.3, 0.7, 0.2, 1);
   touch-action: manipulation;
   --card-o: clamp(26px, 7.4cqmin, 54px);
+  /* Cards turned face up at showdown: big enough to actually read from
+     across a phone screen, where --card-o is barely a thumbnail. */
+  --card-show: clamp(38px, 10.6cqmin, 60px);
   --card-me: clamp(46px, 12.5cqmin, 96px);
   --card-board: clamp(30px, 9.8cqmin, 72px);
   --chip: clamp(14px, 3.6cqmin, 26px);
@@ -314,9 +527,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .stage::after {
   content: '';
   position: absolute; inset: 0; pointer-events: none; z-index: 15;
-  background: radial-gradient(ellipse at 50% 58%, transparent 28%, rgba(0, 0, 0, 0.7) 100%);
+  /* Darkens the rest of the table while you peek. Both the clear area and
+     the darkness scale with the zoom strength (set in startPeek). */
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    transparent var(--vig-clear, 42%),
+    rgba(0, 0, 0, var(--vig-dark, 0.82)) 100%
+  );
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity var(--peek-ms, 0.3s) ease;
 }
 .stage.is-peeking::after { opacity: 1; }
 
@@ -350,7 +569,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .card > .flip > .face { transform: rotateY(180deg); }
 
-.hand { display: flex; z-index: 3; pointer-events: none; }
+/* Above the nameplates (z-index 4). Where a seat's plate and its cards do
+   overlap, the cards win: the peek tilt is the only way to see that someone
+   is looking at their hand. */
+.hand { display: flex; z-index: 5; pointer-events: none; }
 .hand .card + .card { margin-left: calc(var(--cw) * -0.38); }
 .hand .card:first-child { transform: rotate(-5deg); }
 .hand .card:last-child { transform: rotate(5deg) translateY(1px); }
@@ -372,6 +594,18 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .fold-zone.is-visible { opacity: 1; }
 .fold-zone.is-hot { border-color: var(--red); background: rgba(224, 86, 79, 0.14); }
+/* Above the held cards (z-index 8): while the question is up, the cards were
+   landing on top of the Fold button and swallowing the tap. */
+.fold-zone.is-confirm { pointer-events: auto; place-items: center; z-index: 12; }
+.fold-confirm {
+  display: flex; align-items: center; gap: 0.5em;
+  font-size: clamp(11px, 2.6cqmin, 15px);
+  background: rgba(6, 12, 9, 0.95); border: 1px solid rgba(224, 86, 79, 0.6);
+  padding: 0.5em 0.7em; border-radius: 999px; box-shadow: var(--shadow-2);
+  animation: popIn2 0.2s var(--ease-spring);
+}
+.fold-confirm > span { font-weight: 700; color: var(--text-1); white-space: nowrap; }
+.hand.mine.awaiting-fold { z-index: 8; filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.6)); }
 .fold-zone.is-hot span { color: #ffb3ae; }
 .hand.mine .card { --cw: var(--card-me); transition: transform 0.28s var(--ease-out); }
 .hand.mine .card + .card { margin-left: calc(var(--cw) * -0.22); }
@@ -379,7 +613,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .hand.mine:hover .card:first-child { transform: rotate(-7deg); }
 .hand.mine:hover .card:last-child { transform: rotate(7deg); }
 .hand.mine.shown { cursor: default; }
+/* `is-open` is the “turn my cards up as they're dealt” setting: faces showing
+   like `shown`, but the hand is still live, so it keeps the grab cursor and
+   the throw-to-fold gesture. */
 .hand.mine.shown > .card > .back,
+.hand.mine.is-open > .card > .back,
 .hand.revealed .card:not(.flip-in) > .back,
 .board .card:not(.flip-in) > .back { display: none; }
 
@@ -424,6 +662,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .hand.mine:hover .peek-hint { opacity: 1; }
 .hand.mine.lifted .peek-hint { opacity: 0; }
+
+/* A hand that's been turned over is there to be read: the cards come up
+   larger, fan apart instead of overlapping, and sit above the nameplate
+   rather than under it. */
+.hand.revealed { z-index: 6; }
+.hand.revealed .card { --cw: var(--card-show); }
+.hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.08); }
+.hand.revealed .card:first-child { transform: rotate(-3deg); }
+.hand.revealed .card:last-child { transform: rotate(3deg); }
+.camera.is-portrait .hand.revealed .card { --cw: clamp(44px, 13cqmin, 64px); }
+.camera.is-portrait .hand.revealed .card + .card { margin-left: 2px; }
 
 .card.is-win { filter: drop-shadow(0 0 6px rgba(247, 213, 138, 0.9)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); transform: translateY(-4px); }
 .card.is-dim { opacity: 0.45; }
@@ -474,6 +723,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   opacity: 1; transition: opacity 0.18s;
 }
 .pending.is-empty { opacity: 0; pointer-events: none; }
+/* Phone layout: anchored by its left edge beside the cards rather than
+   centred on a point, so it can't drift back over them or the nameplate. */
+.pending.is-side { transform: translate(0, -50%); align-items: flex-start; }
 .pending-chips { display: flex; align-items: center; gap: 4px; pointer-events: none; }
 .pending svg { height: clamp(14px, 4.2cqmin, 28px); width: auto; display: block; }
 .pending .pending-amt { background: rgba(230, 180, 80, 0.2); border-style: dashed; }
@@ -534,6 +786,19 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pod .stack { pointer-events: none; align-self: flex-end; margin-left: 0.1em; }
 .pod .stack svg { height: 2.6em; width: auto; display: block; }
 
+/* Portrait: seats hug the rail and shed anything that makes them wide, so
+   the middle of the table stays clear for the community cards. */
+.camera.is-portrait .pod { font-size: clamp(9px, 2.6cqmin, 13px); padding: 0.25em 0.7em 0.25em 0.25em; gap: 0.4em; }
+.camera.is-portrait .pod .avatar { width: 2.4em; height: 2.4em; }
+.camera.is-portrait .pod .name { max-width: 5.5em; }
+.camera.is-portrait.is-crowded .pod .stack,
+.camera.is-portrait.is-crowded .pod .bot-level { display: none; }
+/* Side seats grow inward from the rail instead of straddling their anchor. */
+.camera.is-portrait .pod.side-left { transform: translate(0, -50%); }
+.camera.is-portrait .pod.side-right { transform: translate(-100%, -50%); }
+.camera.is-portrait .pod.side-left .tag,
+.camera.is-portrait .pod.side-right .tag { max-width: 9em; }
+
 .pod .tag {
   position: absolute; left: 50%; bottom: calc(100% + 0.35em); transform: translateX(-50%);
   font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
@@ -546,8 +811,22 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .tag.t-fold, .tag.t-away { color: var(--text-3); }
 .tag.t-raise { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.4); }
 /* The hand someone showed down, e.g. "Kings full of Sevens". */
-.tag.t-hand { background: rgba(8, 16, 13, 0.95); color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); font-size: 0.85em; letter-spacing: 0.04em; }
-.pod.is-winner .tag.t-win { font-size: 0.85em; letter-spacing: 0.04em; }
+/* Hand names can be long ("Full House, Kings full of Sevens"), so these tags
+   stay compact: small text, tight padding, at most a couple of short lines. */
+.tag.t-hand, .tag.t-win {
+  display: inline-flex; align-items: center; gap: 0.3em;
+  font-size: 0.7em; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2;
+  padding: 0.15em 0.6em; text-transform: none;
+  /* Absolutely-positioned boxes otherwise shrink to the space beside their
+     anchor point, which forced these onto three cramped lines. */
+  white-space: normal; width: max-content; max-width: 17em; text-align: center;
+}
+.tag.t-hand .icon, .tag.t-win .icon { width: 0.95em; height: 0.95em; flex: none; }
+.tag.t-hand { background: rgba(8, 16, 13, 0.95); color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); }
+/* When two players show the same hand, the card that settled it goes on its
+   own line under the hand name, quieter than the hand itself. */
+.tag.t-hand, .tag.t-win { flex-wrap: wrap; justify-content: center; }
+.tag-kick { flex: 0 0 100%; font-size: 0.92em; letter-spacing: 0.04em; opacity: 0.8; }
 
 .pod.is-me { background: linear-gradient(180deg, rgba(32, 50, 42, 0.98), rgba(12, 22, 18, 0.98)); border-color: rgba(74, 168, 232, 0.45); }
 .pod.is-folded, .pod.is-away { opacity: 0.5; filter: grayscale(0.7); }
@@ -636,18 +915,30 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .dock {
   position: relative; z-index: 20;
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr) auto;
+  /* Equal side columns keep the chips on the true centre line, and capping
+     them stops the three groups drifting to the far edges on wide screens. */
+  grid-template-columns: minmax(230px, 1fr) minmax(300px, 680px) minmax(230px, 1fr);
   grid-template-areas: 'status sizing actions';
   align-items: center;
-  gap: 12px 22px;
-  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  align-items: center;
+  gap: 8px 20px;
+  /* Content stops widening past 1640px, so on a big screen the three groups
+     stay together instead of drifting apart. */
+  padding: 10px max(18px, calc((100% - 1640px) / 2)) calc(8px + env(safe-area-inset-bottom));
   background: linear-gradient(180deg, rgba(13, 23, 19, 0.97), #060b09);
   border-top: 1px solid var(--line);
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.4);
 }
 .dock-status { grid-area: status; min-width: 0; }
-.dock-sizing { grid-area: sizing; min-width: 0; display: flex; align-items: center; gap: 14px; transition: opacity 0.2s; }
-.dock-actions { grid-area: actions; display: flex; gap: 8px; }
+/* The betting controls form the middle block: chips on top, presets, slider
+   and amount beneath, fenced off from the status and action groups. */
+.dock-sizing {
+  grid-area: sizing; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 2px 22px; transition: opacity 0.2s;
+  border-inline: 1px solid var(--line);
+}
+.dock-actions { grid-area: actions; display: flex; gap: 8px; justify-self: end; min-width: 0; max-width: 100%; }
 .dock.not-turn .dock-sizing { opacity: 0.4; pointer-events: none; }
 
 .turn-badge {
@@ -655,7 +946,8 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   padding: 7px 8px 7px 14px; border-radius: 999px;
   background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05;
   font-weight: 800; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
-  box-shadow: 0 0 0 4px rgba(230, 180, 80, 0.18), 0 6px 22px rgba(230, 180, 80, 0.4);
+  line-height: 1; vertical-align: middle;
+  box-shadow: 0 0 0 3px rgba(230, 180, 80, 0.18), 0 6px 22px rgba(230, 180, 80, 0.35);
   animation: badgeIn 0.4s var(--ease-spring);
 }
 @keyframes badgeIn { from { transform: scale(0.8); opacity: 0; } }
@@ -668,18 +960,41 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .turn-clock.is-low { background: var(--red-lo); color: #fff; animation: tick 1s steps(2) infinite; }
 @keyframes tick { 50% { filter: brightness(1.35); } }
 /* Fixed-height status slots: the badge and plain text occupy the same box. */
-.status-line { height: 36px; line-height: 36px; font-size: 15px; font-weight: 600; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* overflow stays visible: the turn badge's glow ring sits outside the line
+   box, and clipping it left dark square corners on the pill. */
+.status-line {
+  height: 36px; line-height: 36px; font-size: 15px; font-weight: 600; color: var(--text-1);
+  white-space: nowrap; overflow: visible; text-align: center;
+}
 .status-line b { color: var(--gold-hi); }
-.status-row { height: 34px; margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.peek-btn.is-hidden { visibility: hidden; }
+/* Peek sits right beside the numbers instead of being pushed to the far
+   edge of the status column. */
+/* The figures and Peek share the full width of the status column. */
+.status-row { height: 34px; margin-top: 10px; display: flex; align-items: stretch; gap: 6px; }
+/* Removed rather than hidden, so between hands the message can use the
+   whole row and sit in the middle. */
+.peek-btn.is-hidden { display: none; }
 .status-line .turn-badge { vertical-align: middle; line-height: 1.2; }
-.status-sub { font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.status-sub b { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }
-.status-sub .sep { color: var(--text-3); margin: 0 2px; }
-/* The amount you must put in to stay in the hand — the number you look for. */
-.to-call { color: var(--gold); font-weight: 700; }
-.to-call b { color: var(--gold-hi); font-size: 17px; font-weight: 800; margin-left: 2px; }
-.to-call.is-free { color: var(--green); }
+/* flex 2 covers the two figures inside, so they end up the same width as
+   the Peek button beside them. */
+/* justify-content centres plain messages such as "Next hand shortly"; the
+   figures ignore it because they stretch to fill the row instead. */
+.status-sub { display: flex; align-items: stretch; justify-content: center; gap: 6px; font-size: 13px; min-width: 0; flex: 2; }
+.status-sub .stat { flex: 1; justify-content: center; }
+.peek-btn { flex: 1; min-width: 0; }
+/* The numbers that decide your move each get their own pill, so they read
+   as figures rather than running prose. */
+.stat {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 11px; color: var(--text-3); font-weight: 600;
+}
+.status-row .stat { padding-block: 0; }
+.stat b { color: var(--text-1); font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.stat-call { border-color: rgba(230, 180, 80, 0.45); background: rgba(230, 180, 80, 0.1); color: var(--gold); }
+.stat-call b { color: var(--gold-hi); font-size: 17px; }
+.stat-free { border-color: rgba(60, 194, 127, 0.4); background: rgba(60, 194, 127, 0.1); color: var(--green); font-weight: 700; }
+.stat-clock .icon { width: 13px; height: 13px; }
 .status-sub b { color: var(--text-1); font-variant-numeric: tabular-nums; font-weight: 700; }
 .status-sub .clock-inline { display: inline-flex; align-items: center; gap: 4px; }
 
@@ -699,10 +1014,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chip-ghost.over-table { transform: translate(-50%, -50%) scale(1.25) rotate(12deg); }
 .chip-ghost svg { width: 100%; height: 100%; }
 
-.sizer { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px; }
+/* Presets, slider and amount share one line, which keeps the dock short. */
+.sizer { width: 100%; max-width: 620px; min-width: 160px; display: flex; align-items: center; gap: 10px; }
+.sizer .quick { flex: 0 0 auto; }
+.sizer .amount-row { flex: 1 1 auto; min-width: 140px; gap: 10px; }
+.sizer .range { flex: 1 1 auto; max-width: 240px; }
 .quick { display: flex; gap: 6px; }
 .quick-btn {
-  flex: 1; height: 28px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg-2);
+  flex: 0 0 auto; min-width: 52px; height: 30px; padding: 0 10px; white-space: nowrap;
+  border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg-2);
   color: var(--text-2); font: 700 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
@@ -710,7 +1030,34 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .quick-btn.is-selected { border-color: var(--gold); color: var(--gold-hi); background: rgba(230, 180, 80, 0.1); }
 .quick-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .amount-row { display: flex; align-items: center; gap: 10px; }
-.amount-row input[type='number'] { width: 92px; height: 34px; text-align: right; font-weight: 700; }
+
+/* Bet amount with its own − / + buttons, in place of the browser's tiny
+   native spinners (hidden below). Steps by one big blind. */
+.stepper { display: flex; align-items: stretch; flex: none; }
+.stepper .input { width: 84px; height: 34px; text-align: center; font-weight: 800; font-size: 16px; border-radius: 0; border-inline: 0; }
+/* Full-width variant used by the lobby and waiting-room fields. */
+.stepper.is-wide { width: 100%; min-width: 0; }
+/* min-width 0 lets the field shrink inside narrow columns; without it the
+   input keeps its default size and pushes the whole panel wider. */
+/* width 0 (not just min-width) because a number input's intrinsic size
+   otherwise forces the whole panel wider than its column. */
+.stepper.is-wide .input { flex: 1 1 auto; width: 0; min-width: 0; height: 44px; font-size: 15px; }
+.stepper.is-wide .step-btn { width: 42px; height: 44px; flex: none; }
+.buyin .stepper .input { width: 76px; }
+.step-btn {
+  width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer;
+  background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.step-btn:first-child { border-radius: var(--r-s) 0 0 var(--r-s); }
+.step-btn:last-child { border-radius: 0 var(--r-s) var(--r-s) 0; }
+.step-btn:hover:not(:disabled) { background: var(--bg-3); color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); }
+.step-btn:active:not(:disabled) { background: rgba(230, 180, 80, 0.18); }
+.step-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.step-btn .icon { width: 15px; height: 15px; }
+input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .range { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline-offset: 6px;
   background: linear-gradient(90deg, var(--gold) var(--pct, 0%), rgba(255, 255, 255, 0.12) var(--pct, 0%)); }
 .range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--gold-hi); border: 3px solid #2a1c05; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); cursor: grab; }
@@ -719,24 +1066,45 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .act .ic { display: inline-flex; }
 .act .act-amt:empty::before { content: '\00a0'; } /* keep the second line so height never changes */
 .act {
-  width: 120px; height: 54px; padding: 0 16px; border-radius: 14px; border: 1px solid transparent;
+  /* Flexible, so the buttons shrink to fit their column instead of spilling
+     over the betting controls. */
+  flex: 1 1 0; min-width: 84px; max-width: 124px; height: 54px; padding: 0 16px; border-radius: 14px; border: 1px solid transparent;
   display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   cursor: pointer; color: var(--text-1); background: var(--bg-3);
   transition: transform 0.12s var(--ease-out), filter 0.15s, box-shadow 0.15s, opacity 0.15s, background 0.15s;
 }
-.act .act-label { display: inline-flex; align-items: center; gap: 6px; font: 800 13px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; }
+.act .act-label { display: inline-flex; align-items: center; gap: 6px; font: 800 13px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
 .act .act-amt { font: 800 15px var(--font-ui); font-variant-numeric: tabular-nums; opacity: 0.95; }
 .act:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.12); }
 .act:active:not(:disabled) { transform: scale(0.96); filter: brightness(0.95); }
 .act:disabled { opacity: 0.32; cursor: not-allowed; filter: grayscale(0.6); }
 .act-fold { background: transparent; border-color: rgba(224, 86, 79, 0.55); color: #ff9b94; }
 .act-fold:hover:not(:disabled) { background: rgba(224, 86, 79, 0.12); }
+/* Armed: one more click and the hand is gone. */
+.act-fold.is-armed {
+  background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; border-color: #ff9b94;
+  box-shadow: 0 0 0 3px rgba(224, 86, 79, 0.25);
+  animation: armedPulse 1s ease-in-out infinite alternate;
+}
+@keyframes armedPulse { to { box-shadow: 0 0 0 6px rgba(224, 86, 79, 0.08); } }
+
+/* Difficulty picker beside Add bot. */
+.add-bot { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.input-sm { height: 34px; padding: 0 8px; font-size: 13px; width: auto; }
+.meta-row .add-bot .btn { margin-left: 0; }
+.pod .bot-level {
+  position: absolute; left: 50%; top: calc(100% + 0.3em); transform: translateX(-50%);
+  font-size: 0.72em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--lvl, var(--green)); background: rgba(8, 16, 13, 0.9);
+  border: 1px solid color-mix(in srgb, var(--lvl, var(--green)) 45%, transparent);
+  padding: 0.1em 0.5em; border-radius: 999px; white-space: nowrap;
+}
+.pod .bot-mark { color: var(--lvl, var(--green)); border-color: color-mix(in srgb, var(--lvl, var(--green)) 50%, transparent); }
 .act-call { background: linear-gradient(180deg, #2a3f36, #1a2b24); border-color: var(--line-2); }
 .act-raise { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28); }
 .act-allin { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; }
 .kbd { font-size: 9.5px; opacity: 0.55; font-weight: 700; margin-left: 2px; }
 
-.dock-help { grid-column: 1 / -1; font-size: var(--fs-micro); color: var(--text-3); letter-spacing: 0.04em; text-align: center; margin-top: -4px; }
 
 /* Toast for rejected actions */
 .toast-host { position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
@@ -747,22 +1115,41 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 
 /* ---------- Responsive dock ---------- */
 @media (max-width: 1080px) {
-  .dock { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'status actions' 'sizing sizing'; }
+  .dock { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'status actions' 'sizing sizing'; padding-inline: 16px; }
+  .dock-sizing { width: 100%; }
 }
 @media (max-width: 720px) {
   .dock { grid-template-columns: 1fr; grid-template-areas: 'status' 'sizing' 'actions'; gap: 10px; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); }
-  .dock-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .status-line { min-width: 0; flex: none; }
-  .status-row { margin-top: 0; min-width: 0; }
+  /* Too narrow for one row: the heading sits above the figures. Stretch,
+     not flex-start, so the centred heading has the full width to centre in. */
+  .dock-status { display: flex; flex-direction: column; align-items: stretch; gap: 9px; }
+  /* The turn badge is a pill and taller than a line of plain text, so with an
+     auto height here the dock - and the whole table above it - jumped every
+     time the turn changed. Both states now fill the same box. */
+  .status-line { height: 34px; line-height: 34px; font-size: 14px; max-width: 100%; overflow: visible; }
+  /* Long names can be clipped, but not while the badge is in the line: its
+     glow ring sits outside the box and overflow:hidden squares it off. */
+  .status-line:not(:has(.turn-badge)) { overflow: hidden; text-overflow: ellipsis; }
+  .status-row { height: auto; margin-top: 0; width: 100%; min-width: 0; }
+  .status-sub { flex-wrap: wrap; gap: 5px; }
   .dock-sizing { flex-wrap: wrap; gap: 10px; }
   .tray { width: 100%; justify-content: space-between; }
   .chip-btn { width: 38px; height: 38px; }
-  .sizer { min-width: 0; width: 100%; }
-  .dock-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  /* Too narrow for presets + slider + stepper on one line: the presets take
+     their own row, spread across the full width, and the amount row follows.
+     min-width 0 everywhere so the stepper can't push the + past the dock. */
+  .sizer { min-width: 0; width: 100%; flex-wrap: wrap; }
+  .sizer .quick { width: 100%; }
+  .sizer .quick-btn { flex: 1 1 0; min-width: 0; padding: 0 4px; }
+  .sizer .amount-row { flex: 1 1 100%; min-width: 0; }
+  .sizer .range { max-width: none; min-width: 0; }
+  .stepper .input { width: 72px; }
+  /* Buttons span the full width of the dock rather than bunching right. */
+  .dock-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-self: stretch; width: 100%; }
   .act { width: auto; min-width: 0; height: 52px; padding: 0 6px; }
   .act .act-label { font-size: 11.5px; letter-spacing: 0.06em; }
   .act .icon { display: none; }
-  .kbd, .dock-help { display: none; }
+  .kbd { display: none; }
   .toast-host { bottom: 200px; }
 }
 
