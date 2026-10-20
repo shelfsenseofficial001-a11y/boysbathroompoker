@@ -779,7 +779,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .pod .bot-mark .icon { width: 0.95em; height: 0.95em; }
 .pod .who { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.pod .name { font-weight: 600; color: var(--text-1); max-width: 8.5em; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.01em; }
+/* Only the name itself is allowed to be clipped: the marks beside it sit
+   outside that box, or a long username would swallow them. */
+.pod .name-row { display: flex; align-items: center; min-width: 0; }
+.pod .name { font-weight: 600; color: var(--text-1); max-width: 8.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: 0.01em; }
+.pod .mark { flex: none; }
 .pod .amt { font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; font-size: 1.08em; }
 /* The chip stack lives inside the nameplate so it can never overlap cards,
    bets or neighbouring seats. */
@@ -1162,6 +1166,17 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .kbd { display: none; }
   .toast-host { bottom: 200px; }
 }
+
+/* Icon-only status marks beside a player's name: room owner, biggest stack.
+   No labels - at pod size there's no room for words, and the colour plus
+   the tooltip carry the meaning. */
+.mark { display: inline-grid; place-items: center; vertical-align: middle; margin-left: 0.35em; }
+.mark .icon { width: 1em; height: 1em; display: block; }
+.mark.is-owner { color: var(--gold-hi); }
+.mark.is-leader { color: var(--green); }
+/* In the lobby list the names are set at a comfortable size, so the marks
+   can be a touch bigger than they are on the felt. */
+.player-row .mark .icon { width: 1.15em; height: 1.15em; }
 
 /* The host's stake for players who turn up mid-game. */
 .late-join {

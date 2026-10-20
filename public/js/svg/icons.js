@@ -9,6 +9,11 @@ export const icons = {
   raise: svg('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>'),
   allin: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor"/></svg>',
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  // Room owner. A key rather than a crown, because the crown already means
+  // "won this hand" on the seat tags and the two would read as one thing.
+  key: svg('<circle cx="8" cy="9" r="4.2"/><path d="M11.2 11.8 20 20.5"/><path d="m17 17.5 2-2"/>'),
+  // Biggest stack at the table right now.
+  trophy: svg('<path d="M8 4h8v5.5a4 4 0 0 1-8 0z"/><path d="M8 5.5H5.2a3 3 0 0 0 2.9 3"/><path d="M16 5.5h2.8a3 3 0 0 1-2.9 3"/><path d="M12 13.5V17"/><path d="M9 20h6"/>'),
   history: svg('<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
   leave: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>'),

@@ -77,6 +77,25 @@ function describeAction(a) {
   return { text: a, cls: '' };
 }
 
+// Who's sitting on the biggest stack. Only when one player is clearly ahead:
+// at the start of a game everybody is level, and badging the whole table
+// would say nothing.
+function chipLeaderId(t) {
+  const live = t.seats.filter((p) => p && !p.left);
+  if (live.length < 2) return null;
+  let best = null;
+  let tied = false;
+  for (const p of live) {
+    if (!best || p.chips > best.chips) {
+      best = p;
+      tied = false;
+    } else if (p.chips === best.chips) {
+      tied = true;
+    }
+  }
+  return tied || !best || best.chips <= 0 ? null : best.userId;
+}
+
 function winningCards(summary) {
   const set = new Set();
   if (!summary || summary.uncontested) return set;
@@ -562,7 +581,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             ${state.lobby.map((p) => `
               <li class="player-row${p.isBot ? ' is-bot' : ''}">
                 <span class="avatar-sm">${p.isBot ? icons.robot : avatarSVG(p.username)}</span>
-                <span class="pname">${esc(p.username)}${p.isBot ? `<span class="badge bot ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}${p.userId === state.hostUserId ? '<span class="badge">Host</span>' : ''}${p.userId === user.id ? '<span class="badge you">You</span>' : ''}</span>
+                <span class="pname">${esc(p.username)}${p.isBot ? `<span class="badge bot ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}${p.userId === state.hostUserId ? `<span class="mark is-owner" title="Room owner" aria-label="Room owner" role="img">${icons.key}</span>` : ''}${p.userId === user.id ? '<span class="badge you">You</span>' : ''}</span>
                 <span class="buyin">
                   ${isHost
                     ? numberFieldHTML({ value: p.buyIn, min: 1, step: 100, label: `starting chips for ${esc(p.username)}`, attrs: `data-buyin="${p.userId}"`, wide: false })
@@ -883,6 +902,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       summary,
       winners: new Set((summary?.winners || []).map((w) => w.userId)),
       winCards: winningCards(summary),
+      hostUserId: cur.hostUserId,
+      chipLeader: chipLeaderId(t),
       // Keyed off what's already drawn, not off `pt`: a plain redraw (taking
       // back a fold, ending a peek) passes no previous state, and must not
       // flip everyone's cards over a second time.
@@ -1056,6 +1077,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return describeAction(p.lastAction);
   }
 
+  // Icons only, no labels: who owns the room, and who's in front.
+  function marksHTML(p, ctx) {
+    let out = '';
+    if (p.userId === ctx.hostUserId) {
+      out += `<span class="mark is-owner" title="Room owner" aria-label="Room owner" role="img">${icons.key}</span>`;
+    }
+    if (p.userId === ctx.chipLeader) {
+      out += `<span class="mark is-leader" title="Biggest stack" aria-label="Biggest stack" role="img">${icons.trophy}</span>`;
+    }
+    return out;
+  }
+
   function seatHTML(p, L, ctx) {
     const { t } = ctx;
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
@@ -1078,7 +1111,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     let html = `<div class="${cls}" style="left:${L.pod.x}%;top:${L.pod.y}%" data-seat="${p.seat}">
       <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
-      <div class="who"><span class="name">${esc(p.username)}</span><span class="amt">${fmt(p.chips)}</span></div>
+      <div class="who"><span class="name-row"><span class="name">${esc(p.username)}</span>${marksHTML(p, ctx)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}
       ${p.isBot ? `<span class="bot-level ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}
       ${tag ? `<span class="tag ${tag.cls}">${tag.icon || ''}${esc(tag.text)}${tag.kicker ? `<span class="tag-kick">${esc(tag.kicker)}</span>` : ''}</span>` : ''}
