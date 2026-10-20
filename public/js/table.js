@@ -145,6 +145,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   const chatLog = []; // table talk, oldest first
   let chatOpen = getSettings().showChat;
   let chatUnread = 0; // messages that arrived while the panel was shut
+  let chatReplyTo = null; // id of the message being replied to
+  let chatEditing = null; // id of my message being edited
+  let chatMenuFor = null; // id whose actions menu is open
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
   let askingSettings = false; // the settings panel is up
@@ -179,6 +182,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('kicked', onRoomClosed); // same outcome: out of the room, with a reason
   socket.on('notice', onNotice);
   socket.on('chat', onChat);
+  socket.on('chatUpdate', onChatUpdate);
   socket.on('chatHistory', onChatHistory);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
@@ -202,6 +206,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('kicked', onRoomClosed);
     socket.off('notice', onNotice);
     socket.off('chat', onChat);
+    socket.off('chatUpdate', onChatUpdate);
     socket.off('chatHistory', onChatHistory);
     socket.off('connect', resync);
     clearInterval(clock);
@@ -239,11 +244,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawChat({ keepUnread: true });
   }
 
+  // An edit or a delete: swap the stored copy, keep its place in the log.
+  function onChatUpdate(entry) {
+    const i = chatLog.findIndex((m) => m.id === entry.id);
+    if (i < 0) return;
+    chatLog[i] = entry;
+    if (chatEditing === entry.id && entry.deleted) chatEditing = null;
+    drawChat({ keepUnread: true });
+  }
+
   function drawChat({ keepUnread = false } = {}) {
     if (!els?.chatLog) return;
     if (!keepUnread) chatUnread = 0;
     const dot = root.querySelector('.chat-dot');
     if (dot) dot.hidden = chatUnread === 0;
+    drawComposer();
     if (!chatLog.length) {
       setHTML(els.chatLog, '<li class="chat-empty">Nobody has said anything yet.</li>');
       return;
@@ -252,19 +267,70 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // back, in which case leave their place alone.
     const log = els.chatLog;
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-    setHTML(
-      log,
-      chatLog
-        .map((m) => {
-          const mine = m.userId === user.id;
-          return `<li class="chat-msg${mine ? ' is-mine' : ''}">
-            <span class="chat-who">${esc(m.name)}</span>
-            <span class="chat-text">${esc(m.text)}</span>
-          </li>`;
-        })
-        .join('')
-    );
+    setHTML(log, chatLog.map(bubbleHTML).join(''));
     if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  function bubbleHTML(m, i) {
+    const mine = m.userId === user.id;
+    // A run of messages from the same person only needs one name on top.
+    const prev = chatLog[i - 1];
+    const showName = !mine && (!prev || prev.userId !== m.userId);
+    if (m.deleted) {
+      return `<li class="chat-row${mine ? ' is-mine' : ''}">
+        ${showName ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
+        <div class="bubble is-gone">${mine ? 'You deleted this' : 'Message deleted'}</div>
+      </li>`;
+    }
+    const quoted = m.replyTo ? chatLog.find((x) => x.id === m.replyTo) : null;
+    const quoteHTML = m.replyTo
+      ? `<div class="bubble-quote">
+          <span class="q-who">${quoted ? esc(quoted.name) : 'Earlier message'}</span>
+          <span class="q-text">${quoted ? (quoted.deleted ? 'Message deleted' : esc(quoted.text)) : 'No longer shown'}</span>
+        </div>`
+      : '';
+    const open = chatMenuFor === m.id;
+    return `<li class="chat-row${mine ? ' is-mine' : ''}">
+      ${showName ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
+      <div class="bubble-wrap">
+        <div class="bubble">${quoteHTML}<span class="bubble-text">${esc(m.text)}</span>${
+          m.editedAt ? '<span class="bubble-edited">edited</span>' : ''
+        }</div>
+        <button class="bubble-more" data-msg-menu="${m.id}" aria-label="Message actions" aria-expanded="${open}">⋯</button>
+        ${
+          open
+            ? `<div class="msg-menu">
+                <button data-msg-reply="${m.id}">Reply</button>
+                ${mine ? `<button data-msg-edit="${m.id}">Edit</button>` : ''}
+                ${mine ? `<button class="is-danger" data-msg-delete="${m.id}">Delete</button>` : ''}
+              </div>`
+            : ''
+        }
+      </div>
+    </li>`;
+  }
+
+  // The strip above the input: what you're replying to, or that you're
+  // editing rather than writing something new.
+  function drawComposer() {
+    const bar = root.querySelector('#chat-context');
+    if (!bar) return;
+    const target = chatEditing ?? chatReplyTo;
+    if (!target) {
+      bar.hidden = true;
+      setHTML(bar, '');
+      els.chatForm?.classList.remove('is-editing');
+      return;
+    }
+    const m = chatLog.find((x) => x.id === target);
+    bar.hidden = false;
+    els.chatForm?.classList.toggle('is-editing', chatEditing != null);
+    setHTML(
+      bar,
+      `<span class="ctx-kind">${chatEditing ? 'Editing' : `Replying to ${esc(m?.name || '')}`}</span>
+       <span class="ctx-text">${esc(m?.text || '')}</span>
+       <button class="ctx-x" data-msg-cancel aria-label="Cancel">${icons.fold}</button>`
+    );
   }
 
   function applyChatOpen() {
@@ -306,18 +372,95 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       setChatOpen(!chatOpen);
       if (chatOpen) els.chatInput?.focus();
     });
+
     els.chatForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = els.chatInput.value.trim();
       if (!text) return;
+      const editing = chatEditing;
+      const replyTo = chatReplyTo;
       els.chatInput.value = '';
+      chatEditing = null;
+      chatReplyTo = null;
+      drawComposer();
       try {
-        await emitAck('chat', { text });
+        if (editing != null) await emitAck('chatEdit', { id: editing, text });
+        else await emitAck('chat', { text, replyTo });
       } catch (err) {
-        els.chatInput.value = text; // hand it back so nothing is lost
+        // Put it back exactly as it was, so nothing is lost to an error.
+        els.chatInput.value = text;
+        chatEditing = editing;
+        chatReplyTo = replyTo;
+        drawComposer();
         showError(err.message);
       }
     });
+
+    // Escape backs out of replying or editing.
+    els.chatInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (chatEditing == null && chatReplyTo == null) return;
+      e.stopPropagation();
+      cancelComposer();
+    });
+
+    els.chat?.addEventListener('click', onChatClick);
+  }
+
+  function cancelComposer() {
+    chatEditing = null;
+    chatReplyTo = null;
+    els.chatInput.value = '';
+    drawComposer();
+  }
+
+  async function onChatClick(e) {
+    const menu = e.target.closest('[data-msg-menu]');
+    const reply = e.target.closest('[data-msg-reply]');
+    const edit = e.target.closest('[data-msg-edit]');
+    const del = e.target.closest('[data-msg-delete]');
+    const cancel = e.target.closest('[data-msg-cancel]');
+
+    if (cancel) return cancelComposer();
+    if (menu) {
+      const id = Number(menu.dataset.msgMenu);
+      chatMenuFor = chatMenuFor === id ? null : id;
+      return drawChat({ keepUnread: true });
+    }
+    if (reply) {
+      chatReplyTo = Number(reply.dataset.msgReply);
+      chatEditing = null;
+      chatMenuFor = null;
+      drawChat({ keepUnread: true });
+      return els.chatInput.focus();
+    }
+    if (edit) {
+      const id = Number(edit.dataset.msgEdit);
+      chatEditing = id;
+      chatReplyTo = null;
+      chatMenuFor = null;
+      els.chatInput.value = chatLog.find((m) => m.id === id)?.text || '';
+      drawChat({ keepUnread: true });
+      els.chatInput.focus();
+      return els.chatInput.select();
+    }
+    if (del) {
+      const id = Number(del.dataset.msgDelete);
+      chatMenuFor = null;
+      if (chatEditing === id) cancelComposer();
+      drawChat({ keepUnread: true });
+      try {
+        await emitAck('chatDelete', { id });
+      } catch (err) {
+        showError(err.message);
+      }
+      return;
+    }
+    // A click anywhere else in the panel shuts an open menu.
+    if (chatMenuFor != null) {
+      chatMenuFor = null;
+      drawChat({ keepUnread: true });
+    }
   }
 
   // Table news from the server: someone joined, left or was removed.
@@ -881,6 +1024,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <aside class="chat" id="chat" aria-label="Table chat">
         <div class="chat-head">Table chat</div>
         <ol class="chat-log" id="chat-log"></ol>
+        <div class="chat-context" id="chat-context" hidden></div>
         <form class="chat-form" id="chat-form">
           <input class="input" id="chat-input" type="text" maxlength="240" autocomplete="off" placeholder="Say something…" aria-label="Message">
           <button class="btn btn-primary btn-icon" type="submit" aria-label="Send">${icons.send}</button>

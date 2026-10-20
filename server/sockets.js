@@ -173,6 +173,20 @@ function attachSockets(io, sessionMiddleware) {
     }, NEXT_HAND_DELAY_MS);
   }
 
+  // Pushes the whole backlog to everyone in the room. Used when the stored
+  // messages themselves change, which only renaming does.
+  function broadcastChatHistory(room) {
+    const members = new Set([
+      ...room.lobby.keys(),
+      ...room.table.seats.filter(Boolean).map((p) => p.userId),
+    ]);
+    for (const id of members) {
+      for (const s of socketsByUser.get(id) || []) {
+        s.emit('chatHistory', { code: room.code, messages: room.chat });
+      }
+    }
+  }
+
   // A line of table news for everyone still in the room: who joined, who
   // left. `except` skips the player it's about, who already knows.
   function announce(room, text, except = null) {
@@ -261,6 +275,16 @@ function attachSockets(io, sessionMiddleware) {
         const seat = room.table.seats.find((s) => s && s.userId === userId);
         if (seat) seat.username = clean;
         if (room.hostUserId === userId) room.hostUsername = clean;
+        // Past messages are shown under whatever the player is called now,
+        // so the chat doesn't keep addressing them by a name they've dropped.
+        let renamed = false;
+        for (const m of room.chat) {
+          if (m.userId === userId && m.name !== clean) {
+            m.name = clean;
+            renamed = true;
+          }
+        }
+        if (renamed) broadcastChatHistory(room);
         broadcastRoom(room);
       }
       ack?.({ ok: true, name: clean });
@@ -327,7 +351,7 @@ function attachSockets(io, sessionMiddleware) {
       }
     });
 
-    socket.on('chat', ({ text } = {}, ack) => {
+    socket.on('chat', ({ text, replyTo } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       // Bots hold negative ids and have no socket to speak through, so this
@@ -343,7 +367,19 @@ function attachSockets(io, sessionMiddleware) {
       }
       lastChatAt.set(userId, now);
       // The name comes from the database, never from the client payload.
-      const entry = { id: ++chatSeq, userId, name: nameOf(), text: clean, at: now };
+      // replyTo is stored as an id, not a copy of the quoted text: that way an
+      // edited or deleted original updates everywhere it's quoted.
+      const replyId = Number(replyTo);
+      const entry = {
+        id: ++chatSeq,
+        userId,
+        name: nameOf(),
+        text: clean,
+        at: now,
+        replyTo: room.chat.some((m) => m.id === replyId) ? replyId : null,
+        editedAt: null,
+        deleted: false,
+      };
       room.addChat(entry);
       const members = new Set([
         ...room.lobby.keys(),
@@ -376,6 +412,52 @@ function attachSockets(io, sessionMiddleware) {
       room.joinChips = n;
       ack?.({ ok: true, chips: n });
       broadcastRoom(room);
+    });
+
+    // Only the author may change their own message, and only the text: the
+    // author, the time and the thread it sits in are not theirs to rewrite.
+    const ownMessage = (room, id) => {
+      const m = room.chat.find((x) => x.id === Number(id));
+      if (!m) return { error: 'That message is no longer here.' };
+      if (m.userId !== userId) return { error: 'You can only change your own messages.' };
+      if (m.deleted) return { error: 'That message was already deleted.' };
+      return { m };
+    };
+
+    const sendChatUpdate = (room, entry) => {
+      const members = new Set([
+        ...room.lobby.keys(),
+        ...room.table.seats.filter(Boolean).map((p) => p.userId),
+      ]);
+      for (const id of members) {
+        for (const sock of socketsByUser.get(id) || []) sock.emit('chatUpdate', entry);
+      }
+    };
+
+    socket.on('chatEdit', ({ id, text } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const { m, error } = ownMessage(room, id);
+      if (error) return ack?.({ ok: false, error });
+      const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+      if (!clean) return ack?.({ ok: false, error: 'Type something, or delete the message instead.' });
+      m.text = clean;
+      m.editedAt = Date.now();
+      sendChatUpdate(room, m);
+      ack?.({ ok: true });
+    });
+
+    socket.on('chatDelete', ({ id } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const { m, error } = ownMessage(room, id);
+      if (error) return ack?.({ ok: false, error });
+      // Kept as a tombstone rather than spliced out, so replies pointing at
+      // it still have something to say.
+      m.deleted = true;
+      m.text = '';
+      sendChatUpdate(room, m);
+      ack?.({ ok: true });
     });
 
     socket.on('addBot', ({ buyIn, level } = {}, ack) => {
