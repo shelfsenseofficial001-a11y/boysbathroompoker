@@ -13,6 +13,8 @@ const DEFAULTS = {
   autoReveal: false,
   // Hand history sidebar, remembered between visits.
   showHistory: false,
+  // Table chat sidebar, also remembered between visits.
+  showChat: false,
   peekZoom: true,
   zoomLevel: ZOOM.level.def,
   zoomSpeed: ZOOM.speed.def,
@@ -33,6 +35,7 @@ export function getSettings() {
   cache = {
     autoReveal: stored.autoReveal === true,
     showHistory: stored.showHistory === true,
+    showChat: stored.showChat === true,
     peekZoom: stored.peekZoom !== false,
     zoomLevel: clamp(Number(stored.zoomLevel) || DEFAULTS.zoomLevel, ZOOM.level.min, ZOOM.level.max),
     zoomSpeed: clamp(Number(stored.zoomSpeed) || DEFAULTS.zoomSpeed, ZOOM.speed.min, ZOOM.speed.max),

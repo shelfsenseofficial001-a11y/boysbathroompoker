@@ -10,7 +10,7 @@ import { icons } from './svg/icons.js';
 import { motionReduced, toggleMotion } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
 import { userPillHTML, wireNameEditor } from './name.js';
-import { getSettings, setSetting } from './settings.js';
+import { getSettings, setSetting, ZOOM } from './settings.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
@@ -142,8 +142,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   const expanded = new Set(); // hands whose cards are showing
   let historyOpen = getSettings().showHistory;
   let spectating = false; // chose to watch on after busting out
+  const chatLog = []; // table talk, oldest first
+  let chatOpen = getSettings().showChat;
+  let chatUnread = 0; // messages that arrived while the panel was shut
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
+  let askingSettings = false; // the settings panel is up
 
   function loadHistory() {
     try {
@@ -174,6 +178,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('roomClosed', onRoomClosed);
   socket.on('kicked', onRoomClosed); // same outcome: out of the room, with a reason
   socket.on('notice', onNotice);
+  socket.on('chat', onChat);
+  socket.on('chatHistory', onChatHistory);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
@@ -195,6 +201,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('roomClosed', onRoomClosed);
     socket.off('kicked', onRoomClosed);
     socket.off('notice', onNotice);
+    socket.off('chat', onChat);
+    socket.off('chatHistory', onChatHistory);
     socket.off('connect', resync);
     clearInterval(clock);
     timers.forEach(clearTimeout);
@@ -205,6 +213,111 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function exit(notice) {
     cleanup();
     onLeave(notice);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Table chat
+  // ---------------------------------------------------------------------------
+  // The backlog, sent to this socket alone when it syncs: it can't ride along
+  // with roomState, which goes out on every single action.
+  function onChatHistory(payload) {
+    if (payload?.code && payload.code !== roomCode) return;
+    chatLog.length = 0;
+    chatLog.push(...(payload.messages || []));
+    drawChat({ keepUnread: true });
+  }
+
+  function onChat(entry) {
+    if (!entry?.text) return;
+    if (chatLog.some((m) => m.id === entry.id)) return; // already have it
+    chatLog.push(entry);
+    if (chatLog.length > 80) chatLog.shift();
+    // Somebody else talking while the panel is shut is worth a nudge; your
+    // own message never is.
+    if (!chatOpen && entry.userId !== user.id) chatUnread += 1;
+    if (entry.userId !== user.id) play('click');
+    drawChat({ keepUnread: true });
+  }
+
+  function drawChat({ keepUnread = false } = {}) {
+    if (!els?.chatLog) return;
+    if (!keepUnread) chatUnread = 0;
+    const dot = root.querySelector('.chat-dot');
+    if (dot) dot.hidden = chatUnread === 0;
+    if (!chatLog.length) {
+      setHTML(els.chatLog, '<li class="chat-empty">Nobody has said anything yet.</li>');
+      return;
+    }
+    // Stick to the newest message unless the reader has scrolled up to read
+    // back, in which case leave their place alone.
+    const log = els.chatLog;
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    setHTML(
+      log,
+      chatLog
+        .map((m) => {
+          const mine = m.userId === user.id;
+          return `<li class="chat-msg${mine ? ' is-mine' : ''}">
+            <span class="chat-who">${esc(m.name)}</span>
+            <span class="chat-text">${esc(m.text)}</span>
+          </li>`;
+        })
+        .join('')
+    );
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  function applyChatOpen() {
+    root.querySelector('.table-screen')?.classList.toggle('show-chat', chatOpen);
+    if (els?.chat) els.chat.setAttribute('aria-hidden', String(!chatOpen));
+    const btn = root.querySelector('[data-chat]');
+    if (btn) {
+      btn.classList.toggle('is-off', !chatOpen);
+      btn.setAttribute('aria-pressed', String(chatOpen));
+    }
+    if (chatOpen) {
+      chatUnread = 0;
+      const dot = root.querySelector('.chat-dot');
+      if (dot) dot.hidden = true;
+      if (els?.chatLog) els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    }
+  }
+
+  // On a phone both side panels float over the felt, so only one may be open
+  // at a time whichever way round they're opened.
+  const narrow = () => window.matchMedia('(max-width: 760px)').matches;
+
+  function setChatOpen(on) {
+    chatOpen = on;
+    setSetting('showChat', on);
+    if (on && historyOpen && narrow()) setHistoryOpen(false);
+    applyChatOpen();
+  }
+
+  function setHistoryOpen(on) {
+    historyOpen = on;
+    setSetting('showHistory', on);
+    if (on && chatOpen && narrow()) setChatOpen(false);
+    applyHistoryOpen();
+  }
+
+  function wireChat() {
+    root.querySelector('[data-chat]')?.addEventListener('click', () => {
+      setChatOpen(!chatOpen);
+      if (chatOpen) els.chatInput?.focus();
+    });
+    els.chatForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = els.chatInput.value.trim();
+      if (!text) return;
+      els.chatInput.value = '';
+      try {
+        await emitAck('chat', { text });
+      } catch (err) {
+        els.chatInput.value = text; // hand it back so nothing is lost
+        showError(err.message);
+      }
+    });
   }
 
   // Table news from the server: someone joined, left or was removed.
@@ -232,6 +345,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       el.id = 'overlay';
       el.className = 'overlay is-empty';
       el.addEventListener('click', onOverlayClick);
+      el.addEventListener('input', onSettingsChange);
+      el.addEventListener('change', onSettingsChange);
       root.appendChild(el);
     } else if (el !== root.lastElementChild) {
       root.appendChild(el); // a screen rebuild put it out of order
@@ -248,6 +363,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function overlayHTML(cur) {
     if (askingLeave) return leaveConfirmHTML(cur);
+    if (askingSettings) return settingsHTML();
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
     const me = cur.table.seats.find((s) => s && s.userId === user.id);
@@ -286,6 +402,47 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <div class="sheet-actions">
         <button class="btn btn-primary btn-lg" data-ov="close">Back to the waiting room</button>
         <button class="btn btn-ghost" data-ov="leave">Leave room</button>
+      </div>
+    </div>`;
+  }
+
+  // The same visual settings the lobby offers, reachable without leaving the
+  // table. Everything here is per-browser and takes effect on the next draw.
+  function settingsHTML() {
+    const s = getSettings();
+    const zoomOff = s.autoReveal || !s.peekZoom;
+    return `<div class="sheet sheet-settings" role="dialog" aria-modal="true" aria-label="Table settings">
+      <h2 class="sheet-title">Table settings</h2>
+      <div class="set-list">
+        <label class="switch-row">
+          <input type="checkbox" data-set="autoReveal" ${s.autoReveal ? 'checked' : ''}>
+          <span>Turn my cards face up as soon as they're dealt</span>
+        </label>
+        <label class="switch-row">
+          <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
+          <span>Zoom in on my cards when peeking</span>
+        </label>
+        <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+          <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
+          <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
+            min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
+        </div>
+        <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+          <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
+          <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
+            min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
+        </div>
+        <label class="switch-row">
+          <input type="checkbox" data-set="motion" ${reduceMotion ? '' : 'checked'}>
+          <span>Table animations</span>
+        </label>
+        <label class="switch-row">
+          <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
+          <span>Table sounds</span>
+        </label>
+      </div>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-lg" data-ov="settings-close">Done</button>
       </div>
     </div>`;
   }
@@ -346,6 +503,30 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return out;
   }
 
+  function onSettingsChange(e) {
+    const el = e.target.closest('[data-set]');
+    if (!el) return;
+    const key = el.dataset.set;
+    if (key === 'motion') {
+      if (el.checked === reduceMotion) toggleMotion();
+      reduceMotion = motionReduced();
+    } else if (key === 'sound') {
+      if (el.checked === soundMuted()) toggleSound();
+    } else if (key === 'zoomLevel' || key === 'zoomSpeed') {
+      const v = Number(el.value);
+      setSetting(key, v);
+      // Only the figure beside the label is touched: redrawing the sheet
+      // mid-drag would tear the slider out from under the finger.
+      const out = el.closest('.set-field')?.querySelector('b');
+      if (out) out.textContent = key === 'zoomLevel' ? `${v.toFixed(2)}×` : `${v} ms`;
+      return;
+    } else {
+      setSetting(key, el.checked);
+    }
+    drawOverlay(shown); // the zoom rows appearing or hiding
+    if (key === 'autoReveal' || key === 'motion') draw(); // the felt changes too
+  }
+
   function onOverlayClick(e) {
     const btn = e.target.closest('[data-ov]');
     if (!btn) return;
@@ -353,6 +534,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (kind === 'leave') { askingLeave = true; return drawOverlay(shown); }
     if (kind === 'leave-yes') return leaveRoom();
     if (kind === 'leave-no') askingLeave = false;
+    if (kind === 'settings-close') askingSettings = false;
     if (kind === 'spectate') {
       spectating = true; // for this game only; a rebuy clears it
       play('click');
@@ -434,6 +616,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         ${userPillHTML(user)}
         <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds">${soundMuted() ? icons.soundOff : icons.soundOn}</button>
         <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span></button>
+        <button class="btn btn-ghost btn-sm btn-icon" data-settings title="Table settings" aria-label="Table settings">${icons.gear}</button>
         <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span></button>
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
@@ -455,10 +638,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
     const hist = root.querySelector('[data-history]');
     hist?.addEventListener('click', () => {
-      historyOpen = !historyOpen;
-      setSetting('showHistory', historyOpen);
-      applyHistoryOpen();
+      setHistoryOpen(!historyOpen);
       play('click');
+    });
+    root.querySelector('[data-settings]')?.addEventListener('click', () => {
+      askingSettings = true;
+      drawOverlay(shown);
     });
     const reveal = root.querySelector('[data-reveal]');
     reveal.addEventListener('click', () => {
@@ -692,6 +877,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <div class="fx" id="fx"></div>
         </div>
       </main>
+      <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" hidden></span></button>
+      <aside class="chat" id="chat" aria-label="Table chat">
+        <div class="chat-head">Table chat</div>
+        <ol class="chat-log" id="chat-log"></ol>
+        <form class="chat-form" id="chat-form">
+          <input class="input" id="chat-input" type="text" maxlength="240" autocomplete="off" placeholder="Say something…" aria-label="Message">
+          <button class="btn btn-primary btn-icon" type="submit" aria-label="Send">${icons.send}</button>
+        </form>
+      </aside>
       </div>
       <footer class="dock" id="dock"></footer>
       <div class="toast-host" id="toast-host"></div>
@@ -702,20 +896,33 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
       handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
       history: $('history'), historyList: $('history-list'),
+      chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
     };
     buildDock();
     wireTopbar();
     applyHistoryOpen();
     drawHistory();
+    applyChatOpen();
+    drawChat();
+    wireChat();
     // Tapping anywhere off the panel closes it. On a phone it covers the
     // felt, so dismissing it has to be as easy as opening it; pointerdown
     // rather than click so it goes before whatever was tapped underneath.
     root.addEventListener('pointerdown', (e) => {
-      if (!historyOpen) return;
-      if (e.target.closest('#history') || e.target.closest('[data-history]')) return;
-      historyOpen = false;
-      setSetting('showHistory', false);
-      applyHistoryOpen();
+      if (historyOpen && !e.target.closest('#history') && !e.target.closest('[data-history]')) {
+        setHistoryOpen(false);
+      }
+      // Same for chat, but only where it floats over the felt: as a column on
+      // a wide screen it's out of the way, and closing it every time someone
+      // clicks the table would make it useless to watch while playing.
+      if (
+        chatOpen &&
+        narrow() &&
+        !e.target.closest('#chat') &&
+        !e.target.closest('[data-chat]')
+      ) {
+        setChatOpen(false);
+      }
     });
     els.historyList.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-cards]');

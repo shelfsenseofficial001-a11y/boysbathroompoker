@@ -30,6 +30,9 @@ class Room {
     // The host owns this number, not the joiner, so nobody can walk into a
     // running game and award themselves a stack. null = match the host's own.
     this.joinChips = null;
+    // Recent table talk, kept so somebody refreshing or arriving part-way
+    // through doesn't land in a silent room. Oldest first.
+    this.chat = [];
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
@@ -47,6 +50,12 @@ class Room {
     return this.table.seats.some(
       (p) => p && !p.left && p.userId !== exceptUserId && String(p.username).toLowerCase() === wanted
     );
+  }
+
+  addChat(entry) {
+    this.chat.push(entry);
+    if (this.chat.length > Room.CHAT_MAX) this.chat.splice(0, this.chat.length - Room.CHAT_MAX);
+    return entry;
   }
 
   // What a late joiner is actually given, falling back to the host's own
@@ -140,5 +149,7 @@ class GameManager {
     this.rooms.delete(code);
   }
 }
+
+Room.CHAT_MAX = 80;
 
 module.exports = { GameManager, Room };

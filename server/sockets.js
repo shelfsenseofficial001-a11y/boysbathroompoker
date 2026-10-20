@@ -26,8 +26,13 @@ function wrapSessionMiddleware(sessionMiddleware) {
   return (socket, next) => sessionMiddleware(socket.request, {}, next);
 }
 
+const CHAT_MAX_LEN = 240;
+const CHAT_MIN_GAP_MS = 600; // one message per user per this long
+
 function attachSockets(io, sessionMiddleware) {
   const manager = new GameManager();
+  const lastChatAt = new Map(); // userId -> when they last spoke
+  let chatSeq = 0;
   const socketsByUser = new Map(); // userId -> Set<socket>
 
   io.use(wrapSessionMiddleware(sessionMiddleware));
@@ -311,10 +316,43 @@ function attachSockets(io, sessionMiddleware) {
       broadcastRoom(room);
     });
 
+    const sendChatHistory = (room) => socket.emit('chatHistory', { code: room.code, messages: room.chat });
+
     socket.on('resync', (_payload, ack) => {
       const room = roomFor(userId);
       ack?.({ ok: true, code: room ? room.code : null });
-      if (room) broadcastRoom(room);
+      if (room) {
+        sendChatHistory(room);
+        broadcastRoom(room);
+      }
+    });
+
+    socket.on('chat', ({ text } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      // Bots hold negative ids and have no socket to speak through, so this
+      // can't fire for one. Stated outright so it stays that way: the table
+      // talk is between the people at it.
+      if (userId < 0) return ack?.({ ok: false, error: 'Bots don’t chat.' });
+      // Collapse whitespace so nobody can paste a wall of blank lines.
+      const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_LEN);
+      if (!clean) return ack?.({ ok: false, error: 'Type something first.' });
+      const now = Date.now();
+      if (now - (lastChatAt.get(userId) || 0) < CHAT_MIN_GAP_MS) {
+        return ack?.({ ok: false, error: 'One message at a time — give it a second.' });
+      }
+      lastChatAt.set(userId, now);
+      // The name comes from the database, never from the client payload.
+      const entry = { id: ++chatSeq, userId, name: nameOf(), text: clean, at: now };
+      room.addChat(entry);
+      const members = new Set([
+        ...room.lobby.keys(),
+        ...room.table.seats.filter(Boolean).map((p) => p.userId),
+      ]);
+      for (const id of members) {
+        for (const sock of socketsByUser.get(id) || []) sock.emit('chat', entry);
+      }
+      ack?.({ ok: true });
     });
 
     socket.on('setBuyIn', ({ userId: targetUserId, buyIn }, ack) => {
