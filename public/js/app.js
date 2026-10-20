@@ -84,17 +84,18 @@ function showLobby(notice) {
       // Reload so the socket reconnects under the new identity.
       location.reload();
     },
-    onEnterRoom: (code) => {
+    onEnterRoom: (code, notice) => {
       state.roomCode = code;
-      showTable();
+      showTable(notice);
     },
   });
 }
 
-function showTable() {
+function showTable(notice) {
   renderTable(root, {
     user: state.user,
     roomCode: state.roomCode,
+    notice,
     onLeave: (notice) => {
       state.roomCode = null;
       showLobby(notice);

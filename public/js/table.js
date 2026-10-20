@@ -84,7 +84,7 @@ function winningCards(summary) {
   return set;
 }
 
-export function renderTable(root, { user, roomCode, onLeave }) {
+export function renderTable(root, { user, roomCode, onLeave, notice }) {
   const socket = getSocket();
   let latest = null; // newest roomState from the server
   let shown = null; // state currently drawn (lags `latest` during a peek)
@@ -152,11 +152,14 @@ export function renderTable(root, { user, roomCode, onLeave }) {
 
   socket.on('roomState', onRoomState);
   socket.on('roomClosed', onRoomClosed);
+  socket.on('kicked', onRoomClosed); // same outcome: out of the room, with a reason
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
   resync();
+  // A note carried in from the lobby, e.g. joining a hand already in play.
+  if (notice) later(() => showError(notice), 400);
 
   function resync() {
     emitAck('resync')
@@ -169,6 +172,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   function cleanup() {
     socket.off('roomState', onRoomState);
     socket.off('roomClosed', onRoomClosed);
+    socket.off('kicked', onRoomClosed);
     socket.off('connect', resync);
     clearInterval(clock);
     timers.forEach(clearTimeout);
@@ -518,6 +522,13 @@ export function renderTable(root, { user, roomCode, onLeave }) {
               </li>`).join('')}
           </ul>
           ${isHost
+            ? `<div class="late-join">
+                <label for="join-chips">Chips for anyone who joins once we've started</label>
+                ${numberFieldHTML({ id: 'join-chips', value: state.joinChips ?? 1000, min: 1, step: 100, label: 'chips for late joiners', attrs: 'data-join-chips', wide: false })}
+                <p class="micro">They'll sit out the hand in play and be dealt in on the next one.</p>
+              </div>`
+            : ''}
+          ${isHost
             ? `<button class="btn btn-primary btn-lg" data-start ${n < 2 ? 'disabled' : ''}>Deal first hand</button>
                <p class="help-text">${n < 2 ? 'Add a bot or wait for a friend — you need at least 2 players.' : 'Play money only — chips have no real value.'}</p>`
             : '<p class="help-text">Waiting for the host to start<span class="dots"></span></p>'}
@@ -554,6 +565,13 @@ export function renderTable(root, { user, roomCode, onLeave }) {
           showError(err.message);
         }
       });
+    });
+    root.querySelector('[data-join-chips]')?.addEventListener('change', async (e) => {
+      try {
+        await emitAck('setJoinChips', { chips: Number(e.target.value) });
+      } catch (err) {
+        showError(err.message);
+      }
     });
     wirePicker((id) => {
       botLevel = id; // remembered for the next bot added

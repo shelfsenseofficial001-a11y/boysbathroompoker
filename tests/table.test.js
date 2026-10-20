@@ -127,3 +127,63 @@ test('a hand nobody else matched shows no kicker', () => {
   t._runShowdown();
   for (const h of t.lastHandSummary.showdownHands) assert.equal(h.kicker, '');
 });
+
+test('a late joiner sits out the hand in play and is dealt in next hand', () => {
+  const t = tableWith([500, 500]);
+  t.startHand();
+  const handInPlay = t.handNumber;
+  const seat = t.addLatePlayer(99, 'Latecomer', 250);
+
+  // Not part of the hand already running.
+  assert.equal(t.seats[seat].sittingOut, true);
+  assert.equal(t.seats[seat].holeCards.length, 0);
+  assert.ok(!t._playersInHand().some((p) => p.userId === 99));
+  assert.equal(t.handNumber, handInPlay);
+
+  // Finish the hand, then deal the next one.
+  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
+    const p = actor(t);
+    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+  }
+  t.startHand();
+  assert.equal(t.seats[seat].sittingOut, false);
+  assert.equal(t.seats[seat].holeCards.length, 2);
+  assert.ok(t._playersInHand().some((p) => p.userId === 99));
+});
+
+test('a late joiner gets exactly the stack they were seated with', () => {
+  const t = tableWith([500, 500]);
+  t.startHand();
+  const seat = t.addLatePlayer(99, 'Latecomer', 250);
+  assert.equal(t.seats[seat].chips, 250);
+});
+
+test('sitting out tracks chips, so a busted player returns if restaked', () => {
+  const t = tableWith([500, 500, 500]);
+  t.startHand();
+  t.seats[2].chips = 0;
+  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
+    const p = actor(t);
+    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+  }
+  t.startHand();
+  assert.equal(t.seats[2].sittingOut, true); // broke, so sat out
+
+  t.seats[2].chips = 400; // host restakes them
+  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
+    const p = actor(t);
+    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+  }
+  t.startHand();
+  assert.equal(t.seats[2].sittingOut, false);
+});
+
+test('a full table refuses another player', () => {
+  const t = tableWith(new Array(t0maxSeats()).fill(100));
+  assert.throws(() => t.addPlayer(999, 'One Too Many', 100), /full/i);
+  assert.throws(() => t.addLatePlayer(999, 'One Too Many', 100), /full/i);
+});
+
+function t0maxSeats() {
+  return new Table({ smallBlind: 5, bigBlind: 10 }).maxSeats;
+}

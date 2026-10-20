@@ -126,6 +126,7 @@ function attachSockets(io, sessionMiddleware) {
         lobby: [...room.lobby.entries()].map(([uid, info]) => ({ userId: uid, ...info })),
         table: room.table.getPublicState(userId),
         gameOver: room.gameOver,
+        joinChips: room.lateJoinChips(),
         turn,
       };
       for (const s of sockets) s.emit('roomState', payload);
@@ -271,10 +272,25 @@ function attachSockets(io, sessionMiddleware) {
         ack?.({ ok: true, code: room.code });
         return broadcastRoom(room);
       }
-      if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already in progress.' });
       // Same rule as renaming: no two players at one table share a name.
       if (room.nameTaken(nameOf(), userId)) {
         return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
+      }
+      // Walking in on a game already under way: the host's stake applies, not
+      // whatever the joiner typed, and they wait for the current hand to
+      // finish rather than being dealt into the middle of one.
+      if (room.table.phase !== 'waiting') {
+        if (room.table.seats.every((seat) => seat !== null) || room.lobby.size >= room.table.maxSeats) {
+          return ack?.({ ok: false, error: 'That table is full.' });
+        }
+        const chips = room.lateJoinChips();
+        room.addToLobby(userId, nameOf(), chips);
+        room.table.addLatePlayer(userId, nameOf(), chips);
+        ack?.({ ok: true, code: room.code, chips, waiting: true });
+        return broadcastRoom(room);
+      }
+      if (room.lobby.size >= room.table.maxSeats) {
+        return ack?.({ ok: false, error: 'That room is full.' });
       }
       room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
       ack?.({ ok: true, code: room.code });
@@ -299,6 +315,17 @@ function attachSockets(io, sessionMiddleware) {
       broadcastRoom(room);
     });
 
+    socket.on('setJoinChips', ({ chips } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set that.' });
+      const n = Math.floor(Number(chips));
+      if (!Number.isFinite(n) || n < 1) return ack?.({ ok: false, error: 'Enter a chip amount of 1 or more.' });
+      room.joinChips = n;
+      ack?.({ ok: true, chips: n });
+      broadcastRoom(room);
+    });
+
     socket.on('addBot', ({ buyIn, level } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
@@ -319,7 +346,14 @@ function attachSockets(io, sessionMiddleware) {
       if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can remove players.' });
       if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already started.' });
       if (targetUserId === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
+      if (!room.lobby.has(targetUserId)) return ack?.({ ok: false, error: 'Player not in this room.' });
       room.removeFromLobby(targetUserId);
+      room.table.removePlayer(targetUserId); // a late joiner holds a seat too
+      // No further roomState reaches them, so without this they'd sit on a
+      // waiting room they're no longer part of.
+      for (const s of socketsByUser.get(targetUserId) || []) {
+        s.emit('kicked', { code: room.code, reason: 'You have been kicked from the lobby.' });
+      }
       ack?.({ ok: true });
       broadcastRoom(room);
     });

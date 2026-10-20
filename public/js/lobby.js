@@ -224,7 +224,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     if (!code) return fail(new Error('Enter a room code.'));
     try {
       const res = await emitAck('joinRoom', { code, buyIn: Number($('#buyin-join').value) });
-      onEnterRoom(res.code);
+      // Walking into a game already running: the host's stake applies, so say
+      // so rather than letting the chips field silently mean nothing.
+      onEnterRoom(res.code, res.waiting ? `Joining with ${Number(res.chips).toLocaleString('en-US')} chips — you'll be dealt in next hand.` : null);
     } catch (err) {
       fail(err);
     }

@@ -51,6 +51,17 @@ class Table {
     return seat;
   }
 
+  // Seats someone while a hand is already running. They take no part in the
+  // hand in progress - it would be dealt and bet without them - and are dealt
+  // in from the next one, which startHand() handles by clearing sittingOut
+  // for anyone holding chips.
+  addLatePlayer(userId, username, buyIn, isBot = false, botLevel = null) {
+    const seat = this.addPlayer(userId, username, buyIn, isBot, botLevel);
+    this.seats[seat].sittingOut = true;
+    this.seats[seat].folded = true;
+    return seat;
+  }
+
   // Marks a player as looking at their cards, so everyone else sees the tell.
   // It expires on its own in case a client vanishes mid-peek.
   setPeeking(userId, on) {
@@ -104,7 +115,10 @@ class Table {
     for (let i = 0; i < this.seats.length; i++) {
       const p = this.seats[i];
       if (p && p.left) this.seats[i] = null;
-      else if (p && p.chips <= 0) p.sittingOut = true; // busted players sit out
+      // Sitting out means exactly one thing: no chips to play with. Busted
+      // players drop out here, and anyone who has chips again - a late
+      // joiner waiting for this moment, or a rebuy - is dealt back in.
+      else if (p) p.sittingOut = p.chips <= 0;
     }
     if (!this.canStartHand()) throw new Error('Need at least 2 players to start a hand.');
     this.handNumber += 1;

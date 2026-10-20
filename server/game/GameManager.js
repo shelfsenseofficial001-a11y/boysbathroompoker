@@ -26,6 +26,10 @@ class Room {
     // on: the table is reset for the next game the moment the last hand
     // ends, which would otherwise take the standings down with it.
     this.gameOver = null;
+    // Stake handed to anyone who joins with the code once play has started.
+    // The host owns this number, not the joiner, so nobody can walk into a
+    // running game and award themselves a stack. null = match the host's own.
+    this.joinChips = null;
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
@@ -43,6 +47,16 @@ class Room {
     return this.table.seats.some(
       (p) => p && !p.left && p.userId !== exceptUserId && String(p.username).toLowerCase() === wanted
     );
+  }
+
+  // What a late joiner is actually given, falling back to the host's own
+  // buy-in so a host who never touches the setting still gets a sane stake.
+  lateJoinChips() {
+    if (this.joinChips > 0) return this.joinChips;
+    const host = this.lobby.get(this.hostUserId);
+    if (host?.buyIn > 0) return host.buyIn;
+    const seated = this.table.seats.find((p) => p && p.userId === this.hostUserId);
+    return seated?.chips > 0 ? seated.chips : 1000;
   }
 
   botCount() {
