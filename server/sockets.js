@@ -125,6 +125,7 @@ function attachSockets(io, sessionMiddleware) {
         hostUserId: room.hostUserId,
         lobby: [...room.lobby.entries()].map(([uid, info]) => ({ userId: uid, ...info })),
         table: room.table.getPublicState(userId),
+        gameOver: room.gameOver,
         turn,
       };
       for (const s of sockets) s.emit('roomState', payload);
@@ -139,6 +140,17 @@ function attachSockets(io, sessionMiddleware) {
       const humansSeated = room.table.seats.some((p) => p && !p.left && !p.isBot);
       if (playersWithChips.length < 2 || !humansSeated) {
         // Game over: save results and send everyone back to the waiting room.
+        // The standings are copied off the table first, because the table is
+        // replaced below and the winner would go with it.
+        const standings = room.table.seats
+          .filter((p) => p && !p.left)
+          .map((p) => ({ userId: p.userId, username: p.username, chips: p.chips, isBot: !!p.isBot }))
+          .sort((a, b) => b.chips - a.chips);
+        room.gameOver = {
+          winner: standings[0] || null,
+          standings,
+          hands: room.table.handNumber,
+        };
         manager.endGame(room);
         const { smallBlind, bigBlind } = room.table;
         room.table = new Table({ smallBlind, bigBlind });
@@ -153,6 +165,23 @@ function attachSockets(io, sessionMiddleware) {
       }
       broadcastRoom(room);
     }, NEXT_HAND_DELAY_MS);
+  }
+
+  // Shuts a room down for everyone in it. The clients are told why, because
+  // no further roomState will arrive and they'd otherwise sit on a table
+  // that no longer exists.
+  function closeRoom(room, reason) {
+    clearTimeout(room.turnTimer);
+    clearTimeout(room.handTimer);
+    manager.endGame(room);
+    const members = new Set([
+      ...room.lobby.keys(),
+      ...room.table.seats.filter(Boolean).map((p) => p.userId),
+    ]);
+    manager.removeRoom(room.code);
+    for (const id of members) {
+      for (const s of socketsByUser.get(id) || []) s.emit('roomClosed', { code: room.code, reason });
+    }
   }
 
   // A socket's room is whichever room the user is in, so a page refresh or
@@ -198,9 +227,15 @@ function attachSockets(io, sessionMiddleware) {
       if (!/^[\p{L}\p{N} _.'-]{2,20}$/u.test(clean)) {
         return ack?.({ ok: false, error: 'Use 2-20 letters, numbers, spaces or _ . - characters.' });
       }
+      // Two players answering to the same name at one table makes the action
+      // log and the history unreadable, so a name already in use here is
+      // refused. Case-insensitive, because "Sam" and "sam" read as one name.
+      const room = roomFor(userId);
+      if (room && room.nameTaken(clean, userId)) {
+        return ack?.({ ok: false, error: `Someone at this table is already called ${clean}.` });
+      }
       db.setDisplayName(userId, clean);
       // Carry the new name into any room this player is already sitting in.
-      const room = roomFor(userId);
       if (room) {
         const entry = room.lobby.get(userId);
         if (entry) entry.username = clean;
@@ -237,6 +272,10 @@ function attachSockets(io, sessionMiddleware) {
         return broadcastRoom(room);
       }
       if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already in progress.' });
+      // Same rule as renaming: no two players at one table share a name.
+      if (room.nameTaken(nameOf(), userId)) {
+        return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
+      }
       room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
       ack?.({ ok: true, code: room.code });
       broadcastRoom(room);
@@ -290,6 +329,7 @@ function attachSockets(io, sessionMiddleware) {
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can start the game.' });
       try {
+        room.gameOver = null; // a new game clears the last one's result
         manager.startGame(room);
         ack?.({ ok: true });
         broadcastRoom(room);
@@ -323,6 +363,12 @@ function attachSockets(io, sessionMiddleware) {
     socket.on('leaveRoom', (_payload, ack) => {
       const room = roomFor(userId);
       if (room) {
+        // The host owns the room: when they walk, it goes with them rather
+        // than leaving everyone in a table nobody can start or manage.
+        if (room.hostUserId === userId) {
+          closeRoom(room, 'The host left, so the room was closed.');
+          return ack?.({ ok: true });
+        }
         room.removeFromLobby(userId);
         room.table.removePlayer(userId);
         broadcastRoom(room);

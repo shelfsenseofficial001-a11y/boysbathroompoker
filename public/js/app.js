@@ -69,10 +69,11 @@ function showAuth() {
   renderAuth(root, { onAuthed: () => enter() });
 }
 
-function showLobby() {
+function showLobby(notice) {
   renderLobby(root, {
     user: state.user,
     guest: !!state.guest,
+    notice,
     onLogout: async () => {
       if (state.guest) {
         // Guest mode: "log out" just gives this tab a fresh guest identity.
@@ -94,9 +95,9 @@ function showTable() {
   renderTable(root, {
     user: state.user,
     roomCode: state.roomCode,
-    onLeave: () => {
+    onLeave: (notice) => {
       state.roomCode = null;
-      showLobby();
+      showLobby(notice);
     },
   });
 }

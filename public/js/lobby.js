@@ -11,7 +11,7 @@ const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 
-export function renderLobby(root, { user, guest, onLogout, onEnterRoom }) {
+export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }) {
   const s = getSettings();
   root.innerHTML = `<div class="screen">
     <header class="topbar">
@@ -98,6 +98,8 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom }) {
 
   const $ = (sel) => root.querySelector(sel);
   const errEl = $('#lobby-error');
+  // Why we're back here, when the room ended rather than the player leaving.
+  if (notice) errEl.textContent = notice;
   const fail = (err) => (errEl.textContent = err.message);
 
   $('#logout').addEventListener('click', onLogout);

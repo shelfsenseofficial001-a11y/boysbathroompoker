@@ -22,10 +22,27 @@ class Room {
     this.gameId = null;
     this.lobby = new Map(); // userId -> { username, buyIn, ready }
     this.handTimer = null;
+    // Set when a game finishes so the result outlives the table it was won
+    // on: the table is reset for the next game the moment the last hand
+    // ends, which would otherwise take the standings down with it.
+    this.gameOver = null;
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
     this.lobby.set(userId, { username, buyIn, ready: true, isBot, botLevel });
+  }
+
+  // True when someone other than `exceptUserId` already answers to this name
+  // here, whether they're waiting in the lobby or sat at the table. Compared
+  // case-insensitively, because "Sam" and "sam" read as the same player.
+  nameTaken(name, exceptUserId) {
+    const wanted = String(name).trim().toLowerCase();
+    for (const [id, info] of this.lobby) {
+      if (id !== exceptUserId && String(info.username).toLowerCase() === wanted) return true;
+    }
+    return this.table.seats.some(
+      (p) => p && !p.left && p.userId !== exceptUserId && String(p.username).toLowerCase() === wanted
+    );
   }
 
   botCount() {

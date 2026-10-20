@@ -122,6 +122,8 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   const history = loadHistory();
   const expanded = new Set(); // hands whose cards are showing
   let historyOpen = getSettings().showHistory;
+  let spectating = false; // chose to watch on after busting out
+  let dismissedGameOver = null; // key of a result the player has closed
 
   function loadHistory() {
     try {
@@ -149,6 +151,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   };
 
   socket.on('roomState', onRoomState);
+  socket.on('roomClosed', onRoomClosed);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
@@ -165,6 +168,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
 
   function cleanup() {
     socket.off('roomState', onRoomState);
+    socket.off('roomClosed', onRoomClosed);
     socket.off('connect', resync);
     clearInterval(clock);
     timers.forEach(clearTimeout);
@@ -172,9 +176,127 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     document.removeEventListener('keydown', onKey);
   }
 
-  function exit() {
+  function exit(notice) {
     cleanup();
-    onLeave();
+    onLeave(notice);
+  }
+
+  // The room is gone (the host left, or it emptied out). No more state is
+  // coming, so step back to the lobby and say why rather than leaving a dead
+  // table on screen.
+  function onRoomClosed(payload) {
+    if (payload?.code && payload.code !== roomCode) return;
+    exit(payload?.reason || 'That room was closed.');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Full-screen overlays: the end of a game, and running out of chips
+  // ---------------------------------------------------------------------------
+  // Lives directly on `root`, as a sibling of whichever screen is drawn, so
+  // that rebuilding the table or the waiting room doesn't remove it.
+  function overlayHost() {
+    let el = root.querySelector('#overlay');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'overlay';
+      el.className = 'overlay is-empty';
+      el.addEventListener('click', onOverlayClick);
+      root.appendChild(el);
+    } else if (el !== root.lastElementChild) {
+      root.appendChild(el); // a screen rebuild put it out of order
+    }
+    return el;
+  }
+
+  function drawOverlay(cur) {
+    const el = overlayHost();
+    const html = overlayHTML(cur);
+    el.classList.toggle('is-empty', !html);
+    setHTML(el, html);
+  }
+
+  function overlayHTML(cur) {
+    const over = cur.gameOver;
+    if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
+    const me = cur.table.seats.find((s) => s && s.userId === user.id);
+    // Back in with chips (the host restarted, or a rebuy): forget that they
+    // ever chose to spectate, so busting again asks them afresh.
+    if (me && me.chips > 0) spectating = false;
+    // Busting is only final once the next hand has started without them:
+    // until then they're still watching the showdown they just lost.
+    if (!over && me && me.sittingOut && !me.left && me.chips <= 0 && !spectating) {
+      return bustedHTML(cur);
+    }
+    return '';
+  }
+
+  const gameOverKey = (o) => `${o.hands}:${o.winner?.userId ?? 'none'}`;
+
+  function celebrationHTML(over) {
+    const w = over.winner;
+    const iWon = w?.userId === user.id;
+    const others = over.standings.filter((p) => p.userId !== w?.userId);
+    return `<div class="sheet sheet-win" role="dialog" aria-modal="true" aria-label="Game over">
+      <div class="confetti" aria-hidden="true">${confettiHTML()}</div>
+      <div class="sheet-kicker">${over.hands} hand${over.hands === 1 ? '' : 's'} played</div>
+      <div class="sheet-crown">${icons.crown}</div>
+      <h2 class="sheet-title">${iWon ? 'You win!' : `${esc(w?.username || 'Nobody')} wins!`}</h2>
+      <p class="sheet-sub">${iWon ? 'Every chip on the table is yours.' : 'They finished with every chip on the table.'}</p>
+      <div class="sheet-stack">${chipStackSVG(w?.chips || 0, { maxCols: 6, maxPerCol: 6 })}</div>
+      <div class="sheet-amt">${fmt(w?.chips || 0)}</div>
+      ${others.length
+        ? `<ol class="sheet-rank">${others
+            .map((p, i) => `<li><span class="rank-no">${i + 2}</span>
+              <span class="rank-name${p.userId === user.id ? ' is-me' : ''}">${esc(p.username)}</span>
+              <span class="rank-chips">${fmt(p.chips)}</span></li>`)
+            .join('')}</ol>`
+        : ''}
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-lg" data-ov="close">Back to the waiting room</button>
+        <button class="btn btn-ghost" data-ov="leave">Leave room</button>
+      </div>
+    </div>`;
+  }
+
+  function bustedHTML(cur) {
+    const live = cur.table.seats.filter((s) => s && !s.left && s.chips > 0).length;
+    return `<div class="sheet sheet-bust" role="dialog" aria-modal="true" aria-label="Out of chips">
+      <div class="sheet-crown is-bust">${icons.allin}</div>
+      <h2 class="sheet-title">You're out of chips</h2>
+      <p class="sheet-sub">You'll sit out the rest of the game. ${live} player${live === 1 ? ' is' : 's are'} still in — stay and watch how it ends, or head back to the lobby.</p>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-lg" data-ov="spectate">${icons.eye}Spectate</button>
+        <button class="btn btn-ghost" data-ov="leave">${icons.leave}Leave room</button>
+      </div>
+      <p class="sheet-note">The host can deal you back in with a fresh stack from the waiting room.</p>
+    </div>`;
+  }
+
+  // Cheap paper confetti: a fixed set of coloured strips the CSS animates.
+  function confettiHTML() {
+    if (reduceMotion) return '';
+    let out = '';
+    for (let i = 0; i < 48; i++) {
+      const left = (i * 97) % 100;
+      const delay = ((i * 137) % 220) / 100;
+      const dur = 2.4 + ((i * 53) % 160) / 100;
+      const spin = ((i * 71) % 7) - 3;
+      out += `<i class="c${i % 5}" style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s;--spin:${spin}turn"></i>`;
+    }
+    return out;
+  }
+
+  function onOverlayClick(e) {
+    const btn = e.target.closest('[data-ov]');
+    if (!btn) return;
+    const kind = btn.dataset.ov;
+    if (kind === 'leave') return leaveRoom();
+    if (kind === 'spectate') {
+      spectating = true; // for this game only; a rebuy clears it
+      play('click');
+    }
+    if (kind === 'close' && shown?.gameOver) dismissedGameOver = gameOverKey(shown.gameOver);
+    drawOverlay(shown);
   }
 
   function leaveRoom() {
@@ -202,16 +324,17 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       mode = 'waiting';
       els = null;
       drawWaiting(shown);
-      return;
-    }
-    if (mode !== 'table') {
+    } else if (mode !== 'table') {
       buildTable();
       mode = 'table';
       renderedHand = 0; // fresh table: let the first hand deal in
       drawTable(null, shown);
-      return;
+    } else {
+      drawTable(prev && prev.table.phase !== 'waiting' ? prev : null, shown);
     }
-    drawTable(prev && prev.table.phase !== 'waiting' ? prev : null, shown);
+    // Last, and outside the screen itself: both screens above rebuild their
+    // own markup, which would take any overlay inside them with it.
+    drawOverlay(shown);
   }
 
   function showError(msg) {
@@ -856,8 +979,12 @@ export function renderTable(root, { user, roomCode, onLeave }) {
     const { t } = ctx;
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
     const isWinner = ctx.winners.has(p.userId);
+    // Once the pot is awarded, everyone who didn't take a share of it fades
+    // back, so the winner reads at a glance instead of having to be picked
+    // out of a row of identical nameplates.
+    const isLoser = !!ctx.summary && !isWinner;
     const away = p.left || p.sittingOut;
-    const cls = ['anchor', 'pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
+    const cls = ['anchor', 'pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
       .filter(Boolean)
       .join(' ');
     const tag = seatTag(p, { acting, isMe: L.isMe, isWinner, t, summary: ctx.summary });
@@ -911,6 +1038,7 @@ export function renderTable(root, { user, roomCode, onLeave }) {
   function handHTML(p, L, ctx) {
     const { t, newHand, summary, winCards, justShowdown } = ctx;
     if (!p.hasCards || p.folded) return '';
+    const lost = !!summary && !ctx.winners.has(p.userId) ? ' is-loser' : '';
     const pos = `left:${L.cards.x}%;top:${L.cards.y}%`;
     const deal = newHand && !reduceMotion;
     const winCls = (c) => (winCards.size ? (winCards.has(c) ? ' is-win' : '') : '');
@@ -925,13 +1053,13 @@ export function renderTable(root, { user, roomCode, onLeave }) {
       const up = faceUp || open;
       const cls = faceUp ? ' shown' : open ? ' is-open' : '';
       const label = open ? 'Throw your cards to fold' : 'Hold to peek at your cards';
-      return `<div class="anchor hand mine${cls}" style="${pos}" data-mine ${faceUp ? '' : `role="button" tabindex="0" aria-label="${label}"`}>
+      return `<div class="anchor hand mine${cls}${lost}" style="${pos}" data-mine ${faceUp ? '' : `role="button" tabindex="0" aria-label="${label}"`}>
         ${p.holeCards.map((c, i) => cardHTML(c, { cls: (deal ? 'deal' : '') + winCls(c), style: `${deal ? dealStyle(L, i) : ''};--fd:${i * 70}ms`, flip: !up })).join('')}
         ${faceUp ? '' : `<span class="peek-hint">${open ? 'Throw to fold' : 'Hold to peek · throw to fold'}</span>`}
       </div>`;
     }
     if (p.holeCards) {
-      return `<div class="anchor hand revealed" style="${pos}">
+      return `<div class="anchor hand revealed${lost}" style="${pos}">
         ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms` })).join('')}
       </div>`;
     }
