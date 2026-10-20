@@ -124,6 +124,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let historyOpen = getSettings().showHistory;
   let spectating = false; // chose to watch on after busting out
   let dismissedGameOver = null; // key of a result the player has closed
+  let askingLeave = false; // the leave confirmation is up
 
   function loadHistory() {
     try {
@@ -153,13 +154,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('roomState', onRoomState);
   socket.on('roomClosed', onRoomClosed);
   socket.on('kicked', onRoomClosed); // same outcome: out of the room, with a reason
+  socket.on('notice', onNotice);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
   resync();
   // A note carried in from the lobby, e.g. joining a hand already in play.
-  if (notice) later(() => showError(notice), 400);
+  if (notice) later(() => showNotice(notice), 400);
 
   function resync() {
     emitAck('resync')
@@ -173,6 +175,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('roomState', onRoomState);
     socket.off('roomClosed', onRoomClosed);
     socket.off('kicked', onRoomClosed);
+    socket.off('notice', onNotice);
     socket.off('connect', resync);
     clearInterval(clock);
     timers.forEach(clearTimeout);
@@ -183,6 +186,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function exit(notice) {
     cleanup();
     onLeave(notice);
+  }
+
+  // Table news from the server: someone joined, left or was removed.
+  function onNotice(payload) {
+    if (payload?.text) showNotice(payload.text);
   }
 
   // The room is gone (the host left, or it emptied out). No more state is
@@ -220,6 +228,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function overlayHTML(cur) {
+    if (askingLeave) return leaveConfirmHTML(cur);
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
     const me = cur.table.seats.find((s) => s && s.userId === user.id);
@@ -262,6 +271,34 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
+  function leaveConfirmHTML(cur) {
+    const host = cur.hostUserId === user.id;
+    const others = new Set([
+      ...cur.lobby.map((p) => p.userId),
+      ...cur.table.seats.filter(Boolean).map((p) => p.userId),
+    ]);
+    others.delete(user.id);
+    const n = others.size;
+    const mid = cur.table.phase !== 'waiting';
+    return `<div class="sheet sheet-ask" role="dialog" aria-modal="true" aria-label="Leave the room">
+      <div class="sheet-crown is-bust">${icons.leave}</div>
+      <h2 class="sheet-title">${host ? 'Close the room?' : 'Leave the room?'}</h2>
+      <p class="sheet-sub">${
+        host
+          ? `You're the host, so leaving ends the room for everyone${
+              n ? ` — ${n} other player${n === 1 ? '' : 's'} will be sent back to the lobby` : ''
+            }. This can't be undone.`
+          : mid
+            ? 'Your chips stay on the table and the hand carries on without you.'
+            : 'You can rejoin later with the room code.'
+      }</p>
+      <div class="sheet-actions">
+        <button class="btn ${host ? 'btn-danger' : 'btn-primary'} btn-lg" data-ov="leave-yes">${host ? 'Close the room' : 'Leave'}</button>
+        <button class="btn btn-ghost" data-ov="leave-no">Stay</button>
+      </div>
+    </div>`;
+  }
+
   function bustedHTML(cur) {
     const live = cur.table.seats.filter((s) => s && !s.left && s.chips > 0).length;
     return `<div class="sheet sheet-bust" role="dialog" aria-modal="true" aria-label="Out of chips">
@@ -294,7 +331,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const btn = e.target.closest('[data-ov]');
     if (!btn) return;
     const kind = btn.dataset.ov;
-    if (kind === 'leave') return leaveRoom();
+    if (kind === 'leave') { askingLeave = true; return drawOverlay(shown); }
+    if (kind === 'leave-yes') return leaveRoom();
+    if (kind === 'leave-no') askingLeave = false;
     if (kind === 'spectate') {
       spectating = true; // for this game only; a rebuy clears it
       play('click');
@@ -342,14 +381,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function showError(msg) {
+    toast(msg, { info: false });
+  }
+
+  // Table news rather than a problem: who joined, who left.
+  function showNotice(msg) {
+    toast(msg, { info: true });
+  }
+
+  function toast(msg, { info }) {
     const host = root.querySelector('#toast-host');
     if (!host) return;
     const el = document.createElement('div');
-    el.className = 'toast error-text';
-    el.setAttribute('role', 'alert');
+    el.className = info ? 'toast is-info' : 'toast error-text';
+    el.setAttribute('role', info ? 'status' : 'alert');
     el.textContent = msg;
     host.appendChild(el);
-    later(() => el.remove(), 2800);
+    later(() => el.remove(), info ? 3600 : 2800);
   }
 
   // ---------------------------------------------------------------------------
@@ -374,7 +422,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function wireTopbar() {
-    root.querySelector('[data-leave]').addEventListener('click', leaveRoom);
+    root.querySelector('[data-leave]').addEventListener('click', () => {
+      askingLeave = true;
+      drawOverlay(shown);
+    });
     wireNameEditor(root, user);
     const sound = root.querySelector('[data-sound]');
     sound.addEventListener('click', () => {
@@ -637,6 +688,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     wireTopbar();
     applyHistoryOpen();
     drawHistory();
+    // Tapping anywhere off the panel closes it. On a phone it covers the
+    // felt, so dismissing it has to be as easy as opening it; pointerdown
+    // rather than click so it goes before whatever was tapped underneath.
+    root.addEventListener('pointerdown', (e) => {
+      if (!historyOpen) return;
+      if (e.target.closest('#history') || e.target.closest('[data-history]')) return;
+      historyOpen = false;
+      setSetting('showHistory', false);
+      applyHistoryOpen();
+    });
     els.historyList.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-cards]');
       if (!btn) return;
@@ -979,7 +1040,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       return { text: w?.hand ? w.hand.description || w.hand.name : 'Winner', cls: 't-win', icon: icons.crown, kicker: w?.kicker };
     }
     if (p.left) return { text: 'Left', cls: 't-away' };
-    if (p.sittingOut) return { text: 'Out', cls: 't-away' };
+    // Waiting for the next deal (just joined, or restaked) rather than out
+    // of the game: chips in front of them is what tells the two apart.
+    if (p.sittingOut) return p.chips > 0 ? { text: 'Next round', cls: 't-away' } : { text: 'Out', cls: 't-away' };
     if (acting && isMe) return { text: 'Your turn', cls: 't-turn' };
     if (p.folded) return { text: 'Folded', cls: 't-fold' };
     // At a real showdown the hand they made matters more than how they got there.
@@ -1252,7 +1315,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         : '<span class="stat stat-free">No bet to you</span>'}<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     } else {
       const who = m.actor ? `Waiting for <b>${esc(m.actor.username)}</b>` : 'Dealing<span class="dots"></span>';
-      main = me.folded ? 'You folded' : me.allIn ? 'You’re all-in' : who;
+      // Someone waiting to be dealt in carries folded = true, because they
+      // take no part in the hand on the table — but they haven't folded
+      // anything, so say what's actually happening to them.
+      main = me.sittingOut
+        ? me.chips > 0
+          ? 'You will join next round'
+          : 'You’re out of chips'
+        : me.folded
+          ? 'You folded'
+          : me.allIn
+            ? 'You’re all-in'
+            : who;
       sub = `${m.actor ? `<span class="stat stat-clock">${icons.clock}<b id="turn-secs">–</b>s</span>` : ''}${
         m.toCall > 0 && !me.folded && !me.allIn ? `<span class="stat stat-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span>` : ''
       }<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;

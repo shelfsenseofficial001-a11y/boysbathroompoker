@@ -1118,6 +1118,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   background: rgba(40, 12, 10, 0.95); border: 1px solid var(--red); color: #ffd2cf; padding: 10px 16px; border-radius: var(--r-m);
   font-weight: 600; font-size: 13px; box-shadow: var(--shadow-2); animation: badgeIn 0.3s var(--ease-spring);
 }
+/* Not every toast is a problem: table news (someone joining, leaving) reads
+   as information rather than an error. */
+.toast.is-info { background: rgba(10, 22, 18, 0.96); border-color: var(--line-2); color: var(--text-1); }
+.toast.is-info b { color: var(--gold-hi); }
 
 /* ---------- Responsive dock ---------- */
 @media (max-width: 1080px) {
@@ -1167,6 +1171,11 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 .late-join label { flex: 1 1 180px; font-size: 13px; color: var(--text-2); letter-spacing: 0; text-transform: none; }
 .late-join .micro { flex: 1 1 100%; margin: 0; color: var(--text-3); }
+
+/* For the one button in the app that destroys something other people are
+   using: the host closing their own room. */
+.btn-danger { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; border-color: var(--red); font-weight: 800; }
+.btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
 
 /* ---------- Full-screen overlays (game over, out of chips) ---------- */
 .overlay {

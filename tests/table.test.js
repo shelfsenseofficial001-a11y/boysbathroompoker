@@ -160,22 +160,26 @@ test('a late joiner gets exactly the stack they were seated with', () => {
 
 test('sitting out tracks chips, so a busted player returns if restaked', () => {
   const t = tableWith([500, 500, 500]);
+  const playOut = () => {
+    for (let i = 0; i < 40 && t.phase !== 'showdown'; i++) {
+      const p = actor(t);
+      t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+    }
+  };
   t.startHand();
+  playOut();
+  // Emptied once the hand is settled — doing it mid-hand doesn't bust anyone,
+  // since they can still win the pot.
   t.seats[2].chips = 0;
-  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
-    const p = actor(t);
-    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
-  }
   t.startHand();
-  assert.equal(t.seats[2].sittingOut, true); // broke, so sat out
+  assert.equal(t.seats[2].sittingOut, true);
+  assert.equal(t.seats[2].holeCards.length, 0); // and not dealt in
 
-  t.seats[2].chips = 400; // host restakes them
-  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
-    const p = actor(t);
-    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
-  }
+  playOut();
+  t.seats[2].chips = 400; // restaked
   t.startHand();
   assert.equal(t.seats[2].sittingOut, false);
+  assert.equal(t.seats[2].holeCards.length, 2);
 });
 
 test('a full table refuses another player', () => {

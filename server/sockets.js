@@ -168,6 +168,19 @@ function attachSockets(io, sessionMiddleware) {
     }, NEXT_HAND_DELAY_MS);
   }
 
+  // A line of table news for everyone still in the room: who joined, who
+  // left. `except` skips the player it's about, who already knows.
+  function announce(room, text, except = null) {
+    const members = new Set([
+      ...room.lobby.keys(),
+      ...room.table.seats.filter(Boolean).map((p) => p.userId),
+    ]);
+    for (const id of members) {
+      if (id === except) continue;
+      for (const s of socketsByUser.get(id) || []) s.emit('notice', { text });
+    }
+  }
+
   // Shuts a room down for everyone in it. The clients are told why, because
   // no further roomState will arrive and they'd otherwise sit on a table
   // that no longer exists.
@@ -286,6 +299,7 @@ function attachSockets(io, sessionMiddleware) {
         const chips = room.lateJoinChips();
         room.addToLobby(userId, nameOf(), chips);
         room.table.addLatePlayer(userId, nameOf(), chips);
+        announce(room, `${nameOf()} joined — in from the next hand.`, userId);
         ack?.({ ok: true, code: room.code, chips, waiting: true });
         return broadcastRoom(room);
       }
@@ -347,6 +361,7 @@ function attachSockets(io, sessionMiddleware) {
       if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already started.' });
       if (targetUserId === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
       if (!room.lobby.has(targetUserId)) return ack?.({ ok: false, error: 'Player not in this room.' });
+      const removedName = room.lobby.get(targetUserId).username;
       room.removeFromLobby(targetUserId);
       room.table.removePlayer(targetUserId); // a late joiner holds a seat too
       // No further roomState reaches them, so without this they'd sit on a
@@ -354,6 +369,7 @@ function attachSockets(io, sessionMiddleware) {
       for (const s of socketsByUser.get(targetUserId) || []) {
         s.emit('kicked', { code: room.code, reason: 'You have been kicked from the lobby.' });
       }
+      announce(room, `${removedName} was removed from the room.`, targetUserId);
       ack?.({ ok: true });
       broadcastRoom(room);
     });
@@ -403,8 +419,10 @@ function attachSockets(io, sessionMiddleware) {
           closeRoom(room, 'The host left, so the room was closed.');
           return ack?.({ ok: true });
         }
+        const who = nameOf();
         room.removeFromLobby(userId);
         room.table.removePlayer(userId);
+        announce(room, `${who} left the game.`, userId);
         broadcastRoom(room);
         // Once the last human is gone the room (and its bots) is finished.
         const humansLeft =
