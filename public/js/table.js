@@ -128,6 +128,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let botLevel = 'casual'; // difficulty used for the next bot the host adds
   let foldArmed = false; // Fold needs a second click to confirm
   let foldArmTimer = null;
+  let queuedFold = null; // hand number a fold is lined up for, out of turn
   const timers = new Set();
 
   // Whether my hole cards sit face up for the whole hand (a player setting,
@@ -142,7 +143,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   const history = loadHistory();
   const expanded = new Set(); // hands whose cards are showing
   let historyOpen = getSettings().showHistory;
-  let spectating = false; // chose to watch on after busting out
+  let specOpen = false; // the watchers panel at the foot of the table
+  let bustAnswered = false; // chose to watch on after running out of chips
   const chatLog = []; // table talk, oldest first
   let chatOpen = getSettings().showChat;
   let chatUnread = 0; // messages that arrived while the panel was shut
@@ -267,8 +269,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function drawChat({ keepUnread = false } = {}) {
     if (!els?.chatLog) return;
     if (!keepUnread) chatUnread = 0;
-    const dot = root.querySelector('.chat-dot');
-    if (dot) dot.hidden = chatUnread === 0;
+    drawUnread();
     drawComposer();
     if (!chatLog.length) {
       setHTML(els.chatLog, '<li class="chat-empty">Nobody has said anything yet.</li>');
@@ -328,10 +329,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         quoted ? (quoted.deleted ? 'Message deleted' : esc(quoted.text)) : 'No longer shown'
       }</span>`;
     }
+    // Said from the rail: worth marking, because a watcher can't act on
+    // anything that's being discussed at the table.
+    const specHTML = m.spectator && first
+      ? `<span class="chat-spec" title="Watching, not playing" aria-label="Watching">${icons.eye}</span>`
+      : '';
     const whoHTML = first && !mine ? `<span class="chat-who">${esc(m.name)}</span>` : '';
     // Arrow, then who is talking, then who they answered.
     const arrow = noteHTML ? `<span class="reply-arrow">${icons.call}</span>` : '';
-    const metaHTML = whoHTML || noteHTML ? `<span class="chat-meta">${arrow}${whoHTML}${noteHTML}</span>` : '';
+    const metaHTML =
+      whoHTML || noteHTML || specHTML
+        ? `<span class="chat-meta">${arrow}${whoHTML}${specHTML}${noteHTML}</span>`
+        : '';
     const open = chatMenuFor === m.id;
     // Reply sits on its own, then the dots: the one everybody uses is a
     // single tap rather than two.
@@ -349,7 +358,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       }
     </span>`;
 
-    return `<li class="chat-row${mine ? ' is-mine' : ''}${group}">
+    return `<li class="chat-row${mine ? ' is-mine' : ''}${group}${m.spectator ? ' is-spec' : ''}">
       ${metaHTML}
       ${quoteHTML}
       <div class="bubble-line">${mine ? '' : face}
@@ -384,6 +393,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     );
   }
 
+  // How many messages arrived while the panel was shut. A count rather than a
+  // plain dot: three missed messages and thirty look nothing alike.
+  function drawUnread() {
+    const dot = root.querySelector('.chat-dot');
+    if (!dot) return;
+    dot.hidden = chatUnread === 0;
+    dot.textContent = chatUnread > 99 ? '99+' : String(chatUnread);
+    dot.classList.toggle('is-wide', chatUnread > 9);
+  }
+
   function applyChatOpen() {
     root.querySelector('.table-screen')?.classList.toggle('show-chat', chatOpen);
     if (els?.chat) els.chat.setAttribute('aria-hidden', String(!chatOpen));
@@ -394,8 +413,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
     if (chatOpen) {
       chatUnread = 0;
-      const dot = root.querySelector('.chat-dot');
-      if (dot) dot.hidden = true;
+      drawUnread();
       if (els?.chatLog) els.chatLog.scrollTop = els.chatLog.scrollHeight;
     }
   }
@@ -408,6 +426,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     chatOpen = on;
     setSetting('showChat', on);
     if (on && historyOpen && narrow()) setHistoryOpen(false);
+    // The watchers list floats over the same corner of a phone screen.
+    if (on && specOpen && narrow()) {
+      specOpen = false;
+      drawSpectators(shown);
+    }
     applyChatOpen();
     drawVotes(); // the toast shifts aside for the panel
   }
@@ -422,7 +445,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function wireChat() {
     root.querySelector('[data-chat]')?.addEventListener('click', () => {
       setChatOpen(!chatOpen);
-      if (chatOpen) els.chatInput?.focus();
+      // Not on a phone: focusing the box summons the keyboard, which used to
+      // shove the whole table sideways just for opening the messages. There
+      // the panel opens quietly and the box is a tap away when they want it.
+      if (chatOpen && !narrow()) els.chatInput?.focus();
     });
 
     els.chatForm?.addEventListener('submit', async (e) => {
@@ -517,6 +543,45 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   // ---------------------------------------------------------------------------
+  // Watchers
+  // ---------------------------------------------------------------------------
+  // Anyone who ran out of chips keeps their place in the room but gives up
+  // their seat, so the felt isn't padded with empty stacks. They show up here
+  // instead: an eye in the bottom corner that opens the list of who's
+  // watching, built like the chat panel because it's the same kind of thing -
+  // people in the room who aren't in the hand.
+  function drawSpectators(cur) {
+    if (!els?.spectators) return;
+    const list = cur?.spectators || [];
+    els.spectators.hidden = list.length === 0;
+    if (!list.length) {
+      specOpen = false;
+      els.specPanel.hidden = true;
+      return;
+    }
+    els.specCount.textContent = String(list.length);
+    const btn = els.spectators.querySelector('[data-spec]');
+    btn.setAttribute('aria-expanded', String(specOpen));
+    btn.classList.toggle('is-open', specOpen);
+    btn.title = `${list.length} watching`;
+    els.specPanel.hidden = !specOpen;
+    if (!specOpen) return;
+    setHTML(
+      els.specPanel,
+      `<div class="spec-head">${icons.eye}Watching<b>${list.length}</b></div>
+       <ul class="spec-list">${list
+         .map(
+           (sp) => `<li class="spec-row${sp.userId === user.id ? ' is-me' : ''}">
+             <span class="spec-face">${avatarSVG(sp.username)}</span>
+             <span class="spec-who">${esc(sp.username)}${sp.userId === user.id ? ' <em>you</em>' : ''}</span>
+           </li>`
+         )
+         .join('')}</ul>
+       <p class="spec-note">Out of chips — back in when the next game starts.</p>`
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Vote-kick toasts
   // ---------------------------------------------------------------------------
   function onVotes(payload) {
@@ -542,13 +607,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const knocks = (shown?.knocks || [])
       .map(
         (k) => `<div class="vote-toast is-knock" role="status">
-          <div class="vote-head"><b>${esc(k.username)}</b> wants to join</div>
-          <div class="vote-foot">
-            <span>Private room</span>
-            <span class="vote-acts">
-              <button class="vote-no" data-knock-deny="${k.userId}">Not now</button>
-              <button class="knock-yes" data-knock-allow="${k.userId}">Let in</button>
+          <div class="vote-top">
+            <span class="vote-face">${avatarSVG(k.username)}</span>
+            <span class="vote-text">
+              <b>${esc(k.username)}</b>
+              <em>${icons.key}Knocking at your private room</em>
             </span>
+          </div>
+          <div class="vote-acts">
+            <button class="vote-btn is-no" data-knock-deny="${k.userId}">Not now</button>
+            <button class="vote-btn is-let" data-knock-allow="${k.userId}">Let them in</button>
           </div>
         </div>`
       )
@@ -566,20 +634,29 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           const total = Math.max(v.needed, v.votes + keeps);
           const kickPct = Math.round((v.votes / total) * 100);
           const keepPct = Math.round((keeps / total) * 100);
-          return `<div class="vote-toast" role="status">
-            <div class="vote-head">Remove <b>${esc(v.name)}</b> from the table?</div>
-            <div class="vote-bar"><i class="is-kick" style="width:${kickPct}%"></i><i class="is-keep" style="width:${keepPct}%"></i></div>
-            <div class="vote-foot">
-              <span><b class="t-kick">${v.votes}</b> kick · <b class="t-keep">${keeps}</b> keep · ${v.needed} to remove</span>
-              ${
-                kicked || kept
-                  ? `<span class="vote-done">You voted to ${kicked ? 'remove' : 'keep'}</span>`
-                  : `<span class="vote-acts">
-                      <button class="vote-no" data-keep="${v.userId}">Keep</button>
-                      <button class="vote-yes" data-vote="${v.userId}">Kick</button>
-                    </span>`
-              }
+          const left = Math.max(0, v.needed - v.votes);
+          return `<div class="vote-toast is-vote" role="status">
+            <div class="vote-top">
+              <span class="vote-face">${avatarSVG(v.name)}</span>
+              <span class="vote-text">
+                <b>Remove ${esc(v.name)}?</b>
+                <em>${left ? `${left} more vote${left === 1 ? '' : 's'} removes them` : 'The table has decided'}</em>
+              </span>
             </div>
+            <div class="vote-bar"><i class="is-kick" style="width:${kickPct}%"></i><i class="is-keep" style="width:${keepPct}%"></i></div>
+            <div class="vote-tally">
+              <span class="t-kick"><b>${v.votes}</b> kick</span>
+              <span class="vote-need">${v.needed} needed</span>
+              <span class="t-keep"><b>${keeps}</b> keep</span>
+            </div>
+            ${
+              kicked || kept
+                ? `<div class="vote-done ${kicked ? 'is-kick' : 'is-keep'}">${icons.check}You voted to ${kicked ? 'remove' : 'keep'} them</div>`
+                : `<div class="vote-acts">
+                    <button class="vote-btn is-keep" data-keep="${v.userId}">Keep</button>
+                    <button class="vote-btn is-kick" data-vote="${v.userId}">Remove</button>
+                  </div>`
+            }
           </div>`;
         })
         .join('')
@@ -651,15 +728,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
-    const me = cur.table.seats.find((s) => s && s.userId === user.id);
-    // Back in with chips (the host restarted, or a rebuy): forget that they
-    // ever chose to spectate, so busting again asks them afresh.
-    if (me && me.chips > 0) spectating = false;
-    // Busting is only final once the next hand has started without them:
-    // until then they're still watching the showdown they just lost.
-    if (!over && me && me.sittingOut && !me.left && me.chips <= 0 && !spectating) {
-      return bustedHTML(cur);
-    }
+    // Out of chips: the seat is already given up, but staying to watch is
+    // still a choice, so it's asked rather than assumed.
+    const watching = (cur.spectators || []).some((sp) => sp.userId === user.id);
+    if (!watching) bustAnswered = false; // dealt back in; ask again next time
+    if (watching && !bustAnswered) return bustedHTML(cur);
     return '';
   }
 
@@ -734,6 +807,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     return `<div class="sheet sheet-result${iWon ? ' is-mine' : ''}" role="dialog" aria-live="polite" aria-label="Hand result">
       <div class="res-glow" aria-hidden="true"></div>
+      <button class="res-x" data-ov="skip-result" aria-label="Close">${icons.fold}</button>
       <div class="res-kicker">Hand #${sum.handNumber}</div>
       <h2 class="res-title">${title}</h2>
       <div class="res-pot" data-count="${total}" data-hand="${sum.handNumber}">+${fmt(total)}</div>
@@ -744,8 +818,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           : ''
       }
       <div class="res-foot">
-        <button class="res-skip" data-ov="skip-result">Skip${waiting ? ` · ${waiting}` : ''}</button>
         <span class="res-timer"><i style="animation-duration:${RESULT_MS}ms"></i></span>
+        <button class="res-skip" data-ov="skip-result">Skip${waiting ? `<span class="res-ready">${waiting}</span>` : ''}</button>
       </div>
     </div>`;
   }
@@ -777,22 +851,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function celebrationHTML(over) {
     const w = over.winner;
     const iWon = w?.userId === user.id;
-    const others = over.standings.filter((p) => p.userId !== w?.userId);
     return `<div class="sheet sheet-win" role="dialog" aria-modal="true" aria-label="Game over">
-      <div class="confetti" aria-hidden="true">${confettiHTML()}</div>
       <div class="sheet-kicker">${over.hands} hand${over.hands === 1 ? '' : 's'} played</div>
       <div class="sheet-crown">${icons.crown}</div>
       <h2 class="sheet-title">${iWon ? 'You win!' : `${esc(w?.username || 'Nobody')} wins!`}</h2>
       <p class="sheet-sub">${iWon ? 'Every chip on the table is yours.' : 'They finished with every chip on the table.'}</p>
       <div class="sheet-stack">${chipStackSVG(w?.chips || 0, { maxCols: 6, maxPerCol: 6 })}</div>
       <div class="sheet-amt">${fmt(w?.chips || 0)}</div>
-      ${others.length
-        ? `<ol class="sheet-rank">${others
-            .map((p, i) => `<li><span class="rank-no">${i + 2}</span>
-              <span class="rank-name${p.userId === user.id ? ' is-me' : ''}">${esc(p.username)}</span>
-              <span class="rank-chips">${fmt(p.chips)}</span></li>`)
-            .join('')}</ol>`
-        : ''}
       <div class="sheet-actions">
         <button class="btn btn-primary btn-lg" data-ov="close">Back to the waiting room</button>
         <button class="btn btn-ghost" data-ov="leave">Leave room</button>
@@ -841,6 +906,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
+  function bustedHTML(cur) {
+    const live = cur.table.seats.filter((s) => s && !s.left && s.chips > 0).length;
+    return `<div class="sheet sheet-bust" role="dialog" aria-modal="true" aria-label="Out of chips">
+      <div class="sheet-crown is-bust">${icons.allin}</div>
+      <h2 class="sheet-title">You're out of chips</h2>
+      <p class="sheet-sub">Your seat has gone back to the table. ${live} player${
+        live === 1 ? ' is' : 's are'
+      } still in — stay and watch how it ends, or head back to the lobby.</p>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-lg" data-ov="spectate">${icons.eye}Watch the rest</button>
+        <button class="btn btn-ghost" data-ov="leave">${icons.leave}Leave room</button>
+      </div>
+      <p class="sheet-note">You're dealt back in with a fresh stack when the next game starts.</p>
+    </div>`;
+  }
+
   function leaveConfirmHTML(cur) {
     const host = cur.hostUserId === user.id;
     const others = new Set([
@@ -867,34 +948,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <button class="btn btn-ghost" data-ov="leave-no">Stay</button>
       </div>
     </div>`;
-  }
-
-  function bustedHTML(cur) {
-    const live = cur.table.seats.filter((s) => s && !s.left && s.chips > 0).length;
-    return `<div class="sheet sheet-bust" role="dialog" aria-modal="true" aria-label="Out of chips">
-      <div class="sheet-crown is-bust">${icons.allin}</div>
-      <h2 class="sheet-title">You're out of chips</h2>
-      <p class="sheet-sub">You'll sit out the rest of the game. ${live} player${live === 1 ? ' is' : 's are'} still in — stay and watch how it ends, or head back to the lobby.</p>
-      <div class="sheet-actions">
-        <button class="btn btn-primary btn-lg" data-ov="spectate">${icons.eye}Spectate</button>
-        <button class="btn btn-ghost" data-ov="leave">${icons.leave}Leave room</button>
-      </div>
-      <p class="sheet-note">The host can deal you back in with a fresh stack from the waiting room.</p>
-    </div>`;
-  }
-
-  // Cheap paper confetti: a fixed set of coloured strips the CSS animates.
-  function confettiHTML(count = 48) {
-    if (reduceMotion) return '';
-    let out = '';
-    for (let i = 0; i < count; i++) {
-      const left = (i * 97) % 100;
-      const delay = ((i * 137) % 220) / 100;
-      const dur = 2.4 + ((i * 53) % 160) / 100;
-      const spin = ((i * 71) % 7) - 3;
-      out += `<i class="c${i % 5}" style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s;--spin:${spin}turn"></i>`;
-    }
-    return out;
   }
 
   function onSettingsChange(e) {
@@ -936,7 +989,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       return;
     }
     if (kind === 'spectate') {
-      spectating = true; // for this game only; a rebuy clears it
+      bustAnswered = true; // for this game only; being dealt back in clears it
       play('click');
     }
     if (kind === 'close' && shown?.gameOver) dismissedGameOver = gameOverKey(shown.gameOver);
@@ -1305,7 +1358,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <div class="fx" id="fx"></div>
         </div>
       </main>
-      <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" hidden></span></button>
+      <div class="spectators" id="spectators" hidden>
+        <button class="spec-toggle" data-spec aria-expanded="false" aria-controls="spec-panel">${icons.eye}<b class="spec-count">0</b></button>
+        <div class="spec-panel" id="spec-panel" role="group" aria-label="Watching" hidden></div>
+      </div>
+      <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" aria-label="unread messages" hidden></span></button>
       <aside class="chat" id="chat" aria-label="Table chat">
         <div class="chat-head"><span>Table chat</span>
           <button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>
@@ -1326,6 +1383,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
       handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
       history: $('history'), historyList: $('history-list'),
+      spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
       chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
     };
     buildDock();
@@ -1352,6 +1410,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         !e.target.closest('[data-chat]')
       ) {
         setChatOpen(false);
+      }
+      // The watchers list is a popover, so anywhere else shuts it.
+      if (specOpen && !e.target.closest('#spectators')) {
+        specOpen = false;
+        drawSpectators(shown);
       }
     });
     els.historyList.addEventListener('click', (e) => {
@@ -1430,6 +1493,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         return;
       }
       doAction(kind === 'raise' ? 'raise' : kind);
+    });
+
+    els.spectators.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-spec]')) return;
+      specOpen = !specOpen;
+      play('click');
+      drawSpectators(shown);
     });
 
     els.dock.addEventListener('click', onDockClick);
@@ -1611,6 +1681,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawPot(t, summary);
     drawMuck(t);
     drawDock(cur);
+    drawSpectators(cur);
     drawPending();
     tickClock();
     renderedHand = t.handNumber;
@@ -2039,7 +2110,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const minTotal = Math.min(isRaise ? t.currentBet + t.minRaise : t.bigBlind, maxTotal);
     const canRaise = myTurn && maxTotal > t.currentBet;
     const actor = betting && t.actingSeat >= 0 ? t.seats[t.actingSeat] : null;
-    return { t, me, betting, myTurn, toCall, total, maxTotal, isRaise, minTotal, canRaise, actor };
+    // Throwing a hand away doesn't need the action on you: anyone still
+    // holding live cards can fold, and one made out of turn waits for it.
+    const canFold = !!me && betting && me.hasCards && !me.folded && !me.allIn && !me.sittingOut;
+    return { t, me, betting, myTurn, toCall, total, maxTotal, isRaise, minTotal, canRaise, canFold, actor };
   }
 
   // The dock is built once and then only updated in place. Every slot has a
@@ -2097,6 +2171,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const { t, me } = m;
     const q = (id) => els.dock.querySelector(`#${id}`);
 
+    // A queue only ever belongs to the hand it was made in.
+    if (queuedFold !== null && (queuedFold !== t.handNumber || !m.canFold)) queuedFold = null;
+
     const turnKey = m.myTurn ? `${t.handNumber}:${t.actionCount}` : '';
     if (turnKey !== myTurnKey) {
       if (turnKey) play('turn'); // it just became my turn
@@ -2105,6 +2182,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (foldArmed) setFoldArmed(false);
     }
     els.dock.classList.toggle('not-turn', !m.myTurn);
+
+    // The turn has come round to a hand already given up on: send it now,
+    // rather than making the player sit and wait to press the button again.
+    if (m.myTurn && queuedFold === t.handNumber) {
+      queuedFold = null;
+      later(() => doAction('fold'), 0); // after this draw finishes
+    }
 
     let main;
     let sub = '';
@@ -2143,7 +2227,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.dock.querySelector('[data-peek]').classList.toggle('is-hidden', !canPeek);
 
     const off = !m.myTurn;
-    els.dock.querySelector('[data-act="fold"]').disabled = off;
+    els.dock.querySelector('[data-act="fold"]').disabled = !m.canFold;
     const call = q('call-btn');
     call.disabled = off;
     call.dataset.act = m.toCall > 0 ? 'call' : 'check';
@@ -2153,6 +2237,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     q('allin-btn').disabled = off;
     q('allin-amt').textContent = me ? fmt(me.chips) : '';
     els.dock.querySelectorAll('.quick-btn, .step-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
+    drawFoldButton();
     syncAmount();
   }
 
@@ -2278,29 +2363,71 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   // Folding is the one move you can't take back, so it asks first: the
-  // button arms on the first click and only folds on the second.
+  // button arms on the first click and only acts on the second.
   function setFoldArmed(on) {
     foldArmed = on;
-    const btn = els?.dock.querySelector('[data-act="fold"]');
-    if (!btn) return;
-    btn.classList.toggle('is-armed', on);
-    const label = btn.querySelector('.act-label');
-    if (label) label.innerHTML = on ? `${icons.fold}Sure?<span class="kbd">F</span>` : `${icons.fold}Fold<span class="kbd">F</span>`;
-    const amt = btn.querySelector('.act-amt');
-    if (amt) amt.textContent = on ? 'Tap again' : '';
     clearTimeout(foldArmTimer);
     if (on) foldArmTimer = setTimeout(() => setFoldArmed(false), 4000);
+    drawFoldButton();
+  }
+
+  const foldQueued = () => queuedFold !== null && queuedFold === shown?.table.handNumber;
+
+  // Fold reads as one of four things: idle, asking, asking out of turn, or
+  // waiting for the turn to come round. Only its text changes - the button
+  // keeps its size, so the dock never shifts under the player's thumb.
+  function drawFoldButton() {
+    const btn = els?.dock.querySelector('[data-act="fold"]');
+    if (!btn) return;
+    const mine = !!model?.myTurn;
+    const queued = foldQueued();
+    let text = 'Fold';
+    let note = '';
+    if (foldArmed) {
+      text = mine ? 'Sure?' : 'Queue it?';
+      note = mine ? 'Tap again' : 'Tap again';
+    } else if (queued) {
+      text = 'Folding';
+      note = 'Tap to cancel';
+    }
+    btn.classList.toggle('is-armed', foldArmed);
+    btn.classList.toggle('is-queued', queued && !foldArmed);
+    btn.title = queued && !foldArmed
+      ? 'Your hand folds as soon as the action reaches you — tap to take it back'
+      : 'Throw this hand away';
+    const label = btn.querySelector('.act-label');
+    if (label) label.innerHTML = `${icons.fold}${text}<span class="kbd">F</span>`;
+    const amt = btn.querySelector('.act-amt');
+    if (amt) amt.textContent = note;
   }
 
   function requestFold() {
-    if (!model?.myTurn) return;
+    const m = model;
+    if (!m?.canFold) return;
+    // Already lined up: pressing again takes it back.
+    if (foldQueued() && !foldArmed) {
+      queuedFold = null;
+      play('click');
+      return drawFoldButton();
+    }
     if (!foldArmed) {
       setFoldArmed(true);
       play('click');
       return;
     }
     setFoldArmed(false);
-    doAction('fold');
+    if (m.myTurn) return doAction('fold');
+    queueFold();
+  }
+
+  // Giving up on a hand before the action gets to you. Nothing is sent yet —
+  // the dock fires it the moment the turn arrives — so it can still be taken
+  // back right up until then.
+  function queueFold() {
+    queuedFold = shown?.table.handNumber ?? null;
+    play('click');
+    showNotice('Fold queued — it goes in the moment the action reaches you.');
+    drawFoldButton();
   }
 
   function onDockClick(e) {
@@ -2593,10 +2720,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         endPeek(hand); // put the cards down before sliding them
         hand.classList.add('dragging');
         els.foldZone.classList.add('is-visible');
-        els.foldLabel.textContent = model?.myTurn ? 'Release to fold' : 'Wait for your turn to fold';
+        els.foldLabel.textContent = model?.myTurn
+          ? 'Release to fold'
+          : model?.canFold
+            ? 'Release to fold on your turn'
+            : 'Nothing to fold';
       }
       hand.style.transform = `translate(calc(-50% + ${d.dx}px), calc(-50% + ${d.dy}px)) rotate(${d.dx * 0.08}deg)`;
-      els.foldZone.classList.toggle('is-hot', isThrow(d) && !!model?.myTurn);
+      els.foldZone.classList.toggle('is-hot', isThrow(d) && !!model?.canFold);
     };
     const finish = (ev, cancelled) => {
       detach();
@@ -2608,12 +2739,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       els.foldZone.classList.remove('is-visible', 'is-hot');
       hand.classList.remove('dragging');
       const d = delta(ev);
-      if (!cancelled && isThrow(d) && model?.myTurn) {
-        // Throwing asks before mucking, same as the Fold button does.
+      if (!cancelled && isThrow(d) && model?.canFold) {
+        // Throwing asks before mucking, same as the Fold button does. Out of
+        // turn it queues instead, so the gesture works whenever you've seen
+        // enough of a hand rather than only when the action reaches you.
         confirmThrow(hand, L, d);
         return;
       }
-      if (!cancelled && isThrow(d)) showError('You can only fold on your turn.');
+      if (!cancelled && isThrow(d)) showError('There’s no hand of yours to fold.');
       hand.style.transform = ''; // the CSS transition slides the cards back
       later(endDrag, 260);
     };
@@ -2637,12 +2770,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // Holds the thrown cards over the felt and asks before they're mucked.
   function confirmThrow(hand, L, d) {
+    const mine = !!model?.myTurn;
     hand.style.transform = `translate(calc(-50% + ${d.dx * 0.55}px), calc(-50% + ${d.dy * 0.55}px)) rotate(${d.dx * 0.05}deg)`;
     hand.classList.add('awaiting-fold');
     els.foldZone.classList.add('is-visible', 'is-hot', 'is-confirm');
     els.foldZone.innerHTML = `<div class="fold-confirm">
-      <span>Fold this hand?</span>
-      <button class="pending-btn is-allin" data-fold-yes>${icons.fold}Fold</button>
+      <span>${mine ? 'Fold this hand?' : 'Fold when it’s your turn?'}</span>
+      <button class="pending-btn is-allin" data-fold-yes>${icons.fold}${mine ? 'Fold' : 'Queue it'}</button>
       <button class="pending-btn is-clear" data-fold-no aria-label="Keep my cards">${icons.leave}</button>
     </div>`;
     play('click');
@@ -2652,12 +2786,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       els.foldZone.innerHTML = `<span id="fold-zone-label">Release to fold</span>`;
       els.foldLabel = root.querySelector('#fold-zone-label');
       hand.classList.remove('awaiting-fold');
-      if (fold) {
+      if (fold && mine) {
         throwHand(hand, L, d);
-      } else {
-        hand.style.transform = '';
-        later(endDrag, 260);
+        return;
       }
+      // Out of turn nothing is mucked yet, so the cards go back where they
+      // were and the dock carries the decision instead.
+      if (fold) queueFold();
+      hand.style.transform = '';
+      later(endDrag, 260);
     };
     els.foldZone.querySelector('[data-fold-yes]').addEventListener('click', () => done(true));
     els.foldZone.querySelector('[data-fold-no]').addEventListener('click', () => done(false));

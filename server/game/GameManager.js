@@ -45,6 +45,25 @@ class Room {
     // Who has pressed skip on the current hand's result screen.
     this.resultHand = null;
     this.resultSkips = new Set();
+    // Players who ran out of chips mid-game. Their seat is given up so the
+    // table isn't cluttered with empty stacks, but they stay in the room to
+    // watch and talk, and they're dealt back in when the next game starts.
+    this.spectators = new Set();
+  }
+
+  // Everyone in the room: waiting in the lobby, sat at the table, or watching
+  // after busting out (who are still lobby members).
+  members() {
+    const ids = new Set(this.lobby.keys());
+    for (const p of this.table.seats) if (p) ids.add(p.userId);
+    return ids;
+  }
+
+  // Name and id for each spectator, for the watchers panel at the table.
+  spectatorList() {
+    return [...this.spectators]
+      .map((id) => ({ userId: id, username: this.lobby.get(id)?.username || 'Player' }))
+      .filter((s) => this.lobby.has(s.userId));
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
@@ -178,6 +197,7 @@ class GameManager {
       }
     }
     if (!room.table.canStartHand()) throw new Error('Need at least 2 players to start.');
+    room.spectators.clear(); // a fresh game deals the last one's busted players back in
     room.gameId = db.createGame(room.code);
     room.table.startHand();
   }

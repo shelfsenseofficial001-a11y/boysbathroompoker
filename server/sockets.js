@@ -121,7 +121,7 @@ function attachSockets(io, sessionMiddleware) {
     const turn = room.turnDeadline
       ? { remainingMs: Math.max(0, room.turnDeadline - Date.now()), totalMs: TURN_MS }
       : null;
-    const everyone = new Set([...room.lobby.keys(), ...room.table.seats.filter(Boolean).map((p) => p.userId)]);
+    const everyone = room.members();
     for (const userId of everyone) {
       const sockets = socketsByUser.get(userId);
       if (!sockets) continue;
@@ -130,9 +130,12 @@ function attachSockets(io, sessionMiddleware) {
         hostUserId: room.hostUserId,
         lobby: [...room.lobby.entries()].map(([uid, info]) => ({ userId: uid, ...info })),
         table: room.table.getPublicState(userId),
-        gameOver: room.gameOver,
+        // Only the people who played it are shown a game's result: someone
+        // who walked in afterwards has no stake in a hand they never saw.
+        gameOver: room.gameOver?.participants.includes(userId) ? room.gameOver : null,
         joinChips: room.lateJoinChips(),
         isPrivate: room.isPrivate,
+        spectators: room.spectatorList(),
         // Only the host is asked to answer the door, so only the host is told
         // who is standing at it.
         knocks: userId === room.hostUserId
@@ -147,36 +150,68 @@ function attachSockets(io, sessionMiddleware) {
   function scheduleNextHand(room) {
     manager.recordHandResult(room);
     clearTimeout(room.handTimer);
-    room.handTimer = setTimeout(() => {
-      const playersWithChips = room.table.seats.filter((p) => p && !p.left && p.chips > 0);
-      const humansSeated = room.table.seats.some((p) => p && !p.left && !p.isBot);
-      if (playersWithChips.length < 2 || !humansSeated) {
-        // Game over: save results and send everyone back to the waiting room.
-        // The standings are copied off the table first, because the table is
-        // replaced below and the winner would go with it.
-        const standings = room.table.seats
-          .filter((p) => p && !p.left)
-          .map((p) => ({ userId: p.userId, username: p.username, chips: p.chips, isBot: !!p.isBot }))
-          .sort((a, b) => b.chips - a.chips);
-        room.gameOver = {
-          winner: standings[0] || null,
-          standings,
-          hands: room.table.handNumber,
-        };
-        manager.endGame(room);
-        const { smallBlind, bigBlind } = room.table;
-        room.table = new Table({ smallBlind, bigBlind });
-        attachTableEvents(room);
-        broadcastRoom(room);
-        return;
-      }
-      try {
-        room.table.startHand();
-      } catch {
-        // Not enough players right now; wait for host to restart.
-      }
+    room.handTimer = setTimeout(() => startNextHand(room), NEXT_HAND_DELAY_MS);
+  }
+
+  // Deals the next hand, or ends the game if there's no longer one to play.
+  // Called on the timer above, and straight away once everybody still at the
+  // table has skipped past the last hand's result.
+  function startNextHand(room) {
+    clearTimeout(room.handTimer);
+    room.handTimer = null;
+    retireBustedPlayers(room);
+    const playersWithChips = room.table.seats.filter((p) => p && !p.left && p.chips > 0);
+    const humansSeated = room.table.seats.some((p) => p && !p.left && !p.isBot);
+    if (playersWithChips.length < 2 || !humansSeated) {
+      // Game over: save results and send everyone back to the waiting room.
+      // The standings are copied off the table first, because the table is
+      // replaced below and the winner would go with it.
+      const standings = room.table.seats
+        .filter((p) => p && !p.left)
+        .map((p) => ({ userId: p.userId, username: p.username, chips: p.chips, isBot: !!p.isBot }))
+        .sort((a, b) => b.chips - a.chips);
+      room.gameOver = {
+        winner: standings[0] || null,
+        hands: room.table.handNumber,
+        // Whoever was in the room for it. A player who arrives later is sent
+        // no result at all rather than a celebration for a game they missed.
+        participants: [...room.members()],
+      };
+      manager.endGame(room);
+      // Everyone who busted out is back in the waiting room for the next game.
+      room.spectators.clear();
+      const { smallBlind, bigBlind } = room.table;
+      room.table = new Table({ smallBlind, bigBlind });
+      attachTableEvents(room);
       broadcastRoom(room);
-    }, NEXT_HAND_DELAY_MS);
+      return;
+    }
+    try {
+      room.table.startHand();
+    } catch {
+      // Not enough players right now; wait for host to restart.
+    }
+    broadcastRoom(room);
+  }
+
+  // Out of chips is out of the game: the seat is given up before the next
+  // deal so the table isn't padded with empty stacks. They stay in the room
+  // to watch and talk, and the next game deals them back in.
+  function retireBustedPlayers(room) {
+    for (const p of room.table.seats) {
+      if (!p || p.left || p.chips > 0) continue;
+      const { userId: uid, username, isBot } = p;
+      room.table.removePlayer(uid);
+      if (isBot) {
+        room.removeFromLobby(uid); // nobody to watch on a bot's behalf
+        announce(room, `${username} is out of chips and left the table.`);
+        continue;
+      }
+      // Their own client asks them whether to stay and watch or go, so the
+      // only thing to say here is to everybody else.
+      room.spectators.add(uid);
+      announce(room, `${username} is out of chips and is now watching.`, uid);
+    }
   }
 
   // Nudges everyone sitting in the lobby to re-read the open-tables list.
@@ -205,10 +240,7 @@ function attachSockets(io, sessionMiddleware) {
         keepers: [...keeps],
       });
     }
-    const members = new Set([
-      ...room.lobby.keys(),
-      ...room.table.seats.filter(Boolean).map((p) => p.userId),
-    ]);
+    const members = room.members();
     for (const id of members) {
       for (const sock of socketsByUser.get(id) || []) sock.emit('votes', { open, closed });
     }
@@ -217,10 +249,7 @@ function attachSockets(io, sessionMiddleware) {
   // Pushes the whole backlog to everyone in the room. Used when the stored
   // messages themselves change, which only renaming does.
   function broadcastChatHistory(room) {
-    const members = new Set([
-      ...room.lobby.keys(),
-      ...room.table.seats.filter(Boolean).map((p) => p.userId),
-    ]);
+    const members = room.members();
     for (const id of members) {
       for (const s of socketsByUser.get(id) || []) {
         s.emit('chatHistory', { code: room.code, messages: room.chat });
@@ -231,10 +260,7 @@ function attachSockets(io, sessionMiddleware) {
   // A line of table news for everyone still in the room: who joined, who
   // left. `except` skips the player it's about, who already knows.
   function announce(room, text, except = null) {
-    const members = new Set([
-      ...room.lobby.keys(),
-      ...room.table.seats.filter(Boolean).map((p) => p.userId),
-    ]);
+    const members = room.members();
     for (const id of members) {
       if (id === except) continue;
       for (const s of socketsByUser.get(id) || []) s.emit('notice', { text });
@@ -248,10 +274,7 @@ function attachSockets(io, sessionMiddleware) {
     clearTimeout(room.turnTimer);
     clearTimeout(room.handTimer);
     manager.endGame(room);
-    const members = new Set([
-      ...room.lobby.keys(),
-      ...room.table.seats.filter(Boolean).map((p) => p.userId),
-    ]);
+    const members = room.members();
     manager.removeRoom(room.code);
     roomsChanged();
     for (const id of members) {
@@ -290,6 +313,7 @@ function attachSockets(io, sessionMiddleware) {
     // host's own figure — not the separate one set aside for late joiners.
     const stake = room.lobby.get(room.hostUserId)?.buyIn;
     room.addToLobby(uid, username, stake > 0 ? stake : 1000);
+    announce(room, `${username} joined the room.`, uid);
     return { ok: true, code: room.code };
   }
 
@@ -493,12 +517,11 @@ function attachSockets(io, sessionMiddleware) {
         replyTo: room.chat.some((m) => m.id === replyId) ? replyId : null,
         editedAt: null,
         deleted: false,
+        // Said from the rail rather than the table, which the bubble shows.
+        spectator: room.spectators.has(userId),
       };
       room.addChat(entry);
-      const members = new Set([
-        ...room.lobby.keys(),
-        ...room.table.seats.filter(Boolean).map((p) => p.userId),
-      ]);
+      const members = room.members();
       for (const id of members) {
         for (const sock of socketsByUser.get(id) || []) sock.emit('chat', entry);
       }
@@ -559,10 +582,7 @@ function attachSockets(io, sessionMiddleware) {
     };
 
     const sendChatUpdate = (room, entry) => {
-      const members = new Set([
-        ...room.lobby.keys(),
-        ...room.table.seats.filter(Boolean).map((p) => p.userId),
-      ]);
+      const members = room.members();
       for (const id of members) {
         for (const sock of socketsByUser.get(id) || []) sock.emit('chatUpdate', entry);
       }
@@ -584,16 +604,16 @@ function attachSockets(io, sessionMiddleware) {
       room.resultSkips.add(userId);
       const waiting = room.voters(null);
       const everyone = [...waiting].every((id) => room.resultSkips.has(id));
-      const members = new Set([
-        ...room.lobby.keys(),
-        ...room.table.seats.filter(Boolean).map((p) => p.userId),
-      ]);
+      const members = room.members();
       for (const id of members) {
         for (const sock of socketsByUser.get(id) || []) {
           sock.emit('resultSkips', { hand: n, skips: room.resultSkips.size, of: waiting.size, all: everyone });
         }
       }
       ack?.({ ok: true, all: everyone });
+      // Nobody is still reading it, so there's nothing left to wait for: the
+      // next hand goes out now rather than sitting on the rest of the timer.
+      if (everyone && room.table.phase === 'showdown') startNextHand(room);
     });
 
     socket.on('voteKick', ({ userId: targetUserId } = {}, ack) => {
@@ -631,6 +651,7 @@ function attachSockets(io, sessionMiddleware) {
       if (votes.size >= needed) {
         room.kickVotes.delete(target);
         room.keepVotes.delete(target);
+        room.spectators.delete(target);
         room.removeFromLobby(target);
         room.table.removePlayer(target);
         for (const sock of socketsByUser.get(target) || []) {
@@ -725,6 +746,7 @@ function attachSockets(io, sessionMiddleware) {
       if (targetUserId === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
       if (!room.lobby.has(targetUserId)) return ack?.({ ok: false, error: 'Player not in this room.' });
       const removedName = room.lobby.get(targetUserId).username;
+      room.spectators.delete(targetUserId);
       room.removeFromLobby(targetUserId);
       room.table.removePlayer(targetUserId); // a late joiner holds a seat too
       // No further roomState reaches them, so without this they'd sit on a
@@ -784,6 +806,7 @@ function attachSockets(io, sessionMiddleware) {
           return ack?.({ ok: true });
         }
         const who = nameOf();
+        room.spectators.delete(userId);
         room.kickVotes.delete(userId); // no vote survives its target leaving
         room.keepVotes.delete(userId);
         for (const votes of room.kickVotes.values()) votes.delete(userId);

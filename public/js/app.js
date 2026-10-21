@@ -5,6 +5,7 @@ import { renderLobby } from './lobby.js';
 import { renderTable } from './table.js';
 import { getSocket, setGuestName, emitAck } from './socket.js';
 import { applyMotionClass } from './motion.js';
+import { showToast } from './toast.js';
 
 applyMotionClass();
 
@@ -69,22 +70,6 @@ function showAuth() {
   renderAuth(root, { onAuthed: () => enter() });
 }
 
-// A notice that deserves more than a line of red text: being kicked, or a
-// room closing under you. Shown over the lobby until it's dismissed.
-function showExitModal(notice) {
-  const el = document.createElement('div');
-  el.className = 'overlay';
-  el.innerHTML = `<div class="sheet sheet-ask" role="alertdialog" aria-label="Removed from the room">
-    <div class="sheet-crown is-bust">!</div>
-    <h2 class="sheet-title">You're out of the room</h2>
-    <p class="sheet-sub"></p>
-    <div class="sheet-actions"><button class="btn btn-primary btn-lg">Back to the lobby</button></div>
-  </div>`;
-  el.querySelector('.sheet-sub').textContent = notice;
-  el.querySelector('button').addEventListener('click', () => el.remove());
-  document.body.appendChild(el);
-}
-
 function showLobby(notice) {
   renderLobby(root, {
     user: state.user,
@@ -115,9 +100,11 @@ function showTable(notice) {
     onLeave: (notice, forced) => {
       state.roomCode = null;
       // Walking out is your own doing and needs no fanfare; being removed
-      // happens to you, so it gets said plainly on screen.
+      // happens to you, so it gets said plainly on screen. A toast rather
+      // than a sheet: the lobby behind it is where they're going anyway, so
+      // there's nothing to decide and nothing worth blocking for.
       showLobby(forced ? null : notice);
-      if (forced && notice) showExitModal(notice);
+      if (forced && notice) showToast(notice, { atPage: true, ms: 7000 });
     },
   });
 }

@@ -17,11 +17,11 @@ function host(atPage) {
 
 // `schedule` lets a screen that tracks its own timers (the table clears its
 // own when you leave) hand in its version of setTimeout.
-export function showToast(msg, { info = false, atPage = false, schedule = setTimeout } = {}) {
+export function showToast(msg, { info = false, atPage = false, ms = null, schedule = setTimeout } = {}) {
   const el = document.createElement('div');
   el.className = `toast${info ? ' is-info' : ' is-error'}`;
   el.setAttribute('role', info ? 'status' : 'alert');
   el.textContent = msg;
   host(atPage).appendChild(el);
-  schedule(() => el.remove(), info ? 4000 : 5000);
+  schedule(() => el.remove(), ms ?? (info ? 4000 : 5000));
 }

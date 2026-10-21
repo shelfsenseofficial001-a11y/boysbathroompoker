@@ -255,9 +255,32 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @media (max-width: 760px) { .lobby-grid { grid-template-columns: 1fr; } .page { padding-top: 26px; } }
 
 /* Settings rows */
-.switch-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; color: var(--text-2); margin: 4px 0 14px; }
-.switch-row input { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+/* Every on/off setting in the game is one of these: a sliding switch rather
+   than a tick box, so its state reads from across the room and the whole row
+   is a comfortable tap target. The <input> itself is still a real checkbox -
+   only its appearance is replaced - so keyboard and screen readers are
+   untouched. */
+.switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; font-size: 14px; color: var(--text-2); margin: 4px 0 14px; }
+.switch-row input[type='checkbox'] {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 0; cursor: pointer;
+  position: relative; width: 42px; height: 24px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line-2);
+  transition: background-color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+.switch-row input[type='checkbox']::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--text-3);
+  transition: transform 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
+}
+.switch-row input[type='checkbox']:checked {
+  background: var(--gold); border-color: var(--gold);
+}
+.switch-row input[type='checkbox']:checked::after { transform: translateX(18px); background: #2a1c05; }
+.switch-row input[type='checkbox']:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.switch-row input[type='checkbox']:disabled { opacity: 0.45; cursor: not-allowed; }
+.switch-row:has(input:disabled) { opacity: 0.6; cursor: not-allowed; }
 .switch-row:hover { color: var(--text-1); }
+.switch-row:hover input[type='checkbox']:not(:checked):not(:disabled) { border-color: rgba(230, 180, 80, 0.5); }
 .slider-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
 .slider-row .field { min-width: 180px; }
 .slider-row label { display: flex; justify-content: space-between; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text-3); }
@@ -526,11 +549,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-toggle:hover { background: var(--bg-3); border-color: rgba(230, 180, 80, 0.5); }
 .chat-toggle.is-off { color: var(--text-3); }
 .chat-toggle .icon { width: 17px; height: 17px; }
-/* Something was said while the panel was shut. */
+/* How much was said while the panel was shut. It sits half off the corner of
+   the button and grows sideways past nine, so a two-digit count stays round
+   rather than squashing the number. */
 .chat-dot {
-  position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--green); box-shadow: 0 0 0 2px rgba(6, 12, 9, 0.9);
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px;
+  display: grid; place-items: center; border-radius: 999px;
+  background: var(--green); color: #05140d; box-shadow: 0 0 0 2px rgba(6, 12, 9, 0.95);
+  font: 800 10.5px/1 var(--font-ui); font-variant-numeric: tabular-nums;
 }
+.chat-dot.is-wide { padding: 0 5px; }
 .chat {
   flex: 0 0 auto; width: 0; min-width: 0; overflow: hidden;
   display: flex; flex-direction: column;
@@ -564,9 +592,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* Bubbles: mine right and gold, everyone else's left and dark. A run from
    one person is rounded off only on the outside, so it reads as one block
    rather than a stack of separate boxes. */
-.chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-size: 13px; line-height: 1.25; }
-.chat-row + .chat-row { margin-top: 2px; }
-.chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 9px; }
+.chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 13px; line-height: 1.25; }
+.chat-row + .chat-row { margin-top: 3px; }
+/* The break between one person's run of messages and the next. */
+.chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 14px; }
 .chat-row.is-mine { align-items: flex-end; }
 /* Sender's name and “Replied to …” share one line above the bubble. The
    parts are different sizes, so they centre on a common line box rather
@@ -673,9 +702,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   .show-history .history { width: min(300px, 86vw); transform: none; }
   .show-chat .chat { width: min(320px, 88vw); transform: none; }
   .history-list, .chat-log, .chat-form { min-width: 0; }
-  /* The on-screen keyboard changes the viewport height when the message box
-     is tapped; without this the table animates every time it opens. */
-  .camera { transition: none; }
+  /* The on-screen keyboard can still change the viewport height when the
+     message box is tapped; without this the table slides every time it opens.
+     Scoped through .stage so it outranks the .camera block further down the
+     file, which is where this rule used to lose by source order. */
+  .stage .camera { transition: none; }
 }
 
 @media (max-width: 760px) {
@@ -1284,13 +1315,18 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .act:disabled { opacity: 0.32; cursor: not-allowed; filter: grayscale(0.6); }
 .act-fold { background: transparent; border-color: rgba(224, 86, 79, 0.55); color: #ff9b94; }
 .act-fold:hover:not(:disabled) { background: rgba(224, 86, 79, 0.12); }
-/* Armed: one more click and the hand is gone. */
+/* Armed: one more click and the hand is gone. A steady ring rather than a
+   pulsing one — it has to read as a warning, not as something moving in the
+   corner of the eye while a hand is being played. */
 .act-fold.is-armed {
   background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; border-color: #ff9b94;
-  box-shadow: 0 0 0 3px rgba(224, 86, 79, 0.25);
-  animation: armedPulse 1s ease-in-out infinite alternate;
+  box-shadow: 0 0 0 3px rgba(224, 86, 79, 0.28);
 }
-@keyframes armedPulse { to { box-shadow: 0 0 0 6px rgba(224, 86, 79, 0.08); } }
+/* Folded in advance: the hand goes the moment the action arrives, and the
+   button says so until then. Dashed, because nothing has been sent yet. */
+.act-fold.is-queued {
+  background: rgba(224, 86, 79, 0.1); border-style: dashed; border-color: #ff9b94; color: #ffc9c5;
+}
 
 /* Difficulty picker beside Add bot. */
 .add-bot { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -1441,6 +1477,65 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .btn-danger { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; border-color: var(--red); font-weight: 800; }
 .btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
 
+/* ---------- Watchers ---------- */
+/* Bottom corner of the felt, opposite the dock's own controls. The panel it
+   opens is built like the chat column on purpose: both are lists of people in
+   the room who aren't part of the hand. */
+.spectators { position: absolute; left: 8px; bottom: 8px; z-index: 32; }
+.spec-toggle {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  height: 34px; padding: 0 11px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: rgba(6, 12, 9, 0.9); color: var(--text-3);
+  font: 800 12px var(--font-ui); font-variant-numeric: tabular-nums;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.spec-toggle .icon { width: 17px; height: 17px; }
+.spec-toggle:hover, .spec-toggle.is-open { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: var(--bg-3); }
+.spec-panel {
+  position: absolute; left: 0; bottom: calc(100% + 8px); width: min(250px, calc(100vw - 32px));
+  padding: 0 0 10px; border-radius: var(--r-m); overflow: hidden;
+  background: rgba(6, 12, 9, 0.97); border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
+}
+.spec-head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 12px; border-bottom: 1px solid var(--line-2);
+  font: 800 11px var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
+}
+.spec-head .icon { width: 14px; height: 14px; }
+.spec-head b { margin-left: auto; color: var(--gold-hi); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.spec-list { margin: 0; padding: 8px; list-style: none; max-height: 190px; overflow-y: auto; overscroll-behavior: contain; }
+.spec-row {
+  display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: var(--r-s);
+  font-size: 13px; color: var(--text-2);
+}
+.spec-row + .spec-row { margin-top: 2px; }
+.spec-row.is-me { background: rgba(230, 180, 80, 0.08); color: var(--text-1); }
+.spec-face { flex: none; width: 26px; height: 26px; border-radius: 50%; overflow: hidden; }
+.spec-face svg { width: 100%; height: 100%; display: block; }
+.spec-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-who em {
+  margin-left: 4px; padding: 1px 6px; border-radius: 999px; font-style: normal;
+  font: 800 9.5px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase;
+  color: #2a1c05; background: var(--gold);
+}
+.spec-note { margin: 0 12px; font-size: 11px; line-height: 1.4; color: var(--text-3); }
+
+/* A message from somebody watching rather than playing. The eye says it on
+   its own; a word beside the name only crowded the line. */
+.chat-spec {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(230, 180, 80, 0.14); color: var(--gold);
+}
+.chat-spec .icon { width: 11px; height: 11px; }
+/* Dimmer and outlined rather than filled: a message from the rail reads as
+   one step back from the table talk. */
+.chat-row.is-spec .bubble {
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(230, 180, 80, 0.22);
+  color: var(--text-2);
+}
+
 /* ---------- Vote-kick toasts ---------- */
 /* Top right, and slid left when the chat panel is open so a vote never
    lands on top of the messages. */
@@ -1448,44 +1543,69 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    have to wait out a hand result or a game-over screen to be let in. */
 .vote-host {
   position: fixed; top: 64px; right: 12px; z-index: 210;
-  display: flex; flex-direction: column; gap: 8px; width: min(260px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 10px; width: min(300px, calc(100vw - 24px));
   transition: right 0.25s var(--ease-out);
 }
 .vote-host.is-shifted { right: calc(min(330px, 38vw) + 18px); }
 @media (max-width: 1024px) { .vote-host.is-shifted { right: 12px; top: 112px; } }
+/* A card rather than a strip: who it's about, where the vote stands, and two
+   buttons big enough to hit without aiming. */
 .vote-toast {
-  padding: 10px 12px; border-radius: var(--r-m); background: rgba(10, 18, 14, 0.97);
-  border: 1px solid rgba(224, 86, 79, 0.5); box-shadow: var(--shadow-2);
-  animation: badgeIn 0.3s var(--ease-spring);
+  padding: 12px; border-radius: var(--r-m); background: rgba(10, 18, 14, 0.98);
+  border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
+  display: flex; flex-direction: column; gap: 10px;
 }
-/* Someone at the door of a private room: an invitation, not an accusation. */
-.vote-toast.is-knock { border-color: rgba(230, 180, 80, 0.5); }
-.knock-yes {
-  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--gold);
-  background: var(--gold); color: #2a1c05; font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+/* A coloured edge says which kind of card this is at a glance: red for a
+   vote against somebody, gold for somebody asking to come in. */
+.vote-toast.is-vote { border-left: 3px solid var(--red); }
+.vote-toast.is-knock { border-left: 3px solid var(--gold); }
+.vote-top { display: flex; align-items: center; gap: 10px; }
+.vote-face { flex: none; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; }
+.vote-face svg { width: 100%; height: 100%; display: block; }
+.vote-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vote-text b { font-size: 13.5px; font-weight: 700; color: var(--text-1); line-height: 1.25; }
+.vote-text em {
+  display: flex; align-items: center; gap: 5px;
+  font-style: normal; font-size: 11.5px; color: var(--text-3); line-height: 1.3;
 }
-.knock-yes:hover { filter: brightness(1.08); }
-.vote-head { font-size: 12.5px; color: var(--text-2); }
-.vote-head b { color: var(--text-1); }
-.vote-bar { position: relative; height: 5px; margin: 8px 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.vote-text em .icon { width: 12px; height: 12px; flex: none; }
+.vote-bar { position: relative; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .vote-bar i { position: absolute; top: 0; height: 100%; transition: width 0.3s var(--ease-out); }
 .vote-bar .is-kick { left: 0; background: var(--red); }
 .vote-bar .is-keep { right: 0; background: var(--green); }
-.vote-foot .t-kick { color: #ff9d97; }
-.vote-foot .t-keep { color: var(--green); }
-.vote-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-3); }
-.vote-yes {
-  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--red);
-  background: var(--red-lo); color: #fff; font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+.vote-tally {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 11px; color: var(--text-3);
 }
-.vote-yes:hover { filter: brightness(1.1); }
-.vote-acts { display: flex; gap: 6px; }
-.vote-no {
-  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--line-2);
-  background: transparent; color: var(--text-2); font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+.vote-tally b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.vote-tally .t-kick { color: #ff9d97; }
+.vote-tally .t-keep { color: var(--green); }
+.vote-need { font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; }
+/* Both answers share the row evenly, so neither is the one you hit by
+   accident reaching for the other. */
+.vote-acts { display: flex; gap: 8px; }
+.vote-btn {
+  flex: 1 1 0; min-height: 36px; padding: 0 10px; cursor: pointer;
+  border-radius: var(--r-s); border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.04); color: var(--text-2);
+  font: 800 11.5px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
-.vote-no:hover { color: var(--green); border-color: rgba(60, 194, 127, 0.5); }
-.vote-done { color: var(--green); font-weight: 700; }
+.vote-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-1); }
+.vote-btn.is-kick { background: var(--red-lo); border-color: var(--red); color: #fff; }
+.vote-btn.is-kick:hover { filter: brightness(1.1); }
+.vote-btn.is-keep:hover { color: var(--green); border-color: rgba(60, 194, 127, 0.5); }
+.vote-btn.is-let { background: var(--gold); border-color: var(--gold); color: #2a1c05; }
+.vote-btn.is-let:hover { filter: brightness(1.08); }
+/* Once you've answered, the buttons are replaced by what you said rather
+   than disappearing and leaving the card looking unfinished. */
+.vote-done {
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px;
+  border-radius: var(--r-s); font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.vote-done .icon { width: 14px; height: 14px; }
+.vote-done.is-keep { color: var(--green); background: rgba(60, 194, 127, 0.1); }
+.vote-done.is-kick { color: #ff9d97; background: rgba(224, 86, 79, 0.12); }
 
 /* The ⋯ on another player's nameplate, and what it opens. */
 /* Always there and big enough to hit. It sits inside the pill at the right
@@ -1548,10 +1668,8 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   position: absolute; left: 50%; top: 42px; z-index: -1; width: 220px; height: 120px;
   transform: translateX(-50%); border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgba(247, 213, 138, 0.35), transparent);
-  animation: glowPulse 2.6s ease-in-out infinite;
 }
 .sheet-result:not(.is-mine) .res-glow { background: radial-gradient(closest-side, rgba(110, 210, 170, 0.22), transparent); }
-@keyframes glowPulse { 50% { opacity: 0.55; transform: translateX(-50%) scale(1.08); } }
 
 .res-kicker { font: 800 10.5px var(--font-ui); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(247, 213, 138, 0.7); }
 .res-title {
@@ -1615,15 +1733,37 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 .res-card.is-dim { opacity: 0.32; filter: grayscale(0.6); }
 
-.res-foot { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
+/* Skip is the only thing to do here, so it gets the whole width of the sheet
+   rather than a pill floating in the middle, with the drain bar reading as
+   the button's own progress directly above it. */
+.res-foot { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .res-skip {
-  padding: 7px 18px; cursor: pointer; border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
-  color: var(--text-2); font: 700 12px var(--font-ui); letter-spacing: 0.06em;
+  width: 100%; min-height: 46px; padding: 0 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--r-m);
+  border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1); font: 800 13px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background-color 0.15s, border-color 0.15s;
 }
-.res-skip:hover { color: var(--text-1); border-color: rgba(230, 180, 80, 0.5); }
+.res-skip:hover { background: rgba(230, 180, 80, 0.12); border-color: rgba(230, 180, 80, 0.5); }
+/* How many of the others have already moved on. */
+.res-ready {
+  padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08);
+  color: var(--text-3); font-size: 10.5px; letter-spacing: 0.06em; font-variant-numeric: tabular-nums;
+}
+/* Closing from the corner, for anyone who reads the result and is done with
+   it before their eye reaches the bottom of the sheet. */
+.res-x {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  width: 30px; height: 30px; display: grid; place-items: center; cursor: pointer;
+  border-radius: var(--r-s); border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.3); color: var(--text-3);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.res-x:hover { color: var(--text-1); border-color: rgba(230, 180, 80, 0.5); background: rgba(230, 180, 80, 0.12); }
+.res-x .icon { width: 15px; height: 15px; }
 /* Drains over the life of the modal, so the wait is visible. */
-.res-timer { width: 60px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.res-timer { width: 100%; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .res-timer i { display: block; height: 100%; background: var(--gold); animation: drain linear forwards; transform-origin: left; }
 .sheet-result:not(.is-mine) .res-timer i { background: var(--green); }
 @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
@@ -1665,12 +1805,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .sheet-stack { margin-top: 16px; display: flex; justify-content: center; }
 .sheet-stack svg { height: 70px; width: auto; }
 .sheet-amt { margin-top: 6px; font-size: 30px; font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
-.sheet-rank { margin: 18px 0 0; padding: 0; list-style: none; text-align: left; border-top: 1px solid var(--line-2); }
-.sheet-rank li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--line-2); font-size: 13.5px; }
-.rank-no { width: 20px; flex: none; color: var(--text-3); font-weight: 800; font-variant-numeric: tabular-nums; }
-.rank-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
-.rank-name.is-me { color: var(--green); font-weight: 700; }
-.rank-chips { flex: none; color: var(--text-1); font-variant-numeric: tabular-nums; font-weight: 700; }
 .sheet-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 9px; }
 .sheet-note { margin: 14px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.45; }
 
@@ -1683,24 +1817,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .set-field label { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); text-transform: none; letter-spacing: 0; }
 .set-field label b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
 .set-field .range { width: 100%; }
-
-/* Paper strips falling behind the card. Purely decorative, and skipped
-   entirely when motion is reduced (the markup isn't even generated). */
-.confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.confetti i {
-  position: absolute; top: -14px; width: 7px; height: 12px; border-radius: 1px;
-  animation-name: fall; animation-timing-function: linear; animation-iteration-count: infinite;
-}
-.confetti .c0 { background: var(--gold-hi); }
-.confetti .c1 { background: var(--green); }
-.confetti .c2 { background: #4aa8e8; }
-.confetti .c3 { background: var(--red); }
-.confetti .c4 { background: #b07de8; }
-@keyframes fall {
-  from { transform: translateY(-20px) rotate(0turn); opacity: 0; }
-  10% { opacity: 1; }
-  to { transform: translateY(460px) rotate(var(--spin, 2turn)); opacity: 0; }
-}
 
 /* Reduced motion (OS setting or the in-game toggle, see motion.js). The
    turn ring keeps unwinding since it carries information, not decoration. */
