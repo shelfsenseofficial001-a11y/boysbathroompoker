@@ -578,10 +578,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
              ${sp.bust ? '<span class="spec-why" title="Out of chips">0</span>' : ''}
            </li>`
          )
-         .join('')}</ul>
-       <p class="spec-note">${
-         list.every((sp) => sp.bust) ? 'Out of chips — back in' : 'Back in'
-       } when the next game starts.</p>`
+         .join('')}</ul>`
     );
   }
 

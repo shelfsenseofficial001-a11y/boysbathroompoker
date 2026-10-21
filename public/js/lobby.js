@@ -266,7 +266,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     errEl.textContent = '';
     try {
       const res = await emitAck('spectateRoom', { code });
-      onEnterRoom(res.code, 'Watching this game — you’ll be dealt in when the next one starts.');
+      onEnterRoom(res.code, 'Watching this game.');
     } catch (err) {
       fail(err);
     }

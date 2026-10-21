@@ -311,7 +311,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-hi)); transform-origin: left center; transform: scaleX(0); }
 .pv-timing .micro { letter-spacing: 0.04em; text-transform: none; white-space: nowrap; }
 
-.room-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; margin-top: 10px; }
+/* No reserved scrollbar gutter here, unlike the scrolling panels elsewhere:
+   it was taken out of the rows' own width, so every table card sat a
+   scrollbar's width shy of the Join button above it. The cards lining up
+   with the rest of the column matters more than holding their position on
+   the rare occasion a fourth table pushes the list into scrolling. */
+.room-list {
+  display: flex; flex-direction: column; gap: 8px; max-height: 240px;
+  overflow-y: auto; margin-top: 10px;
+}
 /* Knocking on a private room: the host decides, so this is a real wait. */
 .knock-wait {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1496,7 +1504,7 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .spec-toggle:hover, .spec-toggle.is-open { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: var(--bg-3); }
 .spec-panel {
   position: absolute; left: 0; bottom: calc(100% + 8px); width: min(250px, calc(100vw - 32px));
-  padding: 0 0 10px; border-radius: var(--r-m); overflow: hidden;
+  border-radius: var(--r-m); overflow: hidden;
   background: rgba(6, 12, 9, 0.97); border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
 }
 .spec-head {
@@ -1528,7 +1536,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   background: rgba(224, 86, 79, 0.14); color: #ff9d97;
   font: 800 10px var(--font-ui); text-align: center; font-variant-numeric: tabular-nums;
 }
-.spec-note { margin: 0 12px; font-size: 11px; line-height: 1.4; color: var(--text-3); }
 
 /* A message from somebody watching rather than playing. The eye says it on
    its own; a word beside the name only crowded the line. */
