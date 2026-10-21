@@ -1,6 +1,6 @@
 // Lobby: host a new room (blinds + your starting chips; the host sets every
 // player's chips in the waiting room) or join one by code.
-import { emitAck } from './socket.js';
+import { emitAck, getSocket } from './socket.js';
 import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { userPillHTML, wireNameEditor } from './name.js';
@@ -273,6 +273,11 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   }
 
   refreshRooms();
+  // The server says when the list has actually changed, so a room going
+  // private (or filling up, or closing) drops off straight away. The timer
+  // stays as a backstop in case an event is missed.
+  const socket = getSocket();
+  socket.on('roomsChanged', refreshRooms);
   const roomsTimer = setInterval(refreshRooms, 4000);
   // The lobby is torn down by replacing root's contents, so the poll has to
   // stop itself once its list is gone or it would run for the whole session.
@@ -280,5 +285,6 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     if (root.querySelector('#room-list')) return;
     clearInterval(roomsTimer);
     clearInterval(stopWhenGone);
+    socket.off('roomsChanged', refreshRooms);
   }, 4000);
 }

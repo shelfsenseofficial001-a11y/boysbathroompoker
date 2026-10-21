@@ -305,12 +305,25 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
 
     const quoted = m.replyTo ? chatLog.find((x) => x.id === m.replyTo) : null;
-    const quoteHTML = m.replyTo
-      ? `<div class="bubble-quote">
-          <span class="q-who">${quoted ? esc(quoted.name) : 'Earlier message'}</span>
-          <span class="q-text">${quoted ? (quoted.deleted ? 'Message deleted' : esc(quoted.text)) : 'No longer shown'}</span>
-        </div>`
-      : '';
+    // “You replied to Quinn” above the bubble, with the message being
+    // answered sitting outside it rather than crammed inside.
+    let replyHTML = '';
+    if (m.replyTo) {
+      const from = mine ? 'You' : esc(m.name);
+      const to = !quoted
+        ? 'an earlier message'
+        : quoted.userId === m.userId
+          ? mine
+            ? 'yourself'
+            : 'themselves'
+          : quoted.userId === user.id
+            ? 'you'
+            : esc(quoted.name);
+      replyHTML = `<span class="reply-note">${icons.call} ${from} replied to ${to}</span>
+        <span class="reply-quote">${
+          quoted ? (quoted.deleted ? 'Message deleted' : esc(quoted.text)) : 'No longer shown'
+        }</span>`;
+    }
     const open = chatMenuFor === m.id;
     // Reply sits on its own, then the dots: the one everybody uses is a
     // single tap rather than two.
@@ -330,8 +343,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     return `<li class="chat-row${mine ? ' is-mine' : ''}${group}">
       ${first && !mine ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
+      ${replyHTML}
       <div class="bubble-line">${mine ? '' : face}
-        <div class="bubble">${quoteHTML}<span class="bubble-text">${esc(m.text)}</span>${
+        <div class="bubble"><span class="bubble-text">${esc(m.text)}</span>${
           m.editedAt ? '<span class="bubble-edited">edited</span>' : ''
         }</div>
         ${actions}
@@ -451,6 +465,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const del = e.target.closest('[data-msg-delete]');
     const cancel = e.target.closest('[data-msg-cancel]');
 
+    if (e.target.closest('[data-chat-close]')) return setChatOpen(false);
     if (cancel) return cancelComposer();
     if (menu) {
       const id = Number(menu.dataset.msgMenu);
@@ -518,17 +533,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       host,
       others
         .map((v) => {
-          const voted = v.voters.includes(user.id);
+          const kicked = v.voters.includes(user.id);
+          const kept = (v.keepers || []).includes(user.id);
           const pct = Math.min(100, Math.round((v.votes / v.needed) * 100));
           return `<div class="vote-toast" role="status">
-            <div class="vote-head">Vote to remove <b>${esc(v.name)}</b></div>
+            <div class="vote-head">Remove <b>${esc(v.name)}</b> from the table?</div>
             <div class="vote-bar"><i style="width:${pct}%"></i></div>
             <div class="vote-foot">
               <span>${v.votes} of ${v.needed} needed</span>
               ${
-                voted
-                  ? '<span class="vote-done">You voted</span>'
-                  : `<button class="vote-yes" data-vote="${v.userId}">Vote</button>`
+                kicked || kept
+                  ? `<span class="vote-done">You voted to ${kicked ? 'remove' : 'keep'}</span>`
+                  : `<span class="vote-acts">
+                      <button class="vote-no" data-keep="${v.userId}">Keep</button>
+                      <button class="vote-yes" data-vote="${v.userId}">Kick</button>
+                    </span>`
               }
             </div>
           </div>`;
@@ -538,10 +557,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   async function onVoteClick(e) {
-    const btn = e.target.closest('[data-vote]');
-    if (!btn) return;
+    const kick = e.target.closest('[data-vote]');
+    const keep = e.target.closest('[data-keep]');
+    if (!kick && !keep) return;
     try {
-      await emitAck('voteKick', { userId: Number(btn.dataset.vote) });
+      if (kick) await emitAck('voteKick', { userId: Number(kick.dataset.vote) });
+      else await emitAck('voteKeep', { userId: Number(keep.dataset.keep) });
     } catch (err) {
       showError(err.message);
     }
@@ -647,8 +668,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return `<div class="sheet sheet-result" role="dialog" aria-live="polite" aria-label="Hand result">
       <div class="sheet-kicker">Hand #${sum.handNumber}${split ? ' · split pot' : ''}</div>
       ${sum.winners
-        .map(
-          (w) => `<div class="res-win">
+        .map((w) => {
+          // The five that actually made the hand, so a pair or a flush can be
+          // picked out of the seven at a glance.
+          const made = new Set(w.hand?.cards || []);
+          const hole = (sum.showdownHands || []).find((h) => h.userId === w.userId)?.holeCards || [];
+          const mark = (c) => (made.size && made.has(c) ? ' is-win' : made.size ? ' is-dim' : '');
+          return `<div class="res-win">
             <span class="res-face">${avatarSVG(w.username)}</span>
             <span class="res-who">${esc(w.username)}${w.userId === user.id ? ' <em>(you)</em>' : ''}</span>
             <span class="res-amt">+${fmt(w.amount)}</span>
@@ -659,13 +685,28 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
                   w.kicker ? `<span class="res-kick">${esc(w.kicker)}</span>` : ''
                 }</div>`
               : ''
-          }`
-        )
+          }
+          ${
+            hole.length
+              ? `<div class="res-hole">${hole
+                  .map((c) => cardHTML(c, { simple: true, cls: mark(c) }))
+                  .join('')}</div>`
+              : ''
+          }`;
+        })
         .join('')}
       ${sum.uncontested ? '<div class="res-note">Everyone else folded</div>' : ''}
       ${
         !sum.uncontested && sum.board?.length
-          ? `<div class="res-board">${sum.board.map((c) => cardHTML(c, { simple: true })).join('')}</div>`
+          ? `<div class="res-board">
+              <span class="res-label">Board</span>
+              <div class="res-cards">${sum.board
+                .map((c) => {
+                  const made = new Set(sum.winners.flatMap((w) => w.hand?.cards || []));
+                  return cardHTML(c, { simple: true, cls: made.size ? (made.has(c) ? 'is-win' : 'is-dim') : '' });
+                })
+                .join('')}</div>
+            </div>`
           : ''
       }
       <div class="res-foot">
@@ -1057,7 +1098,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             <button class="btn btn-ghost btn-sm" data-copy>${icons.copy}<span>Copy</span></button>
           </div>
           <div class="meta-row">
-            <span>Blinds <b>${fmt(t.smallBlind)} / ${fmt(t.bigBlind)}</b></span>
+            ${
+              isHost
+                ? `<span class="blind-edit">Blinds
+                    <input class="input input-sm" type="number" min="1" step="1" value="${t.smallBlind}" data-blind="sb" aria-label="Small blind">
+                    <i>/</i>
+                    <input class="input input-sm" type="number" min="2" step="1" value="${t.bigBlind}" data-blind="bb" aria-label="Big blind">
+                  </span>`
+                : `<span>Blinds <b>${fmt(t.smallBlind)} / ${fmt(t.bigBlind)}</b></span>`
+            }
             <span><b>${n}</b> of ${t.maxSeats || 9} seats taken</span>
             ${isHost ? `<span class="add-bot">
               ${levelSelectHTML(botLevel, n >= (t.maxSeats || 9))}
@@ -1079,7 +1128,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
               </li>`).join('')}
           </ul>
           ${isHost
-            ? `<div class="late-join">
+            ? `<label class="switch-row">
+                <input type="checkbox" data-room-private ${state.isPrivate ? 'checked' : ''}>
+                <span>Private room — only people with the code can find it</span>
+              </label>
+              <div class="late-join">
                 <label for="join-chips">Chips for anyone who joins once we've started</label>
                 ${numberFieldHTML({ id: 'join-chips', value: state.joinChips ?? 1000, min: 1, step: 100, label: 'chips for late joiners', attrs: 'data-join-chips', wide: false })}
                 <p class="micro">They'll sit out the hand in play and be dealt in on the next one.</p>
@@ -1122,6 +1175,25 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           showError(err.message);
         }
       });
+    });
+    root.querySelectorAll('[data-blind]').forEach((input) => {
+      input.addEventListener('change', async () => {
+        const read = (k) => Number(root.querySelector(`[data-blind="${k}"]`)?.value);
+        try {
+          await emitAck('setBlinds', { smallBlind: read('sb'), bigBlind: read('bb') });
+        } catch (err) {
+          draw(); // put the old figures back first: it rebuilds the screen,
+          showError(err.message); // and would wipe the message if it followed
+        }
+      });
+    });
+    root.querySelector('[data-room-private]')?.addEventListener('change', async (e) => {
+      try {
+        await emitAck('setPrivate', { isPrivate: e.target.checked });
+      } catch (err) {
+        e.target.checked = !e.target.checked; // put the switch back
+        showError(err.message);
+      }
     });
     root.querySelector('[data-join-chips]')?.addEventListener('change', async (e) => {
       try {
@@ -1181,7 +1253,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </main>
       <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" hidden></span></button>
       <aside class="chat" id="chat" aria-label="Table chat">
-        <div class="chat-head">Table chat</div>
+        <div class="chat-head"><span>Table chat</span>
+          <button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>
+        </div>
         <ol class="chat-log" id="chat-log"></ol>
         <div class="chat-context" id="chat-context" hidden></div>
         <form class="chat-form" id="chat-form">

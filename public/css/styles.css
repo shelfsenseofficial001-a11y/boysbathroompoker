@@ -517,20 +517,32 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .show-chat .chat { width: min(330px, 38vw); }
 .chat-head {
-  flex: none; padding: 14px 50px 10px 14px; font: 800 11px var(--font-ui);
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 10px 10px 14px; font: 800 11px var(--font-ui);
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
   border-bottom: 1px solid var(--line-2);
 }
+/* Closing from inside the panel, where the floating toggle used to sit on
+   top of this heading. */
+.chat-x {
+  flex: none; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: var(--r-s);
+  background: transparent; color: var(--text-3);
+}
+.chat-x:hover { color: var(--red); }
+.chat-x .icon { width: 13px; height: 13px; }
+/* With a close button in the heading the floating one would only overlap it. */
+.show-chat .chat-toggle { opacity: 0; pointer-events: none; }
 .chat-log {
   flex: 1 1 auto; margin: 0; padding: 10px; list-style: none;
   overflow-y: auto; overscroll-behavior: contain; min-width: 330px;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 2px;
 }
 .chat-empty { color: var(--text-3); font-size: 12.5px; line-height: 1.5; padding: 4px; }
 /* Bubbles: mine right and gold, everyone else's left and dark. A run from
    one person is rounded off only on the outside, so it reads as one block
    rather than a stack of separate boxes. */
-.chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; line-height: 1.4; }
+.chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; font-size: 13px; line-height: 1.25; }
 .chat-row + .chat-row { margin-top: 2px; }
 .chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 9px; }
 .chat-row.is-mine { align-items: flex-end; }
@@ -544,7 +556,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-face svg { width: 100%; height: 100%; display: block; }
 .chat-face.is-blank { background: none; }
 .bubble {
-  padding: 7px 11px; min-width: 0; max-width: 100%;
+  padding: 6px 11px; min-width: 0; max-width: 100%;
   background: rgba(255, 255, 255, 0.07); color: var(--text-1);
   overflow-wrap: anywhere; border-radius: 6px 16px 16px 6px;
 }
@@ -559,13 +571,19 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .bubble.is-gone { background: transparent; border: 1px dashed var(--line-2); color: var(--text-3); font-style: italic; font-weight: 400; }
 .bubble-text { white-space: pre-wrap; }
 .bubble-edited { margin-left: 6px; font-size: 10px; opacity: 0.65; }
-/* The quoted message a reply is answering. */
-.bubble-quote {
-  display: block; margin: -1px 0 5px; padding: 4px 8px; border-radius: 8px;
-  background: rgba(0, 0, 0, 0.28); border-left: 2px solid currentColor; opacity: 0.8; font-size: 11.5px;
+/* A reply is announced above the bubble, with the message it answers shown
+   outside it — the bubble itself stays a bubble. */
+.reply-note {
+  display: flex; align-items: center; gap: 4px; padding: 0 4px;
+  font-size: 10.5px; color: var(--text-3);
 }
-.q-who { display: block; font-weight: 800; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
-.q-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-note .icon { width: 11px; height: 11px; transform: scaleX(-1); }
+.chat-row.is-mine .reply-note { flex-direction: row-reverse; }
+.reply-quote {
+  max-width: 82%; margin: 2px 0 -6px; padding: 5px 10px 10px; border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045); color: var(--text-3);
+  font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 /* Reply first, then the dots: the common one is a single tap. */
 .bubble-acts { position: relative; flex: none; display: flex; align-items: center; gap: 1px; }
 .bubble-act {
@@ -632,10 +650,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 @media (max-width: 760px) {
-  /* The slider is fiddly on a touchscreen and the presets plus the stepper
-     already cover every amount, so it goes. */
-  .sizer .range { display: none; }
-  .sizer .amount-row { justify-content: flex-end; }
+  /* Neither the slider nor the −/+ box survives on a phone: both are fiddly
+     under a thumb, and the presets and the chip tray above them set every
+     amount with a single tap. */
+  .sizer .amount-row { display: none; }
+  .sizer .quick { width: 100%; }
 }
 .camera {
   position: relative;
@@ -1314,6 +1333,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    can be a touch bigger than they are on the felt. */
 .player-row .mark .icon { width: 1.15em; height: 1.15em; }
 
+.blind-edit { display: inline-flex; align-items: center; gap: 5px; }
+.blind-edit input { width: 60px; height: 28px; padding: 0 6px; text-align: center; font-weight: 700; }
+.blind-edit i { font-style: normal; color: var(--text-3); }
+
 /* The host's stake for players who turn up mid-game. */
 .late-join {
   margin: 16px 0 4px; padding: 12px 14px;
@@ -1353,17 +1376,25 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   background: var(--red-lo); color: #fff; font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
 }
 .vote-yes:hover { filter: brightness(1.1); }
+.vote-acts { display: flex; gap: 6px; }
+.vote-no {
+  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--line-2);
+  background: transparent; color: var(--text-2); font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.vote-no:hover { color: var(--green); border-color: rgba(60, 194, 127, 0.5); }
 .vote-done { color: var(--green); font-weight: 700; }
 
 /* The ⋯ on another player's nameplate, and what it opens. */
+/* Always there and big enough to hit: it was too faint to find before. */
 .pod-more {
-  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0;
+  position: absolute; top: -9px; right: -9px; width: 26px; height: 26px; padding: 0;
   display: grid; place-items: center; cursor: pointer; line-height: 1;
-  border-radius: 50%; border: 1px solid var(--line-2); background: rgba(6, 12, 9, 0.9);
-  color: var(--text-3); font-size: 13px; opacity: 0; transition: opacity 0.15s, color 0.15s;
+  border-radius: 50%; border: 1px solid var(--line-2); background: rgba(10, 18, 14, 0.96);
+  color: var(--text-2); font-size: 16px; font-weight: 700; opacity: 0.85;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); transition: color 0.15s, border-color 0.15s;
 }
-.pod:hover .pod-more, .pod-more[aria-expanded='true'] { opacity: 1; }
-@media (hover: none) { .pod-more { opacity: 0.6; } }
+.pod:hover .pod-more, .pod-more[aria-expanded='true'] { opacity: 1; border-color: rgba(230, 180, 80, 0.5); }
+.pod-more:hover { color: var(--gold-hi); }
 .pod-more:hover { color: var(--gold-hi); }
 .pod-menu {
   position: absolute; top: 100%; right: 0; z-index: 12; margin-top: 4px; padding: 4px;
@@ -1386,9 +1417,20 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .res-hand { margin: 2px 0 0 44px; text-align: left; font-size: 12.5px; color: var(--text-2); }
 .res-kick { display: block; color: var(--text-3); }
 .res-note { margin-top: 8px; font-size: 12.5px; color: var(--text-3); font-style: italic; }
-.res-board { display: flex; justify-content: center; gap: 4px; margin-top: 16px; }
-.res-board .card { --cw: 34px; filter: none; }
-.res-board .card > .back { display: none; }
+/* The winner's own two, then the board. Both are records of cards already
+   turned over, so they're always faces — the back layer would sit on top. */
+.res-hole, .res-cards { display: flex; gap: 4px; }
+.res-hole { margin: 6px 0 0 44px; }
+.res-board { margin-top: 16px; }
+.res-cards { justify-content: center; margin-top: 5px; }
+.res-hole .card, .res-cards .card { --cw: 34px; filter: none; }
+.res-hole .card > .back, .res-cards .card > .back { display: none; }
+/* The five that made the hand stay lit; the spares fall back. */
+.res-hole .card.is-win, .res-cards .card.is-win {
+  filter: drop-shadow(0 0 5px rgba(247, 213, 138, 0.9)); transform: translateY(-2px);
+}
+.res-hole .card.is-dim, .res-cards .card.is-dim { opacity: 0.38; }
+.res-label { font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
 .res-foot { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
 /* Drains over the life of the modal, so the wait is visible. */
 .res-timer { width: 54px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }

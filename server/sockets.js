@@ -132,6 +132,7 @@ function attachSockets(io, sessionMiddleware) {
         table: room.table.getPublicState(userId),
         gameOver: room.gameOver,
         joinChips: room.lateJoinChips(),
+        isPrivate: room.isPrivate,
         turn,
       };
       for (const s of sockets) s.emit('roomState', payload);
@@ -173,6 +174,11 @@ function attachSockets(io, sessionMiddleware) {
     }, NEXT_HAND_DELAY_MS);
   }
 
+  // Nudges everyone sitting in the lobby to re-read the open-tables list.
+  // Cheap to send and it keeps the list honest the moment a room appears,
+  // fills up, starts, goes private or closes.
+  const roomsChanged = () => io.emit('roomsChanged');
+
   // Tells the room where every open vote stands, so each client can show the
   // toast and count without asking.
   function voteState(room, { closed = null } = {}) {
@@ -184,7 +190,15 @@ function attachSockets(io, sessionMiddleware) {
       const name = room.lobby.get(target)?.username
         || room.table.seats.find((p) => p && p.userId === target)?.username
         || 'Player';
-      open.push({ userId: target, name, votes: votes.size, needed: room.votesNeeded(target), voters: [...votes] });
+      const keeps = room.keepVotes.get(target) || new Set();
+      open.push({
+        userId: target,
+        name,
+        votes: votes.size,
+        needed: room.votesNeeded(target),
+        voters: [...votes],
+        keepers: [...keeps],
+      });
     }
     const members = new Set([
       ...room.lobby.keys(),
@@ -234,6 +248,7 @@ function attachSockets(io, sessionMiddleware) {
       ...room.table.seats.filter(Boolean).map((p) => p.userId),
     ]);
     manager.removeRoom(room.code);
+    roomsChanged();
     for (const id of members) {
       for (const s of socketsByUser.get(id) || []) s.emit('roomClosed', { code: room.code, reason });
     }
@@ -322,6 +337,7 @@ function attachSockets(io, sessionMiddleware) {
         attachTableEvents(room);
         ack?.({ ok: true, code: room.code });
         broadcastRoom(room);
+        roomsChanged();
       } catch (err) {
         ack?.({ ok: false, error: err.message });
       }
@@ -360,6 +376,7 @@ function attachSockets(io, sessionMiddleware) {
       room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
       ack?.({ ok: true, code: room.code });
       broadcastRoom(room);
+      roomsChanged();
     });
 
     const sendChatHistory = (room) => socket.emit('chatHistory', { code: room.code, messages: room.chat });
@@ -424,6 +441,34 @@ function attachSockets(io, sessionMiddleware) {
       info.buyIn = Math.max(1, Math.floor(Number(buyIn)) || info.buyIn);
       ack?.({ ok: true });
       broadcastRoom(room);
+    });
+
+    // Blinds can be retuned between games, never mid-hand: the stakes a hand
+    // started under are the stakes it finishes under.
+    socket.on('setBlinds', ({ smallBlind, bigBlind } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set the blinds.' });
+      if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Wait until the hand is over.' });
+      const sb = Math.floor(Number(smallBlind));
+      const bb = Math.floor(Number(bigBlind));
+      if (!Number.isFinite(sb) || sb < 1) return ack?.({ ok: false, error: 'Small blind must be 1 or more.' });
+      if (!Number.isFinite(bb) || bb <= sb) return ack?.({ ok: false, error: 'Big blind must be larger than the small blind.' });
+      room.table.smallBlind = sb;
+      room.table.bigBlind = bb;
+      room.table.minRaise = bb;
+      ack?.({ ok: true, smallBlind: sb, bigBlind: bb });
+      broadcastRoom(room);
+    });
+
+    socket.on('setPrivate', ({ isPrivate } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set that.' });
+      room.isPrivate = !!isPrivate;
+      ack?.({ ok: true, isPrivate: room.isPrivate });
+      broadcastRoom(room);
+      roomsChanged();
     });
 
     socket.on('setJoinChips', ({ chips } = {}, ack) => {
@@ -503,6 +548,7 @@ function attachSockets(io, sessionMiddleware) {
       }
       if (votes.has(userId)) return ack?.({ ok: false, error: 'You have already voted.' });
       votes.add(userId);
+      room.keepVotes.get(target)?.delete(userId);
 
       const name = room.lobby.get(target)?.username
         || room.table.seats.find((p) => p && p.userId === target)?.username
@@ -515,6 +561,7 @@ function attachSockets(io, sessionMiddleware) {
 
       if (votes.size >= needed) {
         room.kickVotes.delete(target);
+        room.keepVotes.delete(target);
         room.removeFromLobby(target);
         room.table.removePlayer(target);
         for (const sock of socketsByUser.get(target) || []) {
@@ -527,6 +574,38 @@ function attachSockets(io, sessionMiddleware) {
       }
       ack?.({ ok: true, passed: false, votes: votes.size, needed });
       voteState(room);
+    });
+
+    // Voting to keep someone. Enough of these and the kick can no longer
+    // reach a majority, so the vote is called off rather than left hanging.
+    socket.on('voteKeep', ({ userId: targetUserId } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const target = Number(targetUserId);
+      if (!room.kickVotes.has(target)) return ack?.({ ok: false, error: 'There is no vote to answer.' });
+      if (!room.voters(target).has(userId)) return ack?.({ ok: false, error: 'You can’t vote here.' });
+      let keeps = room.keepVotes.get(target);
+      if (!keeps) {
+        keeps = new Set();
+        room.keepVotes.set(target, keeps);
+      }
+      if (keeps.has(userId)) return ack?.({ ok: false, error: 'You have already voted.' });
+      keeps.add(userId);
+      room.kickVotes.get(target)?.delete(userId);
+
+      const live = room.voters(target);
+      const needed = room.votesNeeded(target);
+      const stillPossible = live.size - keeps.size >= needed;
+      if (!stillPossible) {
+        room.kickVotes.delete(target);
+        room.keepVotes.delete(target);
+        const name = room.lobby.get(target)?.username
+          || room.table.seats.find((p) => p && p.userId === target)?.username
+          || 'That player';
+        announce(room, `The table voted to keep ${name}.`);
+      }
+      voteState(room);
+      ack?.({ ok: true, cancelled: !stillPossible });
     });
 
     socket.on('chatEdit', ({ id, text } = {}, ack) => {
@@ -598,6 +677,7 @@ function attachSockets(io, sessionMiddleware) {
         manager.startGame(room);
         ack?.({ ok: true });
         broadcastRoom(room);
+        roomsChanged();
       } catch (err) {
         ack?.({ ok: false, error: err.message });
       }
@@ -636,7 +716,9 @@ function attachSockets(io, sessionMiddleware) {
         }
         const who = nameOf();
         room.kickVotes.delete(userId); // no vote survives its target leaving
+        room.keepVotes.delete(userId);
         for (const votes of room.kickVotes.values()) votes.delete(userId);
+        for (const keeps of room.keepVotes.values()) keeps.delete(userId);
         room.removeFromLobby(userId);
         room.table.removePlayer(userId);
         announce(room, `${who} left the game.`, userId);

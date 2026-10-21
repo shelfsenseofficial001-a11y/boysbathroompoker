@@ -37,6 +37,8 @@ class Room {
     this.isPrivate = !!isPrivate;
     // Open vote-kick: targetUserId -> Set of userIds who voted to remove them.
     this.kickVotes = new Map();
+    // The other side of the same vote: who has spoken up to keep them.
+    this.keepVotes = new Map();
     // Who has pressed skip on the current hand's result screen.
     this.resultHand = null;
     this.resultSkips = new Set();
