@@ -45,10 +45,11 @@ class Room {
     // Who has pressed skip on the current hand's result screen.
     this.resultHand = null;
     this.resultSkips = new Set();
-    // Players who ran out of chips mid-game. Their seat is given up so the
-    // table isn't cluttered with empty stacks, but they stay in the room to
-    // watch and talk, and they're dealt back in when the next game starts.
-    this.spectators = new Set();
+    // Everyone in the room without a seat: userId -> why they're watching,
+    // 'bust' (ran out of chips, seat given up so the table isn't cluttered
+    // with empty stacks) or 'watching' (pulled up a chair deliberately).
+    // Either way they can talk, and the next game deals them in.
+    this.spectators = new Map();
   }
 
   // Everyone in the room: waiting in the lobby, sat at the table, or watching
@@ -59,11 +60,17 @@ class Room {
     return ids;
   }
 
-  // Name and id for each spectator, for the watchers panel at the table.
+  // Who's watching, for the panel at the table. `bust` separates the player
+  // who lost their stack from the one who chose to sit this game out: only
+  // the first is owed an explanation.
   spectatorList() {
     return [...this.spectators]
-      .map((id) => ({ userId: id, username: this.lobby.get(id)?.username || 'Player' }))
-      .filter((s) => this.lobby.has(s.userId));
+      .filter(([id]) => this.lobby.has(id))
+      .map(([id, why]) => ({
+        userId: id,
+        username: this.lobby.get(id)?.username || 'Player',
+        bust: why === 'bust',
+      }));
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {

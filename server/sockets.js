@@ -209,7 +209,7 @@ function attachSockets(io, sessionMiddleware) {
       }
       // Their own client asks them whether to stay and watch or go, so the
       // only thing to say here is to everybody else.
-      room.spectators.add(uid);
+      room.spectators.set(uid, 'bust');
       announce(room, `${username} is out of chips and is now watching.`, uid);
     }
   }
@@ -260,11 +260,17 @@ function attachSockets(io, sessionMiddleware) {
   // A line of table news for everyone still in the room: who joined, who
   // left. `except` skips the player it's about, who already knows.
   function announce(room, text, except = null) {
-    const members = room.members();
-    for (const id of members) {
-      if (id === except) continue;
+    const skip = new Set(Array.isArray(except) ? except : [except]);
+    for (const id of room.members()) {
+      if (skip.has(id)) continue;
       for (const s of socketsByUser.get(id) || []) s.emit('notice', { text });
     }
+  }
+
+  // A line meant for one person in particular, alongside whatever the rest
+  // of the room is being told.
+  function tell(uid, text) {
+    for (const s of socketsByUser.get(uid) || []) s.emit('notice', { text });
   }
 
   // Shuts a room down for everyone in it. The clients are told why, because
@@ -437,6 +443,36 @@ function attachSockets(io, sessionMiddleware) {
       const res = admit(room, userId, nameOf());
       ack?.(res);
       if (!res.ok) return;
+      broadcastRoom(room);
+      roomsChanged();
+    });
+
+    // Pulling up a chair behind the table rather than at it: you see the
+    // hands play out and can talk, but take no seat and stake no chips. The
+    // next game deals you in like anyone else waiting in the room.
+    socket.on('spectateRoom', ({ code } = {}, ack) => {
+      const room = manager.getRoom(code);
+      if (!room) return ack?.({ ok: false, error: 'Room not found.' });
+      const current = roomFor(userId);
+      if (current === room) return ack?.({ ok: true, code: room.code });
+      if (current) return ack?.({ ok: false, error: 'Leave your current room first.' });
+      // Before the deal there's nothing to watch, and a seat is free anyway.
+      if (room.table.phase === 'waiting') {
+        return ack?.({ ok: false, error: 'That game hasn’t started yet — join it instead.' });
+      }
+      // A private room's door is the host's to answer, for watchers too.
+      if (room.isPrivate && userId !== room.hostUserId) {
+        return ack?.({ ok: false, error: 'That room is private — ask the host for the code.' });
+      }
+      if (room.lobby.size >= room.table.maxSeats) return ack?.({ ok: false, error: 'That room is full.' });
+      const username = nameOf();
+      if (room.nameTaken(username, userId)) {
+        return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
+      }
+      room.addToLobby(userId, username, room.lateJoinChips());
+      room.spectators.set(userId, 'watching');
+      announce(room, `${username} is watching.`, userId);
+      ack?.({ ok: true, code: room.code, spectating: true });
       broadcastRoom(room);
       roomsChanged();
     });
@@ -736,6 +772,39 @@ function attachSockets(io, sessionMiddleware) {
       room.addToLobby(bot.makeBotId(), bot.pickBotName(taken, botLevel), seatedBuyIn, true, botLevel);
       ack?.({ ok: true });
       broadcastRoom(room);
+    });
+
+    // Handing the room over. The room belongs to whoever holds it - they can
+    // start hands, set the stakes, answer a private room's door, and closing
+    // it is theirs to do - so this is a real change of hands, not a label.
+    socket.on('transferHost', ({ userId: targetUserId } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the owner can hand the room over.' });
+      const uid = Number(targetUserId);
+      if (uid === userId) return ack?.({ ok: false, error: 'You already own this room.' });
+      const info = room.lobby.get(uid);
+      const seat = room.table.seats.find((p) => p && p.userId === uid && !p.left);
+      if (!info && !seat) return ack?.({ ok: false, error: 'That player has already gone.' });
+      // Nobody is at the keyboard for a bot, so a room handed to one could
+      // never be started, managed or closed again.
+      if (uid < 0 || info?.isBot || seat?.isBot) return ack?.({ ok: false, error: 'A bot can’t own the room.' });
+
+      const name = info?.username || seat?.username || 'Player';
+      const before = nameOf();
+      room.hostUserId = uid;
+      room.hostUsername = name;
+      // The owner can't be voted out, so any vote already running against
+      // them stops the moment they take the room over.
+      room.kickVotes.delete(uid);
+      room.keepVotes.delete(uid);
+      announce(room, `${before} made ${name} the room owner.`, [uid, userId]);
+      tell(uid, `${before} made you the room owner.`);
+      tell(userId, `${name} owns the room now.`);
+      ack?.({ ok: true });
+      voteState(room, { closed: uid });
+      broadcastRoom(room);
+      roomsChanged(); // the open-tables list names the host
     });
 
     socket.on('removePlayer', ({ userId: targetUserId } = {}, ack) => {

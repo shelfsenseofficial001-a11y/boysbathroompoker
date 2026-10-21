@@ -262,6 +262,16 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     }
   }
 
+  async function watch(code) {
+    errEl.textContent = '';
+    try {
+      const res = await emitAck('spectateRoom', { code });
+      onEnterRoom(res.code, 'Watching this game — you’ll be dealt in when the next one starts.');
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   // The host has answered: either we're in, or we're not.
   function onKnockAnswered(res) {
     setKnocking(false);
@@ -305,7 +315,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
                   <span>${r.inPlay ? 'Sit in with' : 'Start with'} <b>${fmt(r.chips)}</b> chips</span>
                 </div>
               </div>
-              <button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>
+              <span class="room-acts">
+                ${r.inPlay ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}">Spectate</button>` : ''}
+                <button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>
+              </span>
             </div>`
               )
               .join('')
@@ -314,6 +327,12 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           b.addEventListener('click', () => {
             join(b.dataset.code, true);
             refreshRooms(); // whatever happens, redraw the list from the truth
+          })
+        );
+        list.querySelectorAll('[data-watch]').forEach((b) =>
+          b.addEventListener('click', () => {
+            watch(b.dataset.watch);
+            refreshRooms();
           })
         );
       })

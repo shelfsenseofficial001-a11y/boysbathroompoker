@@ -324,6 +324,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-m); padding: 10px 12px;
 }
 .room-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+/* Sit down, or just watch. Both stay on one line until the row runs out of
+   room, where they wrap rather than squeezing the table's details. */
+.room-acts { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .room-row .code { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
 .room-row .sub { font-size: var(--fs-small); color: var(--text-3); }
 /* A table already dealing. You can still sit down — from the next hand. */
@@ -1518,6 +1521,13 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   font: 800 9.5px var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase;
   color: #2a1c05; background: var(--gold);
 }
+/* A nought beside the name: this one lost their stack rather than choosing
+   to watch. */
+.spec-why {
+  flex: none; margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(224, 86, 79, 0.14); color: #ff9d97;
+  font: 800 10px var(--font-ui); text-align: center; font-variant-numeric: tabular-nums;
+}
 .spec-note { margin: 0 12px; font-size: 11px; line-height: 1.4; color: var(--text-3); }
 
 /* A message from somebody watching rather than playing. The eye says it on
@@ -1555,10 +1565,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
   display: flex; flex-direction: column; gap: 10px;
 }
-/* A coloured edge says which kind of card this is at a glance: red for a
+/* Which kind of card this is reads from the border's colour alone: red for a
    vote against somebody, gold for somebody asking to come in. */
-.vote-toast.is-vote { border-left: 3px solid var(--red); }
-.vote-toast.is-knock { border-left: 3px solid var(--gold); }
+.vote-toast.is-vote { border-color: rgba(224, 86, 79, 0.45); }
+.vote-toast.is-knock { border-color: rgba(230, 180, 80, 0.45); }
 .vote-top { display: flex; align-items: center; gap: 10px; }
 .vote-face { flex: none; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; }
 .vote-face svg { width: 100%; height: 100%; display: block; }
@@ -1631,15 +1641,24 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .pod.has-menu { z-index: 30; }
 .pod-menu {
   position: absolute; top: 100%; right: 0; z-index: 2; margin-top: 4px; padding: 4px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px;
   background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
 }
 /* Low on the table it opens upward instead of off the felt. */
 .pod.is-low .pod-menu { top: auto; bottom: 100%; margin: 0 0 4px; }
 .pod-menu button {
+  display: flex; align-items: center; gap: 7px;
   padding: 7px 12px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px;
-  background: transparent; color: #ff9d97; font: 700 12px var(--font-ui);
+  background: transparent; color: var(--text-1); font: 700 12px var(--font-ui); text-align: left;
 }
-.pod-menu button:hover { background: rgba(224, 86, 79, 0.14); }
+.pod-menu button .icon { width: 13px; height: 13px; flex: none; }
+.pod-menu button:hover { background: rgba(255, 255, 255, 0.07); }
+/* Handing the room over carries the owner's colour; voting someone out
+   carries the warning one. */
+.pod-menu [data-make-host] { color: var(--gold-hi); }
+.pod-menu [data-make-host]:hover { background: rgba(230, 180, 80, 0.14); }
+.pod-menu [data-vote-kick] { color: #ff9d97; }
+.pod-menu [data-vote-kick]:hover { background: rgba(224, 86, 79, 0.14); }
 
 /* ---------- Hand result ----------
    Every moving part animates transform or opacity, which the compositor

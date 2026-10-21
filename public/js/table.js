@@ -159,6 +159,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let resultSkips = null; // { skips, of } from the server, for the button
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
+  let askingTransfer = null; // userId being offered the room, pending confirmation
   let askingSettings = false; // the settings panel is up
 
   function loadHistory() {
@@ -574,10 +575,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
            (sp) => `<li class="spec-row${sp.userId === user.id ? ' is-me' : ''}">
              <span class="spec-face">${avatarSVG(sp.username)}</span>
              <span class="spec-who">${esc(sp.username)}${sp.userId === user.id ? ' <em>you</em>' : ''}</span>
+             ${sp.bust ? '<span class="spec-why" title="Out of chips">0</span>' : ''}
            </li>`
          )
          .join('')}</ul>
-       <p class="spec-note">Out of chips — back in when the next game starts.</p>`
+       <p class="spec-note">${
+         list.every((sp) => sp.bust) ? 'Out of chips — back in' : 'Back in'
+       } when the next game starts.</p>`
     );
   }
 
@@ -722,6 +726,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function overlayHTML(cur) {
     if (askingLeave) return leaveConfirmHTML(cur);
+    if (askingTransfer != null) return transferConfirmHTML(cur);
     if (askingSettings) return settingsHTML();
     if (resultHand && cur.table.handNumber === resultHand && cur.table.lastHandSummary) {
       return resultHTML(cur);
@@ -729,10 +734,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
     // Out of chips: the seat is already given up, but staying to watch is
-    // still a choice, so it's asked rather than assumed.
-    const watching = (cur.spectators || []).some((sp) => sp.userId === user.id);
-    if (!watching) bustAnswered = false; // dealt back in; ask again next time
-    if (watching && !bustAnswered) return bustedHTML(cur);
+    // still a choice, so it's asked rather than assumed. Nobody who chose to
+    // watch from the lobby is asked anything - they've already decided.
+    const busted = (cur.spectators || []).some((sp) => sp.userId === user.id && sp.bust);
+    if (!busted) bustAnswered = false; // dealt back in; ask again next time
+    if (busted && !bustAnswered) return bustedHTML(cur);
     return '';
   }
 
@@ -922,6 +928,29 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
+  // Handing the room over is not something to do by accident: it's the one
+  // action here that takes something away from you and can't be undone from
+  // your side afterwards.
+  function transferConfirmHTML(cur) {
+    const who =
+      cur.table.seats.find((p) => p && p.userId === askingTransfer)?.username ||
+      cur.lobby.find((p) => p.userId === askingTransfer)?.username;
+    // They left while the question was on screen.
+    if (!who) {
+      askingTransfer = null;
+      return '';
+    }
+    return `<div class="sheet sheet-ask" role="dialog" aria-modal="true" aria-label="Hand the room over">
+      <div class="sheet-crown">${icons.key}</div>
+      <h2 class="sheet-title">Make ${esc(who)} the owner?</h2>
+      <p class="sheet-sub">They'll deal the hands, set the stakes and answer the door, and closing the room becomes theirs to do. You'll stay at the table as an ordinary player — and you can't take it back yourself.</p>
+      <div class="sheet-actions">
+        <button class="btn btn-primary btn-lg" data-ov="transfer-yes">${icons.key}Hand it over</button>
+        <button class="btn btn-ghost" data-ov="transfer-no">Keep the room</button>
+      </div>
+    </div>`;
+  }
+
   function leaveConfirmHTML(cur) {
     const host = cur.hostUserId === user.id;
     const others = new Set([
@@ -981,6 +1010,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (kind === 'leave') { askingLeave = true; return drawOverlay(shown); }
     if (kind === 'leave-yes') return leaveRoom();
     if (kind === 'leave-no') askingLeave = false;
+    if (kind === 'transfer-no') askingTransfer = null;
+    if (kind === 'transfer-yes') {
+      const target = askingTransfer;
+      askingTransfer = null;
+      drawOverlay(shown);
+      emitAck('transferHost', { userId: target }).catch((err) => showError(err.message));
+      return;
+    }
     if (kind === 'settings-close') askingSettings = false;
     if (kind === 'skip-result') {
       const hand = resultHand;
@@ -1431,6 +1468,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.seats.addEventListener('click', async (e) => {
       const open = e.target.closest('[data-seat-menu]');
       const vote = e.target.closest('[data-vote-kick]');
+      const give = e.target.closest('[data-make-host]');
+      if (give) {
+        askingTransfer = Number(give.dataset.makeHost);
+        seatMenuFor = null;
+        drawTable(null, shown);
+        return drawOverlay(shown);
+      }
       if (open) {
         const id = Number(open.dataset.seatMenu);
         seatMenuFor = seatMenuFor === id ? null : id;
@@ -1874,7 +1918,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           ? `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${seatMenuFor === p.userId}">⋯</button>
              ${
                seatMenuFor === p.userId
-                 ? `<div class="pod-menu"><button data-vote-kick="${p.userId}">Vote kick</button></div>`
+                 ? `<div class="pod-menu">
+                      ${
+                        ctx.hostUserId === user.id
+                          ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>`
+                          : ''
+                      }
+                      <button data-vote-kick="${p.userId}">Vote kick</button>
+                    </div>`
                  : ''
              }`
           : ''
