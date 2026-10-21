@@ -133,6 +133,11 @@ function attachSockets(io, sessionMiddleware) {
         gameOver: room.gameOver,
         joinChips: room.lateJoinChips(),
         isPrivate: room.isPrivate,
+        // Only the host is asked to answer the door, so only the host is told
+        // who is standing at it.
+        knocks: userId === room.hostUserId
+          ? [...room.knocks.entries()].map(([uid, username]) => ({ userId: uid, username }))
+          : [],
         turn,
       };
       for (const s of sockets) s.emit('roomState', payload);
@@ -260,6 +265,41 @@ function attachSockets(io, sessionMiddleware) {
     return manager.findRoomForUser(userId);
   }
 
+  // Puts someone who is allowed in into the room, whether they walked into a
+  // public table or the host just opened the door of a private one. Returns
+  // what the joiner's client needs to know, or why they can't come in.
+  function admit(room, uid, username) {
+    if (room.nameTaken(username, uid)) {
+      return { ok: false, error: 'Someone in that room already uses that name.' };
+    }
+    // Walking in on a game already under way: the host's stake applies, not
+    // whatever the joiner typed, and they wait for the current hand to finish
+    // rather than being dealt into the middle of one.
+    if (room.table.phase !== 'waiting') {
+      if (room.table.seats.every((seat) => seat !== null) || room.lobby.size >= room.table.maxSeats) {
+        return { ok: false, error: 'That table is full.' };
+      }
+      const chips = room.lateJoinChips();
+      room.addToLobby(uid, username, chips);
+      room.table.addLatePlayer(uid, username, chips);
+      announce(room, `${username} joined — in from the next hand.`, uid);
+      return { ok: true, code: room.code, chips, waiting: true };
+    }
+    if (room.lobby.size >= room.table.maxSeats) return { ok: false, error: 'That room is full.' };
+    // Before the game starts everyone is on the table's stake, which is the
+    // host's own figure — not the separate one set aside for late joiners.
+    const stake = room.lobby.get(room.hostUserId)?.buyIn;
+    room.addToLobby(uid, username, stake > 0 ? stake : 1000);
+    return { ok: true, code: room.code };
+  }
+
+  // Drops anyone who is waiting at a door they've walked away from.
+  function clearKnock(uid) {
+    for (const room of manager.rooms.values()) {
+      if (room.knocks.delete(uid)) broadcastRoom(room);
+    }
+  }
+
   io.on('connection', (socket) => {
     const userId = socket.userId;
     if (!socketsByUser.has(userId)) socketsByUser.set(userId, new Set());
@@ -343,9 +383,16 @@ function attachSockets(io, sessionMiddleware) {
       }
     });
 
-    socket.on('joinRoom', ({ code, buyIn } = {}, ack) => {
+    socket.on('joinRoom', ({ code, buyIn, fromList } = {}, ack) => {
       const room = manager.getRoom(code);
       if (!room) return ack?.({ ok: false, error: 'Room not found.' });
+      // The open-tables list only ever shows public rooms. A click on an entry
+      // that has since gone private is refused, unless they're already in it;
+      // the code itself still works for the people the host gave it to.
+      if (fromList && room.isPrivate && !room.lobby.has(userId)) {
+        roomsChanged();
+        return ack?.({ ok: false, error: 'That room has gone private — ask the host for the code.' });
+      }
       const current = roomFor(userId);
       if (current && current !== room) return ack?.({ ok: false, error: 'Leave your current room first.' });
       if (room.lobby.has(userId)) {
@@ -356,27 +403,54 @@ function attachSockets(io, sessionMiddleware) {
       if (room.nameTaken(nameOf(), userId)) {
         return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
       }
-      // Walking in on a game already under way: the host's stake applies, not
-      // whatever the joiner typed, and they wait for the current hand to
-      // finish rather than being dealt into the middle of one.
-      if (room.table.phase !== 'waiting') {
-        if (room.table.seats.every((seat) => seat !== null) || room.lobby.size >= room.table.maxSeats) {
-          return ack?.({ ok: false, error: 'That table is full.' });
-        }
-        const chips = room.lateJoinChips();
-        room.addToLobby(userId, nameOf(), chips);
-        room.table.addLatePlayer(userId, nameOf(), chips);
-        announce(room, `${nameOf()} joined — in from the next hand.`, userId);
-        ack?.({ ok: true, code: room.code, chips, waiting: true });
+      // The code only gets you as far as the door of a private room: the host
+      // decides who actually comes in.
+      if (room.isPrivate && userId !== room.hostUserId) {
+        room.knocks.set(userId, nameOf());
+        ack?.({ ok: true, code: room.code, knocking: true });
         return broadcastRoom(room);
       }
-      if (room.lobby.size >= room.table.maxSeats) {
-        return ack?.({ ok: false, error: 'That room is full.' });
-      }
-      room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
-      ack?.({ ok: true, code: room.code });
+      const res = admit(room, userId, nameOf());
+      ack?.(res);
+      if (!res.ok) return;
       broadcastRoom(room);
       roomsChanged();
+    });
+
+    // The host answering the door of their private room.
+    socket.on('answerKnock', ({ userId: target, allow } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can let people in.' });
+      const uid = Number(target);
+      const knocked = room.knocks.get(uid);
+      if (knocked === undefined) return ack?.({ ok: false, error: 'They’re not waiting any more.' });
+      room.knocks.delete(uid);
+      const tell = (payload) => {
+        for (const s of socketsByUser.get(uid) || []) s.emit('knockAnswered', payload);
+      };
+      if (!allow) {
+        tell({ ok: false, code: room.code, error: 'The host didn’t let you in.' });
+        ack?.({ ok: true });
+        return broadcastRoom(room);
+      }
+      const fresh = db.getUserById(uid);
+      // They didn't wait: by now they're sat somewhere else, and nobody can
+      // be in two rooms at once.
+      const elsewhere = roomFor(uid);
+      const res = elsewhere && elsewhere !== room
+        ? { ok: false, error: `${knocked} has joined another room.` }
+        : admit(room, uid, fresh ? db.displayName(fresh) : knocked);
+      tell({ ...res, code: room.code });
+      ack?.(res.ok ? { ok: true } : res);
+      broadcastRoom(room);
+      roomsChanged();
+    });
+
+    // They gave up waiting, or went back to the lobby.
+    socket.on('cancelKnock', (_payload, ack) => {
+      clearKnock(userId);
+      ack?.({ ok: true });
     });
 
     const sendChatHistory = (room) => socket.emit('chatHistory', { code: room.code, messages: room.chat });
@@ -431,15 +505,17 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true });
     });
 
-    socket.on('setBuyIn', ({ userId: targetUserId, buyIn }, ack) => {
+    // One stake for the whole table: everyone starts the game on the same
+    // stack, so there's a single figure to set rather than one per player.
+    socket.on('setStartingChips', ({ chips } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
-      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set buy-ins.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set the stakes.' });
       if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already started.' });
-      const info = room.lobby.get(targetUserId);
-      if (!info) return ack?.({ ok: false, error: 'Player not in lobby.' });
-      info.buyIn = Math.max(1, Math.floor(Number(buyIn)) || info.buyIn);
-      ack?.({ ok: true });
+      const n = Math.floor(Number(chips));
+      if (!Number.isFinite(n) || n < 1) return ack?.({ ok: false, error: 'Enter a chip amount of 1 or more.' });
+      for (const info of room.lobby.values()) info.buyIn = n;
+      ack?.({ ok: true, chips: n });
       broadcastRoom(room);
     });
 
@@ -459,16 +535,6 @@ function attachSockets(io, sessionMiddleware) {
       room.table.minRaise = bb;
       ack?.({ ok: true, smallBlind: sb, bigBlind: bb });
       broadcastRoom(room);
-    });
-
-    socket.on('setPrivate', ({ isPrivate } = {}, ack) => {
-      const room = roomFor(userId);
-      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
-      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set that.' });
-      room.isPrivate = !!isPrivate;
-      ack?.({ ok: true, isPrivate: room.isPrivate });
-      broadcastRoom(room);
-      roomsChanged();
     });
 
     socket.on('setJoinChips', ({ chips } = {}, ack) => {
@@ -539,6 +605,9 @@ function attachSockets(io, sessionMiddleware) {
         room.lobby.has(target) || room.table.seats.some((p) => p && p.userId === target && !p.left);
       if (!inRoom) return ack?.({ ok: false, error: 'That player has already gone.' });
       if (target < 0) return ack?.({ ok: false, error: 'Ask the host to remove a bot.' });
+      // The room belongs to the host: voting them out would leave everyone in
+      // a table nobody can manage.
+      if (target === room.hostUserId) return ack?.({ ok: false, error: 'The host can’t be voted out of their own room.' });
       if (!room.voters(target).has(userId)) return ack?.({ ok: false, error: 'You can’t vote here.' });
 
       let votes = room.kickVotes.get(target);
@@ -742,6 +811,7 @@ function attachSockets(io, sessionMiddleware) {
         set.delete(socket);
         if (set.size === 0) {
           socketsByUser.delete(userId);
+          clearKnock(userId);
           const room = roomFor(userId);
           if (room?.table.setPeeking(userId, false)) broadcastRoom(room);
         }

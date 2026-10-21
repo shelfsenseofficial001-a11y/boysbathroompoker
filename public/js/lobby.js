@@ -6,6 +6,7 @@ import { icons } from './svg/icons.js';
 import { userPillHTML, wireNameEditor } from './name.js';
 import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
+import { showToast } from './toast.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -40,7 +41,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           </div>
           <label class="switch-row">
             <input type="checkbox" id="room-private">
-            <span>Private room — only people with the code can find it</span>
+            <span>Private room — hidden from open tables, and you let each player in</span>
           </label>
           <button class="btn btn-primary btn-lg" id="create-room">Create room</button>
         </section>
@@ -51,6 +52,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
             <div class="field"><label for="join-code">Room code</label><input id="join-code" type="text" maxlength="5" autocomplete="off" placeholder="ABCDE" style="text-transform:uppercase;letter-spacing:.2em;font-weight:700"></div>
           </div>
           <button class="btn btn-lg" id="join-room">Join room</button>
+          <div class="knock-wait" id="knock-wait" hidden>
+            <span>Waiting for the host to let you in<span class="dots"></span></span>
+            <button class="btn btn-ghost btn-sm" id="knock-cancel">Cancel</button>
+          </div>
           <div class="micro" style="margin-top:22px">Open tables</div>
           <div class="room-list" id="room-list"><div class="empty">Looking for tables…</div></div>
         </section>
@@ -103,7 +108,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   const errEl = $('#lobby-error');
   // Why we're back here, when the room ended rather than the player leaving.
   if (notice) errEl.textContent = notice;
-  const fail = (err) => (errEl.textContent = err.message);
+  // Being turned away from a room happens over by the Join button, which is
+  // nowhere near the line of red text at the foot of the page — so it's said
+  // in a toast, where it can't be missed.
+  const fail = (err) => showToast(err.message, { atPage: true });
 
   $('#logout').addEventListener('click', onLogout);
   wireNameEditor(root, user);
@@ -223,20 +231,48 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     }
   });
 
-  async function join(code) {
+  // Walking into a game already running: the host's stake applies, so say so
+  // rather than letting the chips field silently mean nothing.
+  const enter = (res) =>
+    onEnterRoom(
+      res.code,
+      res.waiting ? `Joining with ${Number(res.chips).toLocaleString('en-US')} chips — you'll be dealt in next hand.` : null
+    );
+
+  const waitEl = $('#knock-wait');
+  const setKnocking = (on) => {
+    waitEl.hidden = !on;
+    $('#join-room').disabled = on;
+  };
+
+  async function join(code, fromList = false) {
     errEl.textContent = '';
     if (!code) return fail(new Error('Enter a room code.'));
     try {
       // No buy-in is sent: the host sets every player's stack, in the waiting
       // room or - for someone arriving mid-game - from their late-join figure.
-      const res = await emitAck('joinRoom', { code });
-      // Walking into a game already running: the host's stake applies, so say
-      // so rather than letting the chips field silently mean nothing.
-      onEnterRoom(res.code, res.waiting ? `Joining with ${Number(res.chips).toLocaleString('en-US')} chips — you'll be dealt in next hand.` : null);
+      // Saying where the code came from lets the server turn away a click on
+      // a list entry that went private after the list was drawn.
+      const res = await emitAck('joinRoom', { code, fromList });
+      // A private room's code only gets you to the door; the host answers it.
+      if (res.knocking) return setKnocking(true);
+      enter(res);
     } catch (err) {
       fail(err);
     }
   }
+
+  // The host has answered: either we're in, or we're not.
+  function onKnockAnswered(res) {
+    setKnocking(false);
+    if (res?.ok) enter(res);
+    else fail(new Error(res?.error || 'The host didn’t let you in.'));
+  }
+
+  $('#knock-cancel').addEventListener('click', () => {
+    setKnocking(false);
+    emitAck('cancelKnock').catch(() => {});
+  });
 
   $('#join-room').addEventListener('click', () => join($('#join-code').value.trim().toUpperCase()));
   $('#join-code').addEventListener('keydown', (e) => {
@@ -259,14 +295,26 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
               .map(
                 (r) => `
             <div class="room-row">
-              <div><div class="code">${esc(r.code)}</div><div class="sub">${esc(r.host)} · ${r.players} waiting · blinds ${fmt(r.smallBlind)}/${fmt(r.bigBlind)}</div></div>
+              <div class="room-main">
+                <div class="code">${esc(r.code)}${
+                  r.inPlay ? `<span class="room-live">Hand #${r.hand}</span>` : ''
+                }</div>
+                <div class="sub">${esc(r.host)} · ${r.players}/${r.seats} ${r.inPlay ? 'playing' : 'waiting'}</div>
+                <div class="room-terms">
+                  <span>Blinds <b>${fmt(r.smallBlind)}/${fmt(r.bigBlind)}</b></span>
+                  <span>${r.inPlay ? 'Sit in with' : 'Start with'} <b>${fmt(r.chips)}</b> chips</span>
+                </div>
+              </div>
               <button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>
             </div>`
               )
               .join('')
           : '<div class="empty">No open tables right now — host one!</div>';
         list.querySelectorAll('[data-code]').forEach((b) =>
-          b.addEventListener('click', () => join(b.dataset.code))
+          b.addEventListener('click', () => {
+            join(b.dataset.code, true);
+            refreshRooms(); // whatever happens, redraw the list from the truth
+          })
         );
       })
       .catch(() => {});
@@ -278,6 +326,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // stays as a backstop in case an event is missed.
   const socket = getSocket();
   socket.on('roomsChanged', refreshRooms);
+  socket.on('knockAnswered', onKnockAnswered);
   const roomsTimer = setInterval(refreshRooms, 4000);
   // The lobby is torn down by replacing root's contents, so the poll has to
   // stop itself once its list is gone or it would run for the whole session.
@@ -286,5 +335,6 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     clearInterval(roomsTimer);
     clearInterval(stopWhenGone);
     socket.off('roomsChanged', refreshRooms);
+    socket.off('knockAnswered', onKnockAnswered);
   }, 4000);
 }

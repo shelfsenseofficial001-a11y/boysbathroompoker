@@ -42,6 +42,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The browser's own [hidden] rule is weaker than any class that sets display,
+   so `el.hidden = true` silently did nothing on anything laid out with flex
+   or grid. Stated here so hiding an element keeps working whatever it is. */
+[hidden] { display: none !important; }
+
 /* Always reserve the scrollbar's space, so the layout never jumps sideways
    when a page becomes scrollable (or stops being). */
 html {
@@ -284,12 +289,29 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pv-timing .micro { letter-spacing: 0.04em; text-transform: none; white-space: nowrap; }
 
 .room-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; margin-top: 10px; }
+/* Knocking on a private room: the host decides, so this is a real wait. */
+.knock-wait {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 10px; padding: 9px 12px; border-radius: var(--r-m);
+  border: 1px solid rgba(230, 180, 80, 0.35); background: rgba(230, 180, 80, 0.07);
+  font-size: 12.5px; color: var(--text-2);
+}
 .room-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-m); padding: 10px 12px;
 }
-.room-row .code { font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
+.room-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.room-row .code { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
 .room-row .sub { font-size: var(--fs-small); color: var(--text-3); }
+/* A table already dealing. You can still sit down — from the next hand. */
+.room-live {
+  padding: 1px 7px; border-radius: 999px; letter-spacing: 0.04em;
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  color: var(--green); background: rgba(60, 194, 127, 0.12); border: 1px solid rgba(60, 194, 127, 0.4);
+}
+/* What you're agreeing to by sitting down: the stakes and the stack. */
+.room-terms { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; font-size: 11.5px; color: var(--text-3); }
+.room-terms b { color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .empty { color: var(--text-3); font-size: var(--fs-small); padding: 14px; text-align: center; border: 1px dashed var(--line-2); border-radius: var(--r-m); }
 
 /* Auth */
@@ -546,7 +568,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-row + .chat-row { margin-top: 2px; }
 .chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 9px; }
 .chat-row.is-mine { align-items: flex-end; }
-.chat-who { font: 800 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); padding-left: 34px; }
+/* Sender's name and “Replied to …” share one line above the bubble. The
+   parts are different sizes, so they centre on a common line box rather
+   than sitting on their own baselines. */
+.chat-meta { display: flex; align-items: center; gap: 6px; line-height: 1; }
+.chat-row.is-mine .chat-meta { flex-direction: row-reverse; }
+.chat-who { font: 500 10.5px/1 var(--font-ui); color: var(--text-3); }
 .bubble-line { position: relative; display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
 .bubble-line > .bubble { flex: 0 1 auto; min-width: 0; }
 .chat-row.is-mine .bubble-line { flex-direction: row-reverse; }
@@ -573,12 +600,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .bubble-edited { margin-left: 6px; font-size: 10px; opacity: 0.65; }
 /* A reply is announced above the bubble, with the message it answers shown
    outside it — the bubble itself stays a bubble. */
-.reply-note {
-  display: flex; align-items: center; gap: 4px; padding: 0 4px;
-  font-size: 10.5px; color: var(--text-3);
-}
-.reply-note .icon { width: 11px; height: 11px; transform: scaleX(-1); }
-.chat-row.is-mine .reply-note { flex-direction: row-reverse; }
+.reply-note { font: 500 10.5px/1 var(--font-ui); color: var(--text-3); }
+.reply-arrow { display: flex; align-items: center; color: var(--text-3); }
+.reply-arrow .icon { display: block; width: 11px; height: 11px; transform: scaleX(-1); }
+.chat-row.is-mine .reply-arrow .icon { transform: none; }
+/* On someone else's message the bubble sits past their face, so the reply
+   line and quote have to step over the same gap or they hang off the left
+   edge, under the avatar column. */
+.chat-row:not(.is-mine) .chat-meta,
+.chat-row:not(.is-mine) .reply-quote { margin-left: 32px; }
 .reply-quote {
   max-width: 82%; margin: 2px 0 -6px; padding: 5px 10px 10px; border-radius: 13px;
   background: rgba(255, 255, 255, 0.045); color: var(--text-3);
@@ -643,18 +673,21 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   .show-history .history { width: min(300px, 86vw); transform: none; }
   .show-chat .chat { width: min(320px, 88vw); transform: none; }
   .history-list, .chat-log, .chat-form { min-width: 0; }
-  .chat-who { padding-left: 32px; }
   /* The on-screen keyboard changes the viewport height when the message box
      is tapped; without this the table animates every time it opens. */
   .camera { transition: none; }
 }
 
 @media (max-width: 760px) {
-  /* Neither the slider nor the −/+ box survives on a phone: both are fiddly
-     under a thumb, and the presets and the chip tray above them set every
-     amount with a single tap. */
-  .sizer .amount-row { display: none; }
-  .sizer .quick { width: 100%; }
+  /* On a phone the slider, −/+ box and presets go: there isn't room for them
+     under the table. The chip tray stays, because tapping chips is how a bet
+     gets sized without them. */
+  /* Scoped to .dock so it outranks the base rules, which come later in the
+     file and would otherwise win. */
+  .dock .sizer { display: none; }
+  .dock .dock-sizing { padding: 2px 10px; border-inline: 0; }
+  /* Spread across the full width so each chip is a comfortable tap target. */
+  .dock .tray { width: 100%; justify-content: space-between; gap: 4px; }
 }
 .camera {
   position: relative;
@@ -997,33 +1030,39 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .hand.is-loser { opacity: 0.4; filter: grayscale(0.6); }
 .pod.is-loser, .hand.is-loser { transition: opacity 0.35s var(--ease-out), filter 0.35s var(--ease-out); }
 
-/* Turn indicators: glowing border, pulse, countdown ring and a bobbing marker. */
+/* Turn indicators: glowing border, a steady outline and a marker. Nothing
+   here animates — the seconds left are on the clock badge in the dock. */
 .pod.is-acting { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 22px rgba(230, 180, 80, 0.45); }
+/* A steady outline, not a pulse: the pod is a pill, so scaling it breathed
+   the corners in and out and read as a warped ring. */
 .pod.is-acting::before {
-  content: ''; position: absolute; inset: -5px; border-radius: inherit; border: 2px solid var(--gold);
-  animation: pulse 1.6s ease-out infinite; pointer-events: none;
+  content: ''; position: absolute; inset: -5px; border-radius: inherit;
+  border: 2px solid var(--gold); opacity: 0.7; pointer-events: none;
 }
-@keyframes pulse { from { opacity: 0.7; transform: scale(1); } to { opacity: 0; transform: scale(1.12, 1.35); } }
-.ring { position: absolute; inset: -0.32em; width: calc(100% + 0.64em); height: calc(100% + 0.64em); transform: rotate(-90deg); pointer-events: none; }
+/* Countdown rim on the acting player's face: a full circle that unwinds to
+   nothing over their turn. It sits inside the pod's padding, or the pill's
+   edge cuts across it. The keyframes are named for this ring alone — a
+   second @keyframes of the same name anywhere in this file would silently
+   replace them and animate the wrong property. */
+.ring { position: absolute; inset: -0.18em; width: calc(100% + 0.36em); height: calc(100% + 0.36em); transform: rotate(-90deg); pointer-events: none; }
 .ring circle { fill: none; stroke-width: 3; }
 .ring-track { stroke: rgba(0, 0, 0, 0.5); }
 .ring-bar {
-  stroke: var(--gold-hi); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 0;
-  animation-name: drain; animation-timing-function: linear; animation-fill-mode: forwards;
+  stroke: var(--gold-hi); stroke-dasharray: 100; stroke-dashoffset: 0;
+  animation-name: ringDrain; animation-timing-function: linear; animation-fill-mode: forwards;
 }
-@keyframes drain {
+@keyframes ringDrain {
   0% { stroke-dashoffset: 0; stroke: var(--gold-hi); }
   70% { stroke: var(--gold-hi); }
   100% { stroke-dashoffset: 100; stroke: var(--red); }
 }
 .turn-marker {
   position: absolute; left: 50%; top: -2.6em; transform: translateX(-50%);
-  color: var(--gold); width: 1.3em; height: 1.3em; animation: bob 0.9s ease-in-out infinite alternate;
+  color: var(--gold); width: 1.3em; height: 1.3em;
   filter: drop-shadow(0 0 6px rgba(230, 180, 80, 0.8));
 }
 .turn-marker .icon { width: 100%; height: 100%; }
 .pod .tag ~ .turn-marker { top: -3.9em; }
-@keyframes bob { to { transform: translate(-50%, -4px); } }
 
 /* ---------- Effects layer ---------- */
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
@@ -1271,15 +1310,24 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .kbd { font-size: 9.5px; opacity: 0.55; font-weight: 700; margin-left: 2px; }
 
 
-/* Toast for rejected actions */
-.toast-host { position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
-.toast {
-  background: rgba(40, 12, 10, 0.95); border: 1px solid var(--red); color: #ffd2cf; padding: 10px 16px; border-radius: var(--r-m);
-  font-weight: 600; font-size: 13px; box-shadow: var(--shadow-2); animation: badgeIn 0.3s var(--ease-spring);
+/* Toasts: turned away from a room, an action refused, table news. */
+.toast-host {
+  position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); z-index: 100;
+  display: flex; flex-direction: column; gap: 10px; align-items: center;
+  width: min(440px, calc(100vw - 32px)); pointer-events: none;
 }
+/* The lobby has no betting dock beneath it, so there's no need to clear one. */
+.toast-host.is-page { bottom: 28px; }
+.toast {
+  max-width: 100%; padding: 14px 20px; border-radius: 14px;
+  font-size: 13.5px; font-weight: 600; line-height: 1.5; text-align: center;
+  text-wrap: balance; box-shadow: var(--shadow-2);
+  animation: badgeIn 0.3s var(--ease-spring);
+}
+.toast.is-error { background: rgba(40, 12, 10, 0.96); border: 1px solid var(--red); color: #ffd2cf; }
 /* Not every toast is a problem: table news (someone joining, leaving) reads
    as information rather than an error. */
-.toast.is-info { background: rgba(10, 22, 18, 0.96); border-color: var(--line-2); color: var(--text-1); }
+.toast.is-info { background: rgba(10, 22, 18, 0.96); border: 1px solid var(--line-2); color: var(--text-1); }
 .toast.is-info b { color: var(--gold-hi); }
 
 /* ---------- Responsive dock ---------- */
@@ -1315,7 +1363,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .stepper .input { width: 72px; }
   /* Buttons span the full width of the dock rather than bunching right. */
   .dock-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-self: stretch; width: 100%; }
-  .act { width: auto; min-width: 0; height: 52px; padding: 0 6px; }
+  /* max-width is lifted here: the base cap keeps the buttons from spilling
+     over the betting controls on a wide dock, but in this four-column grid
+     it leaves each one short of its cell and the row reads as ragged. */
+  .act { width: auto; min-width: 0; max-width: none; height: 52px; padding: 0 6px; }
   .act .act-label { font-size: 11.5px; letter-spacing: 0.06em; }
   .act .icon { display: none; }
   .kbd { display: none; }
@@ -1333,9 +1384,48 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    can be a touch bigger than they are on the felt. */
 .player-row .mark .icon { width: 1.15em; height: 1.15em; }
 
-.blind-edit { display: inline-flex; align-items: center; gap: 5px; }
-.blind-edit input { width: 60px; height: 28px; padding: 0 6px; text-align: center; font-weight: 700; }
+/* The waiting room's header row: how full the room is, then bots. */
+.meta-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.seat-count { font-size: 13px; color: var(--text-3); white-space: nowrap; }
+.seat-count b { color: var(--text-1); font-size: 15px; }
+/* Whether this room is listed or invite-only. Set when it's created and
+   fixed from then on, so it reads as a fact about the room, not a control. */
+.room-kind {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--text-2); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line-2);
+}
+.room-kind .icon { width: 13px; height: 13px; flex: none; opacity: 0.8; }
+.room-kind.is-private { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.4); background: rgba(230, 180, 80, 0.08); }
+.meta-row .add-bot { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.meta-row .add-bot .btn { white-space: nowrap; }
+
+/* Everything the host can tune, in one card under the players, rather than
+   squeezed into the header where it wrapped onto three lines. */
+.room-settings {
+  margin: 16px 0 4px; border-radius: var(--r-m); border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.02); overflow: hidden;
+}
+.rs-head {
+  padding: 10px 14px; font: 800 10.5px var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-3); border-bottom: 1px solid var(--line-2);
+}
+.rs-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-2);
+}
+.rs-row:last-child { border-bottom: 0; }
+.rs-label { display: flex; flex-direction: column; gap: 1px; font-size: 13.5px; font-weight: 600; color: var(--text-1); }
+.rs-label small { font-size: 11.5px; font-weight: 400; color: var(--text-3); }
+.blind-edit { display: inline-flex; align-items: center; gap: 6px; }
+.blind-edit input { width: 62px; height: 34px; padding: 0 6px; text-align: center; font-weight: 700; }
 .blind-edit i { font-style: normal; color: var(--text-3); }
+/* What a non-host sees instead: the same facts, read-only. */
+.room-summary {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 14px 0 4px; padding: 10px 14px;
+  border-radius: var(--r-m); background: rgba(255, 255, 255, 0.03); font-size: 13px; color: var(--text-3);
+}
+.room-summary b { color: var(--text-1); }
 
 /* The host's stake for players who turn up mid-game. */
 .late-join {
@@ -1354,8 +1444,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* ---------- Vote-kick toasts ---------- */
 /* Top right, and slid left when the chat panel is open so a vote never
    lands on top of the messages. */
+/* Above the full-screen sheets: someone knocking at a private room shouldn't
+   have to wait out a hand result or a game-over screen to be let in. */
 .vote-host {
-  position: fixed; top: 64px; right: 12px; z-index: 120;
+  position: fixed; top: 64px; right: 12px; z-index: 210;
   display: flex; flex-direction: column; gap: 8px; width: min(260px, calc(100vw - 24px));
   transition: right 0.25s var(--ease-out);
 }
@@ -1366,10 +1458,21 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border: 1px solid rgba(224, 86, 79, 0.5); box-shadow: var(--shadow-2);
   animation: badgeIn 0.3s var(--ease-spring);
 }
+/* Someone at the door of a private room: an invitation, not an accusation. */
+.vote-toast.is-knock { border-color: rgba(230, 180, 80, 0.5); }
+.knock-yes {
+  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--gold);
+  background: var(--gold); color: #2a1c05; font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.knock-yes:hover { filter: brightness(1.08); }
 .vote-head { font-size: 12.5px; color: var(--text-2); }
 .vote-head b { color: var(--text-1); }
-.vote-bar { height: 5px; margin: 8px 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
-.vote-bar i { display: block; height: 100%; background: var(--red); transition: width 0.3s var(--ease-out); }
+.vote-bar { position: relative; height: 5px; margin: 8px 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.vote-bar i { position: absolute; top: 0; height: 100%; transition: width 0.3s var(--ease-out); }
+.vote-bar .is-kick { left: 0; background: var(--red); }
+.vote-bar .is-keep { right: 0; background: var(--green); }
+.vote-foot .t-kick { color: #ff9d97; }
+.vote-foot .t-keep { color: var(--green); }
 .vote-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-3); }
 .vote-yes {
   padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--red);
@@ -1385,57 +1488,152 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .vote-done { color: var(--green); font-weight: 700; }
 
 /* The ⋯ on another player's nameplate, and what it opens. */
-/* Always there and big enough to hit: it was too faint to find before. */
+/* Always there and big enough to hit. It sits inside the pill at the right
+   and the pill makes room for it, rather than hanging off the corner where
+   it landed on the chip stack. */
+.pod:has(.pod-more),
+/* Portrait sets its own tighter pod padding at higher specificity, which
+   would put the dots straight back on top of the chip count. */
+.camera.is-portrait .pod:has(.pod-more) { padding-right: 2.1em; }
 .pod-more {
-  position: absolute; top: -9px; right: -9px; width: 26px; height: 26px; padding: 0;
+  position: absolute; top: 50%; right: 0.25em; transform: translateY(-50%);
+  width: 1.7em; height: 1.7em; padding: 0;
   display: grid; place-items: center; cursor: pointer; line-height: 1;
   border-radius: 50%; border: 1px solid var(--line-2); background: rgba(10, 18, 14, 0.96);
-  color: var(--text-2); font-size: 16px; font-weight: 700; opacity: 0.85;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); transition: color 0.15s, border-color 0.15s;
+  color: var(--text-2); font-size: 1em; font-weight: 700; opacity: 0.9;
+  transition: color 0.15s, border-color 0.15s;
 }
 .pod:hover .pod-more, .pod-more[aria-expanded='true'] { opacity: 1; border-color: rgba(230, 180, 80, 0.5); }
 .pod-more:hover { color: var(--gold-hi); }
-.pod-more:hover { color: var(--gold-hi); }
+/* The pod is its own stacking context at z-index 4, so a menu inside it can
+   never rise above the cards at 5 however high its own z-index. The whole
+   pod has to come forward while the menu is open. */
+.pod.has-menu { z-index: 30; }
 .pod-menu {
-  position: absolute; top: 100%; right: 0; z-index: 12; margin-top: 4px; padding: 4px;
+  position: absolute; top: 100%; right: 0; z-index: 2; margin-top: 4px; padding: 4px;
   background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
 }
+/* Low on the table it opens upward instead of off the felt. */
+.pod.is-low .pod-menu { top: auto; bottom: 100%; margin: 0 0 4px; }
 .pod-menu button {
   padding: 7px 12px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px;
   background: transparent; color: #ff9d97; font: 700 12px var(--font-ui);
 }
 .pod-menu button:hover { background: rgba(224, 86, 79, 0.14); }
 
-/* ---------- Hand result ---------- */
-.sheet-result { width: min(380px, 100%); padding-top: 24px; }
-.res-win { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.res-face { flex: none; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; }
-.res-face svg { width: 100%; height: 100%; display: block; }
-.res-who { flex: 1 1 auto; min-width: 0; text-align: left; font-weight: 700; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.res-who em { color: var(--green); font-style: normal; font-weight: 600; }
-.res-amt { flex: none; font-size: 20px; font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
-.res-hand { margin: 2px 0 0 44px; text-align: left; font-size: 12.5px; color: var(--text-2); }
-.res-kick { display: block; color: var(--text-3); }
-.res-note { margin-top: 8px; font-size: 12.5px; color: var(--text-3); font-style: italic; }
-/* The winner's own two, then the board. Both are records of cards already
-   turned over, so they're always faces — the back layer would sit on top. */
-.res-hole, .res-cards { display: flex; gap: 4px; }
-.res-hole { margin: 6px 0 0 44px; }
-.res-board { margin-top: 16px; }
-.res-cards { justify-content: center; margin-top: 5px; }
-.res-hole .card, .res-cards .card { --cw: 34px; filter: none; }
-.res-hole .card > .back, .res-cards .card > .back { display: none; }
-/* The five that made the hand stay lit; the spares fall back. */
-.res-hole .card.is-win, .res-cards .card.is-win {
-  filter: drop-shadow(0 0 5px rgba(247, 213, 138, 0.9)); transform: translateY(-2px);
+/* ---------- Hand result ----------
+   Every moving part animates transform or opacity, which the compositor
+   handles without a repaint. */
+.sheet-result {
+  position: relative; isolation: isolate; overflow: hidden;
+  width: min(400px, 100%); padding: 26px 22px 18px; text-align: center;
+  border: 1px solid rgba(230, 180, 80, 0.5);
+  background:
+    radial-gradient(130% 70% at 50% -10%, rgba(230, 180, 80, 0.28), transparent 60%),
+    linear-gradient(180deg, #16241d 0%, #0a120e 100%);
+  box-shadow: 0 0 0 1px rgba(230, 180, 80, 0.18), 0 0 70px rgba(230, 180, 80, 0.22), 0 30px 80px rgba(0, 0, 0, 0.75);
+  animation: resIn 0.5s var(--ease-spring) both;
 }
-.res-hole .card.is-dim, .res-cards .card.is-dim { opacity: 0.38; }
-.res-label { font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+@keyframes resIn { from { transform: translateY(24px) scale(0.92); opacity: 0; } }
+/* Somebody else's pot: same shape, cooler light. */
+.sheet-result:not(.is-mine) {
+  border-color: rgba(120, 190, 160, 0.38);
+  background:
+    radial-gradient(130% 70% at 50% -10%, rgba(80, 180, 140, 0.2), transparent 60%),
+    linear-gradient(180deg, #13211b 0%, #0a120e 100%);
+  box-shadow: 0 0 50px rgba(60, 194, 127, 0.14), 0 30px 80px rgba(0, 0, 0, 0.75);
+}
+
+.res-glow {
+  position: absolute; left: 50%; top: 42px; z-index: -1; width: 220px; height: 120px;
+  transform: translateX(-50%); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(247, 213, 138, 0.35), transparent);
+  animation: glowPulse 2.6s ease-in-out infinite;
+}
+.sheet-result:not(.is-mine) .res-glow { background: radial-gradient(closest-side, rgba(110, 210, 170, 0.22), transparent); }
+@keyframes glowPulse { 50% { opacity: 0.55; transform: translateX(-50%) scale(1.08); } }
+
+.res-kicker { font: 800 10.5px var(--font-ui); letter-spacing: 0.22em; text-transform: uppercase; color: rgba(247, 213, 138, 0.7); }
+.res-title {
+  margin: 4px 0 0; font-family: "Playfair Display", Georgia, serif; font-size: 34px; line-height: 1.1;
+  background: linear-gradient(100deg, #c99a3e 0%, #f7d58a 30%, #fff8e1 45%, #f7d58a 60%, #c99a3e 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: titleIn 0.55s var(--ease-spring) 0.1s both;
+}
+.sheet-result:not(.is-mine) .res-title {
+  background-image: linear-gradient(100deg, #9fd8bf 0%, #e8fff5 45%, #9fd8bf 100%);
+}
+@keyframes titleIn { from { transform: scale(0.6); opacity: 0; } }
+.res-pot {
+  margin-top: 2px; font-size: 40px; font-weight: 900; line-height: 1; color: var(--gold-hi);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  text-shadow: 0 0 24px rgba(247, 213, 138, 0.45), 0 2px 0 #6b4a12;
+  animation: potIn 0.6s var(--ease-spring) 0.2s both;
+}
+.sheet-result:not(.is-mine) .res-pot { color: #c9f0dd; text-shadow: 0 0 20px rgba(110, 210, 170, 0.3); }
+@keyframes potIn { from { transform: translateY(10px) scale(0.8); opacity: 0; } }
+
+.res-players { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.res-player {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px 12px;
+  padding: 12px 12px 10px; border-radius: 14px; text-align: left;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.07);
+  animation: rowIn 0.45s var(--ease-out) 0.3s both;
+}
+.res-player.is-me { border-color: rgba(230, 180, 80, 0.35); background: rgba(230, 180, 80, 0.07); }
+@keyframes rowIn { from { transform: translateY(8px); opacity: 0; } }
+.res-face { position: relative; width: 42px; height: 42px; border-radius: 50%; box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(247, 213, 138, 0.4); }
+.res-face svg { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.res-crown {
+  position: absolute; left: 50%; top: -15px; width: 22px; height: 22px; color: var(--gold-hi);
+  transform: translateX(-50%) rotate(-12deg); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+  animation: crownDrop 0.55s var(--ease-spring) 0.45s both;
+}
+.res-crown .icon { width: 100%; height: 100%; display: block; }
+@keyframes crownDrop { from { transform: translate(-50%, -14px) rotate(-40deg); opacity: 0; } }
+.res-meta { display: flex; flex-direction: column; min-width: 0; }
+.res-who { font-weight: 800; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-who em { margin-left: 4px; padding: 1px 6px; border-radius: 999px; font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #052414; background: var(--green); vertical-align: 2px; }
+.res-hand { font-size: 12.5px; color: var(--gold-hi); font-weight: 600; }
+.sheet-result:not(.is-mine) .res-hand { color: #9fd8bf; }
+.res-kick { color: var(--text-3); font-weight: 500; }
+.res-share { font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.res-hole { grid-column: 1 / -1; display: flex; gap: 5px; justify-content: center; }
+
+.res-board { margin-top: 12px; }
+.res-cards { display: flex; justify-content: center; gap: 5px; }
+/* Faces only: these are cards already turned over. */
+.res-card { --cw: 38px; filter: none; }
+.res-card > .back { display: none; }
+/* Dealt in one after another. `backwards` hands the transform back once the
+   card lands, so the lift on the winning cards below still applies. */
+.res-card { animation: cardRise 0.42s var(--ease-spring) backwards; animation-delay: calc(0.4s + var(--i, 0) * 60ms); }
+@keyframes cardRise { from { transform: translateY(18px) rotate(-8deg) scale(0.7); opacity: 0; } }
+.res-card.is-win {
+  transform: translateY(-4px);
+  filter: drop-shadow(0 0 6px rgba(247, 213, 138, 0.95)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+}
+.res-card.is-dim { opacity: 0.32; filter: grayscale(0.6); }
+
 .res-foot { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
+.res-skip {
+  padding: 7px 18px; cursor: pointer; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05);
+  color: var(--text-2); font: 700 12px var(--font-ui); letter-spacing: 0.06em;
+}
+.res-skip:hover { color: var(--text-1); border-color: rgba(230, 180, 80, 0.5); }
 /* Drains over the life of the modal, so the wait is visible. */
-.res-timer { width: 54px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.res-timer { width: 60px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .res-timer i { display: block; height: 100%; background: var(--gold); animation: drain linear forwards; transform-origin: left; }
+.sheet-result:not(.is-mine) .res-timer i { background: var(--green); }
 @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+@media (max-width: 760px) {
+  .sheet-result { padding: 22px 16px 14px; }
+  .res-title { font-size: 28px; }
+  .res-pot { font-size: 34px; }
+  .res-card { --cw: 32px; }
+}
 
 /* ---------- Full-screen overlays (game over, out of chips) ---------- */
 .overlay {
@@ -1505,7 +1703,7 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 
 /* Reduced motion (OS setting or the in-game toggle, see motion.js). The
-   turn ring keeps draining since it carries information, not decoration. */
+   turn ring keeps unwinding since it carries information, not decoration. */
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;

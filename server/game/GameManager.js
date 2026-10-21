@@ -33,8 +33,11 @@ class Room {
     // Recent table talk, kept so somebody refreshing or arriving part-way
     // through doesn't land in a silent room. Oldest first.
     this.chat = [];
-    // Private rooms are reachable by code but never listed publicly.
+    // Private rooms are never listed publicly, and the code alone isn't
+    // enough: the host lets each newcomer in by hand.
     this.isPrivate = !!isPrivate;
+    // Waiting at the door of a private room: userId -> username.
+    this.knocks = new Map();
     // Open vote-kick: targetUserId -> Set of userIds who voted to remove them.
     this.kickVotes = new Map();
     // The other side of the same vote: who has spoken up to keep them.
@@ -97,6 +100,27 @@ class Room {
     return [...this.lobby.values()].filter((p) => p.isBot).length;
   }
 
+  // Everyone actually in the room: waiting in the lobby before the deal, or
+  // still sitting at the table once it's under way.
+  playerCount() {
+    if (this.table.phase === 'waiting') return this.lobby.size;
+    return this.table.seats.filter((p) => p && !p.left).length;
+  }
+
+  // No seat to give: either every chair is taken or the lobby is at capacity.
+  isFull() {
+    if (this.lobby.size >= this.table.maxSeats) return true;
+    return this.table.phase !== 'waiting' && this.table.seats.every((seat) => seat !== null);
+  }
+
+  // What someone joining right now would sit down with: the table's stake
+  // before the deal, the host's late-join figure once it's running.
+  stakeForJoiner() {
+    if (this.table.phase !== 'waiting') return this.lateJoinChips();
+    const host = this.lobby.get(this.hostUserId);
+    return host?.buyIn > 0 ? host.buyIn : 1000;
+  }
+
   removeFromLobby(userId) {
     this.lobby.delete(userId);
   }
@@ -125,16 +149,23 @@ class GameManager {
     return null;
   }
 
+  // Public rooms with a seat free, whether they're still gathering players or
+  // already playing: walking into a game in progress is allowed, and the
+  // joiner is dealt in from the next hand.
   listOpenRooms() {
     return [...this.rooms.values()]
-      .filter((r) => r.table.phase === 'waiting' && !r.isPrivate)
+      .filter((r) => !r.isPrivate && !r.isFull())
       .map((r) => ({
         code: r.code,
         host: r.hostUsername,
-        players: r.lobby.size,
+        players: r.playerCount(),
+        seats: r.table.maxSeats,
         bots: r.botCount(),
         smallBlind: r.table.smallBlind,
         bigBlind: r.table.bigBlind,
+        chips: r.stakeForJoiner(),
+        inPlay: r.table.phase !== 'waiting',
+        hand: r.table.handNumber,
       }));
   }
 

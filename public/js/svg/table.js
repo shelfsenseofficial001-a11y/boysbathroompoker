@@ -37,8 +37,9 @@ export function dealerButtonSVG() {
 </svg>`;
 }
 
-// Countdown ring drawn around the acting player's avatar. The drain is a CSS
-// animation; a negative delay starts it partway through for late joiners.
+// Countdown ring drawn around the acting player's avatar: full at the start
+// of their turn, empty when it runs out. The unwind is a CSS animation, and
+// a negative delay starts it partway through for anyone who arrives late.
 export function turnRingSVG(totalMs, elapsedMs) {
   return `<svg class="ring" viewBox="0 0 40 40" aria-hidden="true">
   <circle class="ring-track" cx="20" cy="20" r="18.5" pathLength="100"/>

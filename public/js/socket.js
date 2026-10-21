@@ -15,9 +15,24 @@ export function getSocket() {
   return socket;
 }
 
+// A server with no handler for an event simply never calls the ack, so
+// without this the promise sits there for ever and the click looks like it
+// did nothing at all. Usually it means the server is running an older build
+// than the page, which is worth saying out loud.
+const ACK_TIMEOUT_MS = 8000;
+
 export function emitAck(event, payload = {}) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('No answer from the server — it may need restarting.'));
+    }, ACK_TIMEOUT_MS);
     getSocket().emit(event, payload, (res) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (res && res.ok === false) reject(new Error(res.error || 'Action failed.'));
       else resolve(res);
     });
