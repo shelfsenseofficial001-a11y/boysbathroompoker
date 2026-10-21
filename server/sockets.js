@@ -173,6 +173,28 @@ function attachSockets(io, sessionMiddleware) {
     }, NEXT_HAND_DELAY_MS);
   }
 
+  // Tells the room where every open vote stands, so each client can show the
+  // toast and count without asking.
+  function voteState(room, { closed = null } = {}) {
+    const open = [];
+    for (const [target, votes] of room.kickVotes) {
+      const live = room.voters(target);
+      for (const id of [...votes]) if (!live.has(id)) votes.delete(id);
+      if (!votes.size) continue;
+      const name = room.lobby.get(target)?.username
+        || room.table.seats.find((p) => p && p.userId === target)?.username
+        || 'Player';
+      open.push({ userId: target, name, votes: votes.size, needed: room.votesNeeded(target), voters: [...votes] });
+    }
+    const members = new Set([
+      ...room.lobby.keys(),
+      ...room.table.seats.filter(Boolean).map((p) => p.userId),
+    ]);
+    for (const id of members) {
+      for (const sock of socketsByUser.get(id) || []) sock.emit('votes', { open, closed });
+    }
+  }
+
   // Pushes the whole backlog to everyone in the room. Used when the stored
   // messages themselves change, which only renaming does.
   function broadcastChatHistory(room) {
@@ -290,12 +312,12 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true, name: clean });
     });
 
-    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind } = {}, ack) => {
+    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind, isPrivate } = {}, ack) => {
       try {
         if (roomFor(userId)) throw new Error('Leave your current room first.');
         const sb = Math.max(1, Math.floor(Number(smallBlind)) || 5);
         const bb = Math.max(sb * 2, Math.floor(Number(bigBlind)) || 10);
-        const room = manager.createRoom(userId, nameOf(), { smallBlind: sb, bigBlind: bb });
+        const room = manager.createRoom(userId, nameOf(), { smallBlind: sb, bigBlind: bb, isPrivate: !!isPrivate });
         room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
         attachTableEvents(room);
         ack?.({ ok: true, code: room.code });
@@ -347,6 +369,7 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true, code: room ? room.code : null });
       if (room) {
         sendChatHistory(room);
+        voteState(room);
         broadcastRoom(room);
       }
     });
@@ -433,6 +456,78 @@ function attachSockets(io, sessionMiddleware) {
         for (const sock of socketsByUser.get(id) || []) sock.emit('chatUpdate', entry);
       }
     };
+
+    // An open vote: anyone in the room can call one on anyone else, and a
+    // strict majority of the other players carries it. The host isn't special
+    // here - a host who misbehaves can be voted out like anyone.
+    // The hand-result screen can be skipped. One player skipping only hides
+    // it for them; once everybody has, the table moves on together.
+    socket.on('skipResult', ({ hand } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const n = Number(hand);
+      if (room.resultHand !== n) {
+        room.resultHand = n;
+        room.resultSkips = new Set();
+      }
+      room.resultSkips.add(userId);
+      const waiting = room.voters(null);
+      const everyone = [...waiting].every((id) => room.resultSkips.has(id));
+      const members = new Set([
+        ...room.lobby.keys(),
+        ...room.table.seats.filter(Boolean).map((p) => p.userId),
+      ]);
+      for (const id of members) {
+        for (const sock of socketsByUser.get(id) || []) {
+          sock.emit('resultSkips', { hand: n, skips: room.resultSkips.size, of: waiting.size, all: everyone });
+        }
+      }
+      ack?.({ ok: true, all: everyone });
+    });
+
+    socket.on('voteKick', ({ userId: targetUserId } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const target = Number(targetUserId);
+      if (target === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
+      const inRoom =
+        room.lobby.has(target) || room.table.seats.some((p) => p && p.userId === target && !p.left);
+      if (!inRoom) return ack?.({ ok: false, error: 'That player has already gone.' });
+      if (target < 0) return ack?.({ ok: false, error: 'Ask the host to remove a bot.' });
+      if (!room.voters(target).has(userId)) return ack?.({ ok: false, error: 'You can’t vote here.' });
+
+      let votes = room.kickVotes.get(target);
+      if (!votes) {
+        votes = new Set();
+        room.kickVotes.set(target, votes);
+      }
+      if (votes.has(userId)) return ack?.({ ok: false, error: 'You have already voted.' });
+      votes.add(userId);
+
+      const name = room.lobby.get(target)?.username
+        || room.table.seats.find((p) => p && p.userId === target)?.username
+        || 'That player';
+      const needed = room.votesNeeded(target);
+      // Stale votes from people who have since left would make the bar
+      // impossible to reach, so only live voters count.
+      const live = room.voters(target);
+      for (const id of [...votes]) if (!live.has(id)) votes.delete(id);
+
+      if (votes.size >= needed) {
+        room.kickVotes.delete(target);
+        room.removeFromLobby(target);
+        room.table.removePlayer(target);
+        for (const sock of socketsByUser.get(target) || []) {
+          sock.emit('kicked', { code: room.code, reason: 'The table voted to remove you.' });
+        }
+        announce(room, `${name} was voted out of the room.`, target);
+        voteState(room, { closed: target });
+        ack?.({ ok: true, passed: true });
+        return broadcastRoom(room);
+      }
+      ack?.({ ok: true, passed: false, votes: votes.size, needed });
+      voteState(room);
+    });
 
     socket.on('chatEdit', ({ id, text } = {}, ack) => {
       const room = roomFor(userId);
@@ -540,6 +635,8 @@ function attachSockets(io, sessionMiddleware) {
           return ack?.({ ok: true });
         }
         const who = nameOf();
+        room.kickVotes.delete(userId); // no vote survives its target leaving
+        for (const votes of room.kickVotes.values()) votes.delete(userId);
         room.removeFromLobby(userId);
         room.table.removePlayer(userId);
         announce(room, `${who} left the game.`, userId);

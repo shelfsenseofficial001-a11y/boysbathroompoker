@@ -14,7 +14,7 @@ function makeRoomCode() {
 }
 
 class Room {
-  constructor(hostUserId, hostUsername, { smallBlind, bigBlind } = {}) {
+  constructor(hostUserId, hostUsername, { smallBlind, bigBlind, isPrivate = false } = {}) {
     this.code = makeRoomCode();
     this.hostUserId = hostUserId;
     this.hostUsername = hostUsername;
@@ -33,6 +33,13 @@ class Room {
     // Recent table talk, kept so somebody refreshing or arriving part-way
     // through doesn't land in a silent room. Oldest first.
     this.chat = [];
+    // Private rooms are reachable by code but never listed publicly.
+    this.isPrivate = !!isPrivate;
+    // Open vote-kick: targetUserId -> Set of userIds who voted to remove them.
+    this.kickVotes = new Map();
+    // Who has pressed skip on the current hand's result screen.
+    this.resultHand = null;
+    this.resultSkips = new Set();
   }
 
   addToLobby(userId, username, buyIn, isBot = false, botLevel = null) {
@@ -50,6 +57,22 @@ class Room {
     return this.table.seats.some(
       (p) => p && !p.left && p.userId !== exceptUserId && String(p.username).toLowerCase() === wanted
     );
+  }
+
+  // Everyone who could cast a vote: humans still in the room. Bots don't get
+  // a say, and nor does the player being voted on.
+  voters(exceptUserId = null) {
+    const ids = new Set();
+    for (const [id, info] of this.lobby) if (!info.isBot && id > 0) ids.add(id);
+    for (const p of this.table.seats) if (p && !p.isBot && !p.left && p.userId > 0) ids.add(p.userId);
+    if (exceptUserId != null) ids.delete(exceptUserId);
+    return ids;
+  }
+
+  // A strict majority of everyone eligible to vote, so two players out of
+  // three is enough but one out of two is not.
+  votesNeeded(targetUserId) {
+    return Math.floor(this.voters(targetUserId).size / 2) + 1;
   }
 
   addChat(entry) {
@@ -102,7 +125,7 @@ class GameManager {
 
   listOpenRooms() {
     return [...this.rooms.values()]
-      .filter((r) => r.table.phase === 'waiting')
+      .filter((r) => r.table.phase === 'waiting' && !r.isPrivate)
       .map((r) => ({
         code: r.code,
         host: r.hostUsername,

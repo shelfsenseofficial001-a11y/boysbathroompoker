@@ -38,6 +38,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           <div class="field-row">
             <div class="field"><label for="buyin-host">Your starting chips</label>${numberFieldHTML({ id: 'buyin-host', value: 1000, min: 1, step: 100, label: 'your starting chips' })}</div>
           </div>
+          <label class="switch-row">
+            <input type="checkbox" id="room-private">
+            <span>Private room — only people with the code can find it</span>
+          </label>
           <button class="btn btn-primary btn-lg" id="create-room">Create room</button>
         </section>
         <section class="panel">
@@ -210,6 +214,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         smallBlind: Number($('#sb').value),
         bigBlind: Number($('#bb').value),
         buyIn: Number($('#buyin-host').value),
+        isPrivate: $('#room-private').checked,
       });
       onEnterRoom(res.code);
     } catch (err) {
@@ -238,18 +243,42 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     if (e.key === 'Enter') join(e.target.value.trim().toUpperCase());
   });
 
-  emitAck('listRooms')
-    .then(({ rooms }) => {
-      const list = $('#room-list');
-      if (!list) return;
-      list.innerHTML = rooms.length
-        ? rooms.map((r) => `
+  // The open-tables list refreshes itself, so somebody waiting for a friend
+  // to host doesn't have to keep reloading the page to see it appear.
+  let lastRoomsJSON = null;
+  function refreshRooms() {
+    emitAck('listRooms')
+      .then(({ rooms }) => {
+        const list = $('#room-list');
+        if (!list) return;
+        const json = JSON.stringify(rooms);
+        if (json === lastRoomsJSON) return; // nothing moved; leave the DOM alone
+        lastRoomsJSON = json;
+        list.innerHTML = rooms.length
+          ? rooms
+              .map(
+                (r) => `
             <div class="room-row">
               <div><div class="code">${esc(r.code)}</div><div class="sub">${esc(r.host)} · ${r.players} waiting · blinds ${fmt(r.smallBlind)}/${fmt(r.bigBlind)}</div></div>
               <button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>
-            </div>`).join('')
-        : '<div class="empty">No open tables right now — host one!</div>';
-      list.querySelectorAll('[data-code]').forEach((b) => b.addEventListener('click', () => join(b.dataset.code)));
-    })
-    .catch(() => {});
+            </div>`
+              )
+              .join('')
+          : '<div class="empty">No open tables right now — host one!</div>';
+        list.querySelectorAll('[data-code]').forEach((b) =>
+          b.addEventListener('click', () => join(b.dataset.code))
+        );
+      })
+      .catch(() => {});
+  }
+
+  refreshRooms();
+  const roomsTimer = setInterval(refreshRooms, 4000);
+  // The lobby is torn down by replacing root's contents, so the poll has to
+  // stop itself once its list is gone or it would run for the whole session.
+  const stopWhenGone = setInterval(() => {
+    if (root.querySelector('#room-list')) return;
+    clearInterval(roomsTimer);
+    clearInterval(stopWhenGone);
+  }, 4000);
 }

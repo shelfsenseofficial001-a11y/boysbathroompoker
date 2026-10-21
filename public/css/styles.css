@@ -401,6 +401,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* The stage and the history sidebar sit side by side in the middle row; the
    stage keeps its own size container so the table still scales to whatever
    room is left once the sidebar takes its share. */
+/* manipulation kills the double-tap-to-zoom delay and gesture: checking is a
+   double-tap on the felt, and a zoomable page turns that into a zoom. */
+.table-screen { touch-action: manipulation; }
 .table-body { position: relative; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
 .stage {
   position: relative;
@@ -512,7 +515,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   background: rgba(6, 12, 9, 0.75); border-left: 1px solid var(--line-2);
   transition: width 0.25s var(--ease-out);
 }
-.show-chat .chat { width: min(260px, 34vw); }
+.show-chat .chat { width: min(330px, 38vw); }
 .chat-head {
   flex: none; padding: 14px 50px 10px 14px; font: 800 11px var(--font-ui);
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
@@ -520,26 +523,40 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .chat-log {
   flex: 1 1 auto; margin: 0; padding: 10px; list-style: none;
-  overflow-y: auto; overscroll-behavior: contain; min-width: 260px;
+  overflow-y: auto; overscroll-behavior: contain; min-width: 330px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .chat-empty { color: var(--text-3); font-size: 12.5px; line-height: 1.5; padding: 4px; }
-/* Bubbles: mine right and gold, everyone else's left and dark. */
+/* Bubbles: mine right and gold, everyone else's left and dark. A run from
+   one person is rounded off only on the outside, so it reads as one block
+   rather than a stack of separate boxes. */
 .chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-size: 13px; line-height: 1.4; }
+.chat-row + .chat-row { margin-top: 2px; }
+.chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 9px; }
 .chat-row.is-mine { align-items: flex-end; }
-.chat-who { font: 800 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); padding: 0 4px; }
-.bubble-wrap { position: relative; display: flex; align-items: center; gap: 4px; max-width: 92%; }
-.chat-row.is-mine .bubble-wrap { flex-direction: row-reverse; }
+.chat-who { font: 800 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); padding-left: 34px; }
+.bubble-line { position: relative; display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
+.bubble-line > .bubble { flex: 0 1 auto; min-width: 0; }
+.chat-row.is-mine .bubble-line { flex-direction: row-reverse; }
+/* The sender's face, shown once per run and kept as blank space after,
+   so the bubbles in a run stay in one column. */
+.chat-face { flex: none; width: 26px; height: 26px; border-radius: 50%; overflow: hidden; align-self: flex-end; }
+.chat-face svg { width: 100%; height: 100%; display: block; }
+.chat-face.is-blank { background: none; }
 .bubble {
-  padding: 7px 11px; border-radius: 14px; min-width: 0;
+  padding: 7px 11px; min-width: 0; max-width: 100%;
   background: rgba(255, 255, 255, 0.07); color: var(--text-1);
-  border-bottom-left-radius: 5px; overflow-wrap: anywhere;
+  overflow-wrap: anywhere; border-radius: 6px 16px 16px 6px;
 }
+.chat-row.is-first:not(.is-mine) .bubble { border-top-left-radius: 16px; }
+.chat-row.is-last:not(.is-mine) .bubble { border-bottom-left-radius: 16px; }
 .chat-row.is-mine .bubble {
   background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; font-weight: 600;
-  border-bottom-left-radius: 14px; border-bottom-right-radius: 5px;
+  border-radius: 16px 6px 6px 16px;
 }
-.bubble.is-gone { background: transparent; border: 1px dashed var(--line-2); color: var(--text-3); font-style: italic; }
+.chat-row.is-mine.is-first .bubble { border-top-right-radius: 16px; }
+.chat-row.is-mine.is-last .bubble { border-bottom-right-radius: 16px; }
+.bubble.is-gone { background: transparent; border: 1px dashed var(--line-2); color: var(--text-3); font-style: italic; font-weight: 400; }
 .bubble-text { white-space: pre-wrap; }
 .bubble-edited { margin-left: 6px; font-size: 10px; opacity: 0.65; }
 /* The quoted message a reply is answering. */
@@ -549,23 +566,26 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .q-who { display: block; font-weight: 800; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
 .q-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The per-message actions button and its little menu. */
-.bubble-more {
-  flex: none; width: 20px; height: 20px; padding: 0; cursor: pointer; line-height: 1;
+/* Reply first, then the dots: the common one is a single tap. */
+.bubble-acts { position: relative; flex: none; display: flex; align-items: center; gap: 1px; }
+.bubble-act {
+  width: 22px; height: 22px; padding: 0; cursor: pointer; line-height: 1;
+  display: grid; place-items: center;
   border: 0; border-radius: 50%; background: transparent; color: var(--text-3); font-size: 15px;
   opacity: 0; transition: opacity 0.15s, color 0.15s;
 }
-.chat-row:hover .bubble-more, .bubble-more:focus-visible, .bubble-more[aria-expanded='true'] { opacity: 1; }
-.bubble-more:hover { color: var(--gold-hi); }
-/* No hover on a touchscreen, so the button has to be there already. */
-@media (hover: none) { .bubble-more { opacity: 0.55; } }
+.bubble-act .icon { width: 13px; height: 13px; transform: scaleX(-1); }
+.chat-row:hover .bubble-act, .bubble-act:focus-visible, .bubble-act[aria-expanded='true'] { opacity: 1; }
+.bubble-act:hover { color: var(--gold-hi); }
+/* No hover on a touchscreen, so the buttons have to be there already. */
+@media (hover: none) { .bubble-act { opacity: 0.55; } }
 .msg-menu {
   position: absolute; top: 100%; z-index: 6; margin-top: 2px; min-width: 112px;
   display: flex; flex-direction: column; padding: 4px;
   background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
 }
-.chat-row.is-mine .msg-menu { right: 0; }
-.chat-row:not(.is-mine) .msg-menu { left: 0; }
+.chat-row.is-mine .msg-menu { left: 0; }
+.chat-row:not(.is-mine) .msg-menu { right: 0; }
 .msg-menu button {
   padding: 7px 10px; text-align: left; cursor: pointer; border: 0; border-radius: 6px;
   background: transparent; color: var(--text-1); font: 600 12.5px var(--font-ui);
@@ -583,29 +603,39 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .ctx-x:hover { color: var(--red); }
 .ctx-x .icon { width: 13px; height: 13px; }
 .chat-form.is-editing .input { border-color: rgba(230, 180, 80, 0.55); }
-.chat-form { flex: none; display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 260px; }
+.chat-form { flex: none; display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 330px; }
 .chat-form .input { flex: 1 1 auto; min-width: 0; height: 36px; font-size: 13px; }
 .chat-form .btn { flex: none; width: 36px; height: 36px; padding: 0; }
 
-/* Phones have no width to give away, so the sidebar floats over the felt
-   instead of squeezing it. */
+/* Anything narrower than a roomy desktop floats the side panels over the felt
+   instead of giving them a column. A column means the stage shrinks as the
+   panel opens and the table visibly slides across — which is what happened
+   on tablets, where there looked to be room but wasn't. Only the transform
+   animates here, so the stage beside them never changes size. */
+@media (max-width: 1024px) {
+  .history, .chat {
+    position: absolute; top: 0; bottom: 0; z-index: 30;
+    background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
+    transition: transform 0.25s var(--ease-out);
+  }
+  .history { left: 0; right: auto; width: min(300px, 86vw); transform: translateX(-100%); }
+  .chat { right: 0; left: auto; width: min(320px, 88vw); transform: translateX(100%); }
+  /* The width has to be repeated at this specificity: the desktop column
+     widths are set on .show-* and would otherwise win here. */
+  .show-history .history { width: min(300px, 86vw); transform: none; }
+  .show-chat .chat { width: min(320px, 88vw); transform: none; }
+  .history-list, .chat-log, .chat-form { min-width: 0; }
+  .chat-who { padding-left: 32px; }
+  /* The on-screen keyboard changes the viewport height when the message box
+     is tapped; without this the table animates every time it opens. */
+  .camera { transition: none; }
+}
+
 @media (max-width: 760px) {
-  .history {
-    position: absolute; inset: 0 auto 0 0; z-index: 30;
-    width: min(280px, 84vw); transform: translateX(-100%);
-    background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
-    transition: transform 0.25s var(--ease-out);
-  }
-  .show-history .history { width: min(280px, 84vw); transform: none; }
-  .history-list { min-width: 0; }
-  .chat {
-    position: absolute; inset: 0 0 0 auto; z-index: 30;
-    width: min(300px, 86vw); transform: translateX(100%);
-    background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
-    transition: transform 0.25s var(--ease-out);
-  }
-  .show-chat .chat { width: min(300px, 86vw); transform: none; }
-  .chat-log, .chat-form { min-width: 0; }
+  /* The slider is fiddly on a touchscreen and the presets plus the stepper
+     already cover every amount, so it goes. */
+  .sizer .range { display: none; }
+  .sizer .amount-row { justify-content: flex-end; }
 }
 .camera {
   position: relative;
@@ -1297,6 +1327,73 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    using: the host closing their own room. */
 .btn-danger { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; border-color: var(--red); font-weight: 800; }
 .btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* ---------- Vote-kick toasts ---------- */
+/* Top right, and slid left when the chat panel is open so a vote never
+   lands on top of the messages. */
+.vote-host {
+  position: fixed; top: 64px; right: 12px; z-index: 120;
+  display: flex; flex-direction: column; gap: 8px; width: min(260px, calc(100vw - 24px));
+  transition: right 0.25s var(--ease-out);
+}
+.vote-host.is-shifted { right: calc(min(330px, 38vw) + 18px); }
+@media (max-width: 1024px) { .vote-host.is-shifted { right: 12px; top: 112px; } }
+.vote-toast {
+  padding: 10px 12px; border-radius: var(--r-m); background: rgba(10, 18, 14, 0.97);
+  border: 1px solid rgba(224, 86, 79, 0.5); box-shadow: var(--shadow-2);
+  animation: badgeIn 0.3s var(--ease-spring);
+}
+.vote-head { font-size: 12.5px; color: var(--text-2); }
+.vote-head b { color: var(--text-1); }
+.vote-bar { height: 5px; margin: 8px 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.vote-bar i { display: block; height: 100%; background: var(--red); transition: width 0.3s var(--ease-out); }
+.vote-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-3); }
+.vote-yes {
+  padding: 4px 12px; cursor: pointer; border-radius: 999px; border: 1px solid var(--red);
+  background: var(--red-lo); color: #fff; font: 800 11px var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.vote-yes:hover { filter: brightness(1.1); }
+.vote-done { color: var(--green); font-weight: 700; }
+
+/* The ⋯ on another player's nameplate, and what it opens. */
+.pod-more {
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0;
+  display: grid; place-items: center; cursor: pointer; line-height: 1;
+  border-radius: 50%; border: 1px solid var(--line-2); background: rgba(6, 12, 9, 0.9);
+  color: var(--text-3); font-size: 13px; opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.pod:hover .pod-more, .pod-more[aria-expanded='true'] { opacity: 1; }
+@media (hover: none) { .pod-more { opacity: 0.6; } }
+.pod-more:hover { color: var(--gold-hi); }
+.pod-menu {
+  position: absolute; top: 100%; right: 0; z-index: 12; margin-top: 4px; padding: 4px;
+  background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
+}
+.pod-menu button {
+  padding: 7px 12px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px;
+  background: transparent; color: #ff9d97; font: 700 12px var(--font-ui);
+}
+.pod-menu button:hover { background: rgba(224, 86, 79, 0.14); }
+
+/* ---------- Hand result ---------- */
+.sheet-result { width: min(380px, 100%); padding-top: 24px; }
+.res-win { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.res-face { flex: none; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; }
+.res-face svg { width: 100%; height: 100%; display: block; }
+.res-who { flex: 1 1 auto; min-width: 0; text-align: left; font-weight: 700; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-who em { color: var(--green); font-style: normal; font-weight: 600; }
+.res-amt { flex: none; font-size: 20px; font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.res-hand { margin: 2px 0 0 44px; text-align: left; font-size: 12.5px; color: var(--text-2); }
+.res-kick { display: block; color: var(--text-3); }
+.res-note { margin-top: 8px; font-size: 12.5px; color: var(--text-3); font-style: italic; }
+.res-board { display: flex; justify-content: center; gap: 4px; margin-top: 16px; }
+.res-board .card { --cw: 34px; filter: none; }
+.res-board .card > .back { display: none; }
+.res-foot { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 18px; }
+/* Drains over the life of the modal, so the wait is visible. */
+.res-timer { width: 54px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.res-timer i { display: block; height: 100%; background: var(--gold); animation: drain linear forwards; transform-origin: left; }
+@keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
 /* ---------- Full-screen overlays (game over, out of chips) ---------- */
 .overlay {

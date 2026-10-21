@@ -148,6 +148,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let chatReplyTo = null; // id of the message being replied to
   let chatEditing = null; // id of my message being edited
   let chatMenuFor = null; // id whose actions menu is open
+  let openVotes = []; // vote-kicks currently running at this table
+  let seatMenuFor = null; // userId whose seat menu is open
+  let resultHand = null; // hand whose result screen is showing
+  let resultSkipped = 0; // hand number the player has skipped past
+  let resultTimer = null;
+  let resultSkips = null; // { skips, of } from the server, for the button
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
   let askingSettings = false; // the settings panel is up
@@ -183,6 +189,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('notice', onNotice);
   socket.on('chat', onChat);
   socket.on('chatUpdate', onChatUpdate);
+  socket.on('votes', onVotes);
+  socket.on('resultSkips', onResultSkips);
   socket.on('chatHistory', onChatHistory);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
@@ -207,6 +215,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('notice', onNotice);
     socket.off('chat', onChat);
     socket.off('chatUpdate', onChatUpdate);
+    socket.off('votes', onVotes);
+    socket.off('resultSkips', onResultSkips);
     socket.off('chatHistory', onChatHistory);
     socket.off('connect', resync);
     clearInterval(clock);
@@ -215,9 +225,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     document.removeEventListener('keydown', onKey);
   }
 
-  function exit(notice) {
+  function exit(notice, forced = false) {
     cleanup();
-    onLeave(notice);
+    onLeave(notice, forced);
   }
 
   // ---------------------------------------------------------------------------
@@ -273,15 +283,27 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function bubbleHTML(m, i) {
     const mine = m.userId === user.id;
-    // A run of messages from the same person only needs one name on top.
+    // Messages from one person in a row are grouped: only the first shows a
+    // name and face, and the corner radii round off the outside of the run
+    // so it reads as one block rather than a stack of separate boxes.
     const prev = chatLog[i - 1];
-    const showName = !mine && (!prev || prev.userId !== m.userId);
+    const next = chatLog[i + 1];
+    const first = !prev || prev.userId !== m.userId;
+    const last = !next || next.userId !== m.userId;
+    const group = `${first ? ' is-first' : ''}${last ? ' is-last' : ''}`;
+    const face = first
+      ? `<span class="chat-face">${avatarSVG(m.name)}</span>`
+      : '<span class="chat-face is-blank"></span>';
+
     if (m.deleted) {
-      return `<li class="chat-row${mine ? ' is-mine' : ''}">
-        ${showName ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
-        <div class="bubble is-gone">${mine ? 'You deleted this' : 'Message deleted'}</div>
+      return `<li class="chat-row${mine ? ' is-mine' : ''}${group}">
+        ${first && !mine ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
+        <div class="bubble-line">${mine ? '' : face}
+          <div class="bubble is-gone">${mine ? 'You deleted this' : 'Message deleted'}</div>
+        </div>
       </li>`;
     }
+
     const quoted = m.replyTo ? chatLog.find((x) => x.id === m.replyTo) : null;
     const quoteHTML = m.replyTo
       ? `<div class="bubble-quote">
@@ -290,22 +312,29 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         </div>`
       : '';
     const open = chatMenuFor === m.id;
-    return `<li class="chat-row${mine ? ' is-mine' : ''}">
-      ${showName ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
-      <div class="bubble-wrap">
+    // Reply sits on its own, then the dots: the one everybody uses is a
+    // single tap rather than two.
+    const actions = `<span class="bubble-acts">
+      <button class="bubble-act" data-msg-reply="${m.id}" title="Reply" aria-label="Reply">${icons.call}</button>
+      <button class="bubble-act" data-msg-menu="${m.id}" title="More" aria-label="Message actions" aria-expanded="${open}">⋯</button>
+      ${
+        open
+          ? `<div class="msg-menu">
+              <button data-msg-reply="${m.id}">Reply</button>
+              ${mine ? `<button data-msg-edit="${m.id}">Edit</button>` : ''}
+              ${mine ? `<button class="is-danger" data-msg-delete="${m.id}">Delete</button>` : ''}
+            </div>`
+          : ''
+      }
+    </span>`;
+
+    return `<li class="chat-row${mine ? ' is-mine' : ''}${group}">
+      ${first && !mine ? `<span class="chat-who">${esc(m.name)}</span>` : ''}
+      <div class="bubble-line">${mine ? '' : face}
         <div class="bubble">${quoteHTML}<span class="bubble-text">${esc(m.text)}</span>${
           m.editedAt ? '<span class="bubble-edited">edited</span>' : ''
         }</div>
-        <button class="bubble-more" data-msg-menu="${m.id}" aria-label="Message actions" aria-expanded="${open}">⋯</button>
-        ${
-          open
-            ? `<div class="msg-menu">
-                <button data-msg-reply="${m.id}">Reply</button>
-                ${mine ? `<button data-msg-edit="${m.id}">Edit</button>` : ''}
-                ${mine ? `<button class="is-danger" data-msg-delete="${m.id}">Delete</button>` : ''}
-              </div>`
-            : ''
-        }
+        ${actions}
       </div>
     </li>`;
   }
@@ -351,13 +380,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // On a phone both side panels float over the felt, so only one may be open
   // at a time whichever way round they're opened.
-  const narrow = () => window.matchMedia('(max-width: 760px)').matches;
+  const narrow = () => window.matchMedia('(max-width: 1024px)').matches;
 
   function setChatOpen(on) {
     chatOpen = on;
     setSetting('showChat', on);
     if (on && historyOpen && narrow()) setHistoryOpen(false);
     applyChatOpen();
+    drawVotes(); // the toast shifts aside for the panel
   }
 
   function setHistoryOpen(on) {
@@ -463,6 +493,60 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Vote-kick toasts
+  // ---------------------------------------------------------------------------
+  function onVotes(payload) {
+    openVotes = payload?.open || [];
+    drawVotes();
+  }
+
+  function drawVotes() {
+    let host = root.querySelector('#vote-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'vote-host';
+      host.className = 'vote-host';
+      host.addEventListener('click', onVoteClick);
+      root.appendChild(host);
+    }
+    // Sits clear of the chat panel when that's open, so a vote never lands
+    // on top of the messages.
+    host.classList.toggle('is-shifted', chatOpen && mode === 'table');
+    const others = openVotes.filter((v) => v.userId !== user.id);
+    setHTML(
+      host,
+      others
+        .map((v) => {
+          const voted = v.voters.includes(user.id);
+          const pct = Math.min(100, Math.round((v.votes / v.needed) * 100));
+          return `<div class="vote-toast" role="status">
+            <div class="vote-head">Vote to remove <b>${esc(v.name)}</b></div>
+            <div class="vote-bar"><i style="width:${pct}%"></i></div>
+            <div class="vote-foot">
+              <span>${v.votes} of ${v.needed} needed</span>
+              ${
+                voted
+                  ? '<span class="vote-done">You voted</span>'
+                  : `<button class="vote-yes" data-vote="${v.userId}">Vote</button>`
+              }
+            </div>
+          </div>`;
+        })
+        .join('')
+    );
+  }
+
+  async function onVoteClick(e) {
+    const btn = e.target.closest('[data-vote]');
+    if (!btn) return;
+    try {
+      await emitAck('voteKick', { userId: Number(btn.dataset.vote) });
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
   // Table news from the server: someone joined, left or was removed.
   function onNotice(payload) {
     if (payload?.text) showNotice(payload.text);
@@ -473,7 +557,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // table on screen.
   function onRoomClosed(payload) {
     if (payload?.code && payload.code !== roomCode) return;
-    exit(payload?.reason || 'That room was closed.');
+    exit(payload?.reason || 'That room was closed.', true);
   }
 
   // ---------------------------------------------------------------------------
@@ -507,6 +591,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function overlayHTML(cur) {
     if (askingLeave) return leaveConfirmHTML(cur);
     if (askingSettings) return settingsHTML();
+    if (resultHand && cur.table.handNumber === resultHand && cur.table.lastHandSummary) {
+      return resultHTML(cur);
+    }
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
     const me = cur.table.seats.find((s) => s && s.userId === user.id);
@@ -522,6 +609,71 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   const gameOverKey = (o) => `${o.hands}:${o.winner?.userId ?? 'none'}`;
+
+  // The hand's result, shown properly rather than only as a pill on the felt.
+  // It clears itself after five seconds, and either player can wave it away.
+  const RESULT_MS = 5000;
+
+  function showResult(hand) {
+    if (resultSkipped === hand) return;
+    resultHand = hand;
+    resultSkips = null;
+    clearTimeout(resultTimer);
+    resultTimer = setTimeout(() => dismissResult(hand), RESULT_MS);
+    drawOverlay(shown);
+  }
+
+  function dismissResult(hand) {
+    clearTimeout(resultTimer);
+    resultSkipped = hand;
+    resultHand = null;
+    drawOverlay(shown);
+  }
+
+  // Someone pressed skip: update the count, and if everyone has, move on.
+  function onResultSkips(payload) {
+    if (payload?.hand !== resultHand) return;
+    resultSkips = { skips: payload.skips, of: payload.of };
+    if (payload.all) return dismissResult(payload.hand);
+    drawOverlay(shown);
+  }
+
+  function resultHTML(cur) {
+    const sum = cur.table.lastHandSummary;
+    if (!sum) return '';
+    const iWon = sum.winners.some((w) => w.userId === user.id);
+    const split = sum.winners.length > 1;
+    const waiting = resultSkips ? `${resultSkips.skips}/${resultSkips.of} ready` : '';
+    return `<div class="sheet sheet-result" role="dialog" aria-live="polite" aria-label="Hand result">
+      <div class="sheet-kicker">Hand #${sum.handNumber}${split ? ' · split pot' : ''}</div>
+      ${sum.winners
+        .map(
+          (w) => `<div class="res-win">
+            <span class="res-face">${avatarSVG(w.username)}</span>
+            <span class="res-who">${esc(w.username)}${w.userId === user.id ? ' <em>(you)</em>' : ''}</span>
+            <span class="res-amt">+${fmt(w.amount)}</span>
+          </div>
+          ${
+            w.hand?.description
+              ? `<div class="res-hand">${esc(w.hand.description)}${
+                  w.kicker ? `<span class="res-kick">${esc(w.kicker)}</span>` : ''
+                }</div>`
+              : ''
+          }`
+        )
+        .join('')}
+      ${sum.uncontested ? '<div class="res-note">Everyone else folded</div>' : ''}
+      ${
+        !sum.uncontested && sum.board?.length
+          ? `<div class="res-board">${sum.board.map((c) => cardHTML(c, { simple: true })).join('')}</div>`
+          : ''
+      }
+      <div class="res-foot">
+        <button class="btn btn-ghost btn-sm" data-ov="skip-result">Skip${waiting ? ` · ${waiting}` : ''}</button>
+        <span class="res-timer"><i style="animation-duration:${RESULT_MS}ms"></i></span>
+      </div>
+    </div>`;
+  }
 
   function celebrationHTML(over) {
     const w = over.winner;
@@ -678,6 +830,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (kind === 'leave-yes') return leaveRoom();
     if (kind === 'leave-no') askingLeave = false;
     if (kind === 'settings-close') askingSettings = false;
+    if (kind === 'skip-result') {
+      const hand = resultHand;
+      dismissResult(hand);
+      emitAck('skipResult', { hand }).catch(() => {}); // tell the others
+      return;
+    }
     if (kind === 'spectate') {
       spectating = true; // for this game only; a rebuy clears it
       play('click');
@@ -722,6 +880,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Last, and outside the screen itself: both screens above rebuild their
     // own markup, which would take any overlay inside them with it.
     drawOverlay(shown);
+    drawVotes();
   }
 
   function showError(msg) {
@@ -1078,6 +1237,31 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
 
     // My cards: hold to peek, drag and throw toward the middle to fold.
+    // Seat menus: the ⋯ on another player's nameplate, and the vote it offers.
+    els.seats.addEventListener('click', async (e) => {
+      const open = e.target.closest('[data-seat-menu]');
+      const vote = e.target.closest('[data-vote-kick]');
+      if (open) {
+        const id = Number(open.dataset.seatMenu);
+        seatMenuFor = seatMenuFor === id ? null : id;
+        return drawTable(null, shown);
+      }
+      if (vote) {
+        const id = Number(vote.dataset.voteKick);
+        seatMenuFor = null;
+        drawTable(null, shown);
+        try {
+          await emitAck('voteKick', { userId: id });
+        } catch (err) {
+          showError(err.message);
+        }
+        return;
+      }
+      if (seatMenuFor != null) {
+        seatMenuFor = null;
+        drawTable(null, shown);
+      }
+    });
     els.camera.addEventListener('pointerdown', onHandPointerDown);
     // Right-click holds a peek, so suppress the menu that would interrupt it.
     els.camera.addEventListener('contextmenu', (e) => {
@@ -1279,6 +1463,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (fresh) fresh.replaceWith(keptHand);
       else keptHand.remove(); // I folded mid-gesture; let the cards go
     }
+    clearCardsOfPods();
     drawBoard(t, newHand, ctx.winCards);
     drawPot(t, summary);
     drawMuck(t);
@@ -1290,6 +1475,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (ctx.justShowdown) {
       renderedShowdown = t.handNumber;
       recordHand(t.lastHandSummary);
+      showResult(t.handNumber);
     }
     // Sound is deliberately not tied to the animation pass: the table is
     // meant to be followable by ear alone, so it still plays with animations
@@ -1467,6 +1653,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       ${p.isBot ? `<span class="bot-level ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}
       ${tag ? `<span class="tag ${tag.cls}">${tag.icon || ''}${esc(tag.text)}${tag.kicker ? `<span class="tag-kick">${esc(tag.kicker)}</span>` : ''}</span>` : ''}
       ${acting && !L.isMe ? `<span class="turn-marker">${icons.chevron}</span>` : ''}
+      ${
+        !L.isMe && !p.isBot && !p.left
+          ? `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${seatMenuFor === p.userId}">⋯</button>
+             ${
+               seatMenuFor === p.userId
+                 ? `<div class="pod-menu"><button data-vote-kick="${p.userId}">Vote kick</button></div>`
+                 : ''
+             }`
+          : ''
+      }
     </div>`;
     html += handHTML(p, L, ctx);
     if (BETTING.includes(t.phase) && p.betThisStreet > 0) {
@@ -1476,6 +1672,86 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       html += `<div class="anchor dealer" style="left:${L.dealer.x}%;top:${L.dealer.y}%">${dealerButtonSVG()}</div>`;
     }
     return html;
+  }
+
+  // The seat positions are worked out from percentages before anything is on
+  // screen, so they can't know how wide a nameplate turned out with this
+  // player's name at this font size. This measures both afterwards and, where
+  // they overlap, looks for the nearest spot that clears the nameplate while
+  // staying off the community cards and inside the table.
+  function clearCardsOfPods() {
+    if (!layout || !els?.seats) return;
+    const W = els.camera.offsetWidth;
+    const H = els.camera.offsetHeight;
+    if (!W || !H) return;
+    const rect = els.camera.getBoundingClientRect();
+    const k = W / (rect.width || W); // screen px -> camera px
+    const box = (el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        l: (r.left - rect.left) * k,
+        r: (r.right - rect.left) * k,
+        t: (r.top - rect.top) * k,
+        b: (r.bottom - rect.top) * k,
+      };
+    };
+    const hits = (a, b, pad = 2) =>
+      Math.min(a.r, b.r) - Math.max(a.l, b.l) > -pad && Math.min(a.b, b.b) - Math.max(a.t, b.t) > -pad;
+    const half = boardHalfOf();
+    const bx = (BOARD.x / 100) * W;
+    const by = (BOARD.y / 100) * H;
+    const hw = (half.w / 100) * W;
+    const hh = (half.h / 100) * H;
+
+    // Straight out from the middle first, then sideways, then back in: the
+    // rail usually has the room the board doesn't.
+    const dirs = [];
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      dirs.push([Math.cos(a), Math.sin(a)]);
+    }
+
+    // Chips in front of a seat are as much worth seeing as the nameplate.
+    const betBoxes = [...els.seats.querySelectorAll('.bet')].map(box);
+
+    for (const hand of els.seats.querySelectorAll('[data-hand]')) {
+      const seat = Number(hand.dataset.hand);
+      const L = layout.map.get(seat);
+      if (!L || L.isMe) continue; // my own hand is draggable; leave it be
+      const pod = els.seats.querySelector(`.pod[data-seat="${seat}"]`);
+      if (!pod) continue;
+      const podBox = box(pod);
+      const handBox = box(hand);
+      const blocked = (b) => hits(podBox, b, 0) || betBoxes.some((x) => hits(x, b, 0));
+      if (!blocked(handBox)) continue;
+
+      const w = handBox.r - handBox.l;
+      const h = handBox.b - handBox.t;
+      const cx = (L.cards.x / 100) * W;
+      const cy = (L.cards.y / 100) * H;
+      let placed = null;
+      for (let step = 8; step <= 120 && !placed; step += 8) {
+        for (const [ux, uy] of dirs) {
+          const nx = cx + ux * step;
+          const ny = cy + uy * step;
+          const b = { l: nx - w / 2, r: nx + w / 2, t: ny - h / 2, b: ny + h / 2 };
+          if (blocked(b)) continue; // still on the nameplate or someone's chips
+          if (Math.hypot((nx - bx) / hw, (ny - by) / hh) < 1) continue; // on the board
+          if (b.l < 4 || b.r > W - 4 || b.t < 4 || b.b > H - 4) continue; // off the table
+          placed = { nx, ny };
+          break;
+        }
+      }
+      if (!placed) continue; // nowhere better; leave it where it was
+      hand.style.left = `${(placed.nx / W) * 100}%`;
+      hand.style.top = `${(placed.ny / H) * 100}%`;
+    }
+  }
+
+  // The board's keep-out, inflated by the cards' own size, in percent.
+  function boardHalfOf() {
+    const lm = layout?.portrait ? LANDMARKS.portrait : LANDMARKS.landscape;
+    return { w: lm.boardHalf.w + lm.cardPad.w, h: lm.boardHalf.h + lm.cardPad.h };
   }
 
   // Deal animation offset: each card flies in from the deck, round-robin.
@@ -1524,13 +1800,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </div>`;
     }
     if (p.holeCards) {
-      return `<div class="anchor hand revealed${lost}" style="${pos}">
+      return `<div class="anchor hand revealed${lost}" style="${pos}" data-hand="${p.seat}">
         ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms` })).join('')}
       </div>`;
     }
     // Someone else's face-down cards. When they're checking their hand the
     // cards tilt up and settle — you see them looking, never what they hold.
-    return `<div class="anchor hand${p.peeking ? ' is-peeked' : ''}" style="${pos}">
+    return `<div class="anchor hand${p.peeking ? ' is-peeked' : ''}" style="${pos}" data-hand="${p.seat}">
       ${[0, 1].map((i) => cardHTML('', { face: false, cls: deal ? 'deal' : '', style: `${deal ? dealStyle(L, i) : ''};--d2:${i * 160}ms` })).join('')}
       ${p.peeking ? `<span class="peek-tell">${icons.eye}</span>` : ''}
     </div>`;

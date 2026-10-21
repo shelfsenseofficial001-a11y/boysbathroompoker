@@ -2,10 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- Checking is a double-tap on the felt, which a zoomable page turns into
+       a zoom instead. The game has no content that needs pinching into. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#060b09" />
   <title>Boysbathroom Poker</title>
   <!-- Fonts are served from this machine, so the game works with no internet. -->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
   <link rel="stylesheet" href="/css/fonts.css" />
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
