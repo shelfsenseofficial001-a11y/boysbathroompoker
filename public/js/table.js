@@ -2230,6 +2230,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (foldArmed) setFoldArmed(false);
     }
     els.dock.classList.toggle('not-turn', !m.myTurn);
+    // Watching from the rail: there's no hand to size a bet for and nothing
+    // to act on, so the tray and the action buttons go rather than sitting
+    // there greyed out.
+    els.dock.classList.toggle('is-watching', !me);
 
     // The turn has come round to a hand already given up on: send it now,
     // rather than making the player sit and wait to press the button again.

@@ -1351,6 +1351,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   padding: 0.1em 0.5em; border-radius: 999px; white-space: nowrap;
 }
 .pod .bot-mark { color: var(--lvl, var(--green)); border-color: color-mix(in srgb, var(--lvl, var(--green)) 50%, transparent); }
+/* Nothing to bet with and nothing to act on: the dock is just the status
+   line while you're watching. */
+.dock.is-watching .dock-sizing,
+.dock.is-watching .dock-actions { display: none; }
 .act-call { background: linear-gradient(180deg, #2a3f36, #1a2b24); border-color: var(--line-2); }
 .act-raise { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28); }
 .act-allin { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; }
