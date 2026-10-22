@@ -1160,9 +1160,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <div class="topbar-tools" data-tools>
           <button class="btn btn-ghost btn-sm btn-icon tools-btn" data-tools-btn aria-expanded="false" aria-haspopup="true" title="Display options" aria-label="Display options">${icons.sliders}</button>
           <div class="topbar-toggles">
-            <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds"><span class="ic" data-sound-ic>${soundMuted() ? icons.soundOff : icons.soundOn}</span><span class="tools-label">Sounds ${soundMuted() ? 'off' : 'on'}</span><span class="tools-switch" aria-hidden="true"></span></button>
-            <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span><span class="tools-switch" aria-hidden="true"></span></button>
-            <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span><span class="tools-switch" aria-hidden="true"></span></button>
+            <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds"><span class="ic" data-sound-ic>${soundMuted() ? icons.soundOff : icons.soundOn}</span><span class="tools-label">Sounds</span><span class="tools-switch" aria-hidden="true"></span></button>
+            <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span><span class="tools-label">Cards up</span><span class="tools-switch" aria-hidden="true"></span></button>
+            <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span><span class="tools-label">Animations</span><span class="tools-switch" aria-hidden="true"></span></button>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm btn-icon" data-settings title="Table settings" aria-label="Table settings">${icons.gear}</button>
@@ -1184,8 +1184,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       sound.setAttribute('aria-pressed', String(!off));
       const ic = sound.querySelector('[data-sound-ic]');
       if (ic) ic.innerHTML = off ? icons.soundOff : icons.soundOn;
-      const label = sound.querySelector('.tools-label');
-      if (label) label.textContent = `Sounds ${off ? 'off' : 'on'}`;
     });
 
     // The dropdown the three switches live in on a phone.
@@ -1200,7 +1198,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Anywhere else shuts it, including picking one of the switches.
     root.addEventListener('click', (e) => {
       if (!tools?.classList.contains('is-open')) return;
-      if (e.target.closest('[data-tools-btn]')) return;
+      if (e.target.closest('[data-tools]')) return; // the button, or a switch
       tools.classList.remove('is-open');
       toolsBtn.setAttribute('aria-expanded', 'false');
     });
@@ -1219,7 +1217,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       setSetting('autoReveal', on);
       reveal.classList.toggle('is-off', !on);
       reveal.setAttribute('aria-pressed', String(on));
-      const label = reveal.querySelector('span');
+      const label = reveal.querySelector('.hide-md');
       if (label) label.textContent = `Cards ${on ? 'up' : 'hidden'}`;
       if (peeking) endPeek(); // a peek in progress has just become pointless
       play('flip');
@@ -1231,7 +1229,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       reduceMotion = motionReduced();
       btn.classList.toggle('is-off', reduceMotion);
       btn.setAttribute('aria-pressed', String(!reduceMotion));
-      const label = btn.querySelector('span');
+      const label = btn.querySelector('.hide-md');
       if (label) label.textContent = `Animations ${reduceMotion ? 'off' : 'on'}`;
     });
   }

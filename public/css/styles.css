@@ -257,9 +257,18 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
     box-shadow: var(--shadow-2);
   }
   .topbar-tools.is-open .topbar-toggles { display: flex; }
-  .topbar-toggles .btn { width: 100%; justify-content: flex-start; gap: 9px; height: 38px; white-space: nowrap; }
-  /* These labels are hidden on a narrow bar; in the panel they're the point. */
-  .topbar-toggles .hide-md, .topbar-toggles .tools-label { display: inline; }
+  /* Rows in a menu, not buttons in a row: no border of their own, and the
+     icon-only sizing the bar gives the sound button is undone so its icon
+     lines up with the other two. */
+  .topbar-toggles .btn {
+    width: 100%; justify-content: flex-start; gap: 9px; height: 38px; white-space: nowrap;
+    padding: 0 10px; border-color: transparent; background: transparent;
+  }
+  .topbar-toggles .btn:hover { background: rgba(255, 255, 255, 0.06); }
+  .topbar-toggles .btn .ic { display: inline-flex; align-items: center; }
+  /* The bar's labels say which way each setting is set; in the panel the
+     switch does that, so the label is just the name of the thing. */
+  .topbar-toggles .tools-label { display: inline; }
   /* Each row reads as the setting it is: a switch showing its own state,
      like every other on/off in the game. Driven by aria-pressed, which the
      buttons already carry, so there's one source of truth for on and off. */
