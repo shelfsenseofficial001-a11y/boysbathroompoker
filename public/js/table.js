@@ -476,11 +476,17 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // The box grows down the way a message does, instead of scrolling a single
   // line sideways. Capped so a long message can't swallow the whole panel.
+  // scrollHeight measures the content box, and the field is sized border-box,
+  // so the borders have to be added back - without them every line sits two
+  // pixels short of its own text and the scrollbar never goes away.
+  const INPUT_MAX = 120;
   function autoSizeInput() {
     const el = els?.chatInput;
     if (!el) return;
+    const cs = getComputedStyle(el);
+    const borders = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    el.style.height = `${Math.min(el.scrollHeight + borders, INPUT_MAX)}px`;
   }
 
   function wireChat() {

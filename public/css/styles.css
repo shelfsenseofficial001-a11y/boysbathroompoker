@@ -721,12 +721,21 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   flex: 1 1 auto; min-width: 0; height: 36px; max-height: 120px;
   padding: 8px 12px; font-size: 13px; line-height: 1.35;
   resize: none; overflow-y: auto; font-family: inherit;
-  /* No bar inside the box: the page's scrollbars are 12px, which fills a
-     third of a message this size. It still scrolls past the cap, just
-     without anything drawn down the edge. */
-  scrollbar-width: none;
+  /* `auto`, so the bar is there only once a message outgrows the box. It's
+     drawn slim rather than taking the page's 12px, which would fill a third
+     of a field this size. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(230, 180, 80, 0.45) transparent;
 }
-.chat-form .input::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.chat-form .input::-webkit-scrollbar { width: 6px; }
+/* No track line and no stepper arrows: inside a field this small they read
+   as chrome rather than as a scrollbar. */
+.chat-form .input::-webkit-scrollbar-track { background: transparent; border: 0; }
+.chat-form .input::-webkit-scrollbar-button { display: none; height: 0; }
+.chat-form .input::-webkit-scrollbar-thumb {
+  background: rgba(230, 180, 80, 0.4); border: 0; border-radius: 99px;
+}
+.chat-form .input::-webkit-scrollbar-thumb:hover { background: rgba(230, 180, 80, 0.65); }
 .chat-form .btn { flex: none; width: 36px; height: 36px; padding: 0; }
 
 /* Anything narrower than a roomy desktop floats the side panels over the felt
