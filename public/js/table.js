@@ -2863,10 +2863,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     const delta = (ev) => ({ dx: (ev.clientX - start.x) * k, dy: (ev.clientY - start.y) * k });
     const isThrow = (d) => -d.dy > throwDist || Math.hypot(d.dx, d.dy) > throwDist * 1.6;
+    // How far the pointer has to travel before a peek becomes a drag, in real
+    // screen pixels. A finger resting on the cards drifts several of them a
+    // second, and at ten the hold kept turning itself into a toss - so a
+    // touch is given the room a finger actually needs, while a mouse, which
+    // stays where it's put, keeps the tighter one.
+    const slop = e.pointerType === 'mouse' ? 10 : 22;
 
     const move = (ev) => {
       const d = delta(ev);
-      if (!moved && Math.hypot(d.dx, d.dy) < 10) return;
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < slop) return;
       if (!moved) {
         if (rightButton) return; // right-hold is peek-only
         moved = true;

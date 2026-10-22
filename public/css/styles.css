@@ -98,6 +98,11 @@ body, body * {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+/* Double-tapping is how you check, so it must never zoom the page instead.
+   The viewport meta asks for this too, but Safari on iOS ignores
+   user-scalable; touch-action is the part it honours. Panning and pinch are
+   untouched - only the double-tap gesture goes. */
+body { touch-action: manipulation; }
 body input, body textarea, body .selectable, body .error-text {
   user-select: text;
   -webkit-user-select: text;
