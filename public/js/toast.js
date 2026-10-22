@@ -15,6 +15,11 @@ function host(atPage) {
   return el;
 }
 
+// How many are on screen at once. Hitting a button that fails repeatedly
+// (an empty room code, say) used to stack one message per press until they
+// filled the page and covered what you were trying to read.
+const MAX_TOASTS = 3;
+
 // `schedule` lets a screen that tracks its own timers (the table clears its
 // own when you leave) hand in its version of setTimeout.
 export function showToast(msg, { info = false, atPage = false, ms = null, schedule = setTimeout } = {}) {
@@ -22,6 +27,10 @@ export function showToast(msg, { info = false, atPage = false, ms = null, schedu
   el.className = `toast${info ? ' is-info' : ' is-error'}`;
   el.setAttribute('role', info ? 'status' : 'alert');
   el.textContent = msg;
-  host(atPage).appendChild(el);
+  const box = host(atPage);
+  box.appendChild(el);
+  // The newest is the one worth reading, so the oldest make way for it.
+  // Their own timers still fire later and find nothing to remove.
+  while (box.children.length > MAX_TOASTS) box.firstElementChild.remove();
   schedule(() => el.remove(), ms ?? (info ? 4000 : 5000));
 }
