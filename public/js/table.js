@@ -253,7 +253,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (chatLog.length > 80) chatLog.shift();
     // Somebody else talking while the panel is shut is worth a nudge; your
     // own message never is.
-    if (!chatOpen && entry.userId !== user.id) chatUnread += 1;
+    if (!chatShowing() && entry.userId !== user.id) chatUnread += 1;
     if (entry.userId !== user.id) play('click');
     drawChat({ keepUnread: true });
   }
@@ -404,7 +404,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     dot.classList.toggle('is-wide', chatUnread > 9);
   }
 
+  const chatShowing = () => mode === 'waiting' || chatOpen;
+
   function applyChatOpen() {
+    if (mode === 'waiting') return; // the panel is part of the page here
     root.querySelector('.table-screen')?.classList.toggle('show-chat', chatOpen);
     if (els?.chat) els.chat.setAttribute('aria-hidden', String(!chatOpen));
     const btn = root.querySelector('[data-chat]');
@@ -443,6 +446,43 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     applyHistoryOpen();
   }
 
+  // The panel itself. `waiting` swaps the floating column for one that sits
+  // in the waiting room's layout, with no close button — there it's simply
+  // part of the page rather than something covering the felt.
+  function chatAsideHTML(waiting = false) {
+    return `<aside class="${waiting ? 'waiting-chat' : 'chat'}" id="chat" aria-label="Table chat">
+      <div class="chat-head"><span>Table chat</span>
+        ${waiting ? '' : `<button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>`}
+      </div>
+      <ol class="chat-log" id="chat-log"></ol>
+      <div class="chat-context" id="chat-context" hidden></div>
+      <form class="chat-form" id="chat-form">
+        <textarea class="input" id="chat-input" rows="1" maxlength="240" autocomplete="off"
+          placeholder="Say something…" aria-label="Message"></textarea>
+        <button class="btn btn-primary btn-icon" type="submit" aria-label="Send">${icons.send}</button>
+      </form>
+    </aside>`;
+  }
+
+  // Caches the panel's elements on `els` after either screen has drawn it.
+  function captureChatEls() {
+    const $ = (id) => root.querySelector(`#${id}`);
+    els = els || {};
+    els.chat = $('chat');
+    els.chatLog = $('chat-log');
+    els.chatForm = $('chat-form');
+    els.chatInput = $('chat-input');
+  }
+
+  // The box grows down the way a message does, instead of scrolling a single
+  // line sideways. Capped so a long message can't swallow the whole panel.
+  function autoSizeInput() {
+    const el = els?.chatInput;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }
+
   function wireChat() {
     root.querySelector('[data-chat]')?.addEventListener('click', () => {
       setChatOpen(!chatOpen);
@@ -459,6 +499,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const editing = chatEditing;
       const replyTo = chatReplyTo;
       els.chatInput.value = '';
+      autoSizeInput();
       chatEditing = null;
       chatReplyTo = null;
       drawComposer();
@@ -468,6 +509,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       } catch (err) {
         // Put it back exactly as it was, so nothing is lost to an error.
         els.chatInput.value = text;
+        autoSizeInput();
         chatEditing = editing;
         chatReplyTo = replyTo;
         drawComposer();
@@ -476,7 +518,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
 
     // Escape backs out of replying or editing.
+    els.chatInput?.addEventListener('input', autoSizeInput);
     els.chatInput?.addEventListener('keydown', (e) => {
+      // A textarea would otherwise take Enter as a newline; sending is what
+      // people expect from it, so a line break needs Shift.
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        els.chatForm.requestSubmit();
+        return;
+      }
       if (e.key !== 'Escape') return;
       if (chatEditing == null && chatReplyTo == null) return;
       e.stopPropagation();
@@ -490,6 +540,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     chatEditing = null;
     chatReplyTo = null;
     els.chatInput.value = '';
+    autoSizeInput();
     drawComposer();
   }
 
@@ -520,6 +571,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       chatReplyTo = null;
       chatMenuFor = null;
       els.chatInput.value = chatLog.find((m) => m.id === id)?.text || '';
+      autoSizeInput();
       drawChat({ keepUnread: true });
       els.chatInput.focus();
       return els.chatInput.select();
@@ -1053,8 +1105,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     shown = latest;
     if (shown.table.phase === 'waiting') {
       mode = 'waiting';
-      els = null;
-      drawWaiting(shown);
+      drawWaiting(shown); // keeps the chat panel, drops the table's elements
     } else if (mode !== 'table') {
       buildTable();
       mode = 'table';
@@ -1229,9 +1280,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Everyone starts on the same stack, so the host's own figure is the
     // table's figure — whoever else is here already matches it.
     const startChips = state.lobby.find((p) => p.userId === state.hostUserId)?.buyIn ?? 1000;
+    // The waiting room redraws itself whole on every update, which would
+    // take the chat panel - and the half-typed message in it - down with it.
+    // The live node is lifted out beforehand and dropped back into the new
+    // markup, so only the parts that actually changed are rebuilt.
+    const keptChat = els?.chat?.classList.contains('waiting-chat') && root.contains(els.chat) ? els.chat : null;
     root.innerHTML = `<div class="screen">
       ${topbarHTML(t)}
-      <main class="page">
+      <main class="page waiting-page">
         <section class="panel waiting-panel">
           <div class="eyebrow">Waiting room</div>
           <h1 class="display">Gather your players</h1>
@@ -1294,8 +1350,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
                <p class="help-text">${n < 2 ? 'Add a bot or wait for a friend — you need at least 2 players.' : 'Play money only — chips have no real value.'}</p>`
             : '<p class="help-text">Waiting for the host to start<span class="dots"></span></p>'}
         </section>
+        <div id="chat-slot"></div>
       </main>
     </div>`;
+
+    els = keptChat ? { chat: keptChat, chatLog: els.chatLog, chatForm: els.chatForm, chatInput: els.chatInput } : null;
+    const slot = root.querySelector('#chat-slot');
+    if (keptChat) {
+      slot.replaceWith(keptChat); // listeners and draft come with it
+    } else {
+      slot.outerHTML = chatAsideHTML(true);
+      captureChatEls();
+      wireChat();
+      drawChat();
+      autoSizeInput();
+    }
 
     wireTopbar();
     wireSteppers(root);
@@ -1397,17 +1466,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <div class="spec-panel" id="spec-panel" role="group" aria-label="Watching" hidden></div>
       </div>
       <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" aria-label="unread messages" hidden></span></button>
-      <aside class="chat" id="chat" aria-label="Table chat">
-        <div class="chat-head"><span>Table chat</span>
-          <button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>
-        </div>
-        <ol class="chat-log" id="chat-log"></ol>
-        <div class="chat-context" id="chat-context" hidden></div>
-        <form class="chat-form" id="chat-form">
-          <input class="input" id="chat-input" type="text" maxlength="240" autocomplete="off" placeholder="Say something…" aria-label="Message">
-          <button class="btn btn-primary btn-icon" type="submit" aria-label="Send">${icons.send}</button>
-        </form>
-      </aside>
+      ${chatAsideHTML()}
       </div>
       <footer class="dock" id="dock"></footer>
     </div>`;

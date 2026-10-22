@@ -361,6 +361,28 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 
 /* Waiting room */
 .waiting-panel { max-width: 560px; margin: 0 auto; }
+/* The waiting room puts the table talk beside the room itself, so people can
+   sort out who's playing before a card is dealt. Wide enough for the panel
+   and a readable column; below that the chat drops underneath. */
+.waiting-page { max-width: 1000px; }
+.waiting-page.page {
+  display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 320px);
+  gap: 20px; justify-content: center; align-items: start;
+}
+.waiting-page .waiting-panel { margin: 0; }
+/* Unlike the table's panel this one is in the flow, not floating over felt:
+   no sliding, no width animation, and it scrolls with the page. */
+.waiting-chat {
+  display: flex; flex-direction: column; min-width: 0;
+  height: min(620px, calc(100dvh - 160px));
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-l);
+}
+.waiting-chat .chat-log, .waiting-chat .chat-form { min-width: 0; }
+.waiting-chat .chat-head { padding-left: 14px; }
+@media (max-width: 920px) {
+  .waiting-page.page { grid-template-columns: minmax(0, 560px); }
+  .waiting-chat { height: 380px; }
+}
 .code-block {
   margin: 22px 0 18px;
   padding: 18px;
@@ -691,8 +713,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .ctx-x:hover { color: var(--red); }
 .ctx-x .icon { width: 13px; height: 13px; }
 .chat-form.is-editing .input { border-color: rgba(230, 180, 80, 0.55); }
-.chat-form { flex: none; display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 330px; }
-.chat-form .input { flex: 1 1 auto; min-width: 0; height: 36px; font-size: 13px; }
+.chat-form { flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 330px; }
+/* A textarea rather than a single line, so a long message wraps into the box
+   instead of scrolling away sideways. JS sets the height as you type; the
+   max here is the same cap it stops at. */
+.chat-form .input {
+  flex: 1 1 auto; min-width: 0; height: 36px; max-height: 120px;
+  padding: 8px 12px; font-size: 13px; line-height: 1.35;
+  resize: none; overflow-y: auto; font-family: inherit;
+  /* No bar inside the box: the page's scrollbars are 12px, which fills a
+     third of a message this size. It still scrolls past the cap, just
+     without anything drawn down the edge. */
+  scrollbar-width: none;
+}
+.chat-form .input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .chat-form .btn { flex: none; width: 36px; height: 36px; padding: 0; }
 
 /* Anything narrower than a roomy desktop floats the side panels over the felt
