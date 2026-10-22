@@ -1418,6 +1418,13 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   text-wrap: balance; box-shadow: var(--shadow-2);
   animation: badgeIn 0.3s var(--ease-spring);
 }
+/* How many times the same thing has just happened, rather than that many
+   copies of it stacked up the screen. */
+.toast-count {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16); font-size: 11.5px; font-weight: 800;
+  font-variant-numeric: tabular-nums; vertical-align: 1px;
+}
 .toast.is-error { background: rgba(40, 12, 10, 0.96); border: 1px solid var(--red); color: #ffd2cf; }
 /* Not every toast is a problem: table news (someone joining, leaving) reads
    as information rather than an error. */
