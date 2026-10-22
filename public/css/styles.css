@@ -197,7 +197,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   background: rgba(6, 11, 9, 0.85);
   backdrop-filter: blur(8px);
   position: relative;
-  z-index: 20;
+  /* Above the side panels (30), so the options dropdown hanging off the bar
+     isn't covered by the chat column on a phone. */
+  z-index: 50;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 17px; white-space: nowrap; }
 .brand em { font-style: normal; color: var(--gold); }
@@ -228,6 +230,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .name-edit input { width: 160px; }
 .name-edit[data-error] input { border-color: var(--red); }
 .topbar > * { min-width: 0; }
+/* The three on/off switches. On a wide bar `display: contents` dissolves
+   their wrapper so they lay out exactly as they always did; the button that
+   would open them is hidden. */
+.topbar-tools { display: contents; }
+.topbar-toggles { display: contents; }
+.tools-btn, .tools-label, .tools-switch { display: none; }
 @media (max-width: 1100px) {
   .topbar .hide-md { display: none; }
 }
@@ -237,6 +245,39 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @media (max-width: 720px) {
   .topbar { padding: 0 10px; height: 50px; }
   .brand span, .user-pill .user-name, .topbar .hide-sm { display: none; }
+  /* On a phone four icons in a row left nothing to tell them apart, so they
+     fold into one button. Inside the panel there's room for words, which the
+     bar itself never had. */
+  .topbar-tools { display: block; position: relative; }
+  .tools-btn { display: inline-grid; }
+  .topbar-toggles {
+    display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+    min-width: 215px; padding: 6px; flex-direction: column; align-items: stretch; gap: 2px;
+    background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-m);
+    box-shadow: var(--shadow-2);
+  }
+  .topbar-tools.is-open .topbar-toggles { display: flex; }
+  .topbar-toggles .btn { width: 100%; justify-content: flex-start; gap: 9px; height: 38px; white-space: nowrap; }
+  /* These labels are hidden on a narrow bar; in the panel they're the point. */
+  .topbar-toggles .hide-md, .topbar-toggles .tools-label { display: inline; }
+  /* Each row reads as the setting it is: a switch showing its own state,
+     like every other on/off in the game. Driven by aria-pressed, which the
+     buttons already carry, so there's one source of truth for on and off. */
+  .topbar-toggles .tools-switch {
+    display: block; position: relative; flex: none; margin-left: auto;
+    width: 34px; height: 20px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line-2);
+    transition: background-color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+  }
+  .topbar-toggles .tools-switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--text-3);
+    transition: transform 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
+  }
+  .topbar-toggles [aria-pressed='true'] .tools-switch { background: var(--gold); border-color: var(--gold); }
+  .topbar-toggles [aria-pressed='true'] .tools-switch::after { transform: translateX(14px); background: #2a1c05; }
+  /* The row is a switch now, so it shouldn't also dim itself when off. */
+  .topbar-toggles .btn.is-off { opacity: 1; color: var(--text-2); }
 }
 
 /* ---------- Pages (auth, lobby, waiting room) ---------- */

@@ -28,6 +28,7 @@ export const icons = {
   soundOn: svg('<path d="M4 9.5h3L12 5v14l-5-4.5H4z" fill="currentColor" stroke-linejoin="round"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>'),
   soundOff: svg('<path d="M4 9.5h3L12 5v14l-5-4.5H4z" fill="currentColor" stroke-linejoin="round"/><path d="M17 10l4 4M21 10l-4 4"/>'),
   sparkle: svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/>'),
+  sliders: svg('<path d="M5 20v-6M5 10V4M12 20v-9M12 7V4M19 20v-4M19 12V4"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="9" r="2"/><circle cx="19" cy="14" r="2"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   chevron: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 9z" fill="currentColor"/></svg>',
   logo: `<svg class="logo" viewBox="0 0 32 32" aria-hidden="true">

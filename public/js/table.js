@@ -1154,10 +1154,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </div>
       <div class="topbar-user">
         ${userPillHTML(user)}
-        <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds">${soundMuted() ? icons.soundOff : icons.soundOn}</button>
-        <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span></button>
+        <!-- One button's worth of room on a phone: the three on/off switches
+             share a dropdown there, and sit out on the bar on a wide screen.
+             Same markup either way, so they keep their one set of handlers. -->
+        <div class="topbar-tools" data-tools>
+          <button class="btn btn-ghost btn-sm btn-icon tools-btn" data-tools-btn aria-expanded="false" aria-haspopup="true" title="Display options" aria-label="Display options">${icons.sliders}</button>
+          <div class="topbar-toggles">
+            <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds"><span class="ic" data-sound-ic>${soundMuted() ? icons.soundOff : icons.soundOn}</span><span class="tools-label">Sounds ${soundMuted() ? 'off' : 'on'}</span><span class="tools-switch" aria-hidden="true"></span></button>
+            <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span><span class="tools-switch" aria-hidden="true"></span></button>
+            <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span><span class="tools-switch" aria-hidden="true"></span></button>
+          </div>
+        </div>
         <button class="btn btn-ghost btn-sm btn-icon" data-settings title="Table settings" aria-label="Table settings">${icons.gear}</button>
-        <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span></button>
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
     </header>`;
@@ -1174,7 +1182,27 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const off = toggleSound();
       sound.classList.toggle('is-off', off);
       sound.setAttribute('aria-pressed', String(!off));
-      sound.innerHTML = off ? icons.soundOff : icons.soundOn;
+      const ic = sound.querySelector('[data-sound-ic]');
+      if (ic) ic.innerHTML = off ? icons.soundOff : icons.soundOn;
+      const label = sound.querySelector('.tools-label');
+      if (label) label.textContent = `Sounds ${off ? 'off' : 'on'}`;
+    });
+
+    // The dropdown the three switches live in on a phone.
+    const tools = root.querySelector('[data-tools]');
+    const toolsBtn = root.querySelector('[data-tools-btn]');
+    toolsBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = !tools.classList.contains('is-open');
+      tools.classList.toggle('is-open', open);
+      toolsBtn.setAttribute('aria-expanded', String(open));
+    });
+    // Anywhere else shuts it, including picking one of the switches.
+    root.addEventListener('click', (e) => {
+      if (!tools?.classList.contains('is-open')) return;
+      if (e.target.closest('[data-tools-btn]')) return;
+      tools.classList.remove('is-open');
+      toolsBtn.setAttribute('aria-expanded', 'false');
     });
     const hist = root.querySelector('[data-history]');
     hist?.addEventListener('click', () => {
@@ -1769,7 +1797,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // redraw rather than replaced. A new hand deals new cards, so it ends the
     // gesture instead.
     const gesture = peeking || holding || dragging;
-    const keptHand = gesture && !newHand ? els.seats.querySelector('[data-mine]') : null;
+    const mine = els.seats.querySelector('[data-mine]');
+    const keptHand = gesture && !newHand ? mine : null;
+    // Outside a gesture the cards are still worth keeping. Every table update
+    // redraws this seat - a bot betting, anyone at all peeking - and building
+    // the element again restarts whatever it carries, so a peek that only
+    // ends up redrawing the same two cards reads as them being dealt afresh.
+    // The markup is compared, and where nothing about the hand has changed
+    // the live node goes back rather than a copy of it.
+    const mineHTML = !keptHand && mine && !newHand ? mine.outerHTML : null;
     if (gesture && newHand) endPeek();
 
     els.seats.innerHTML = t.seats
@@ -1781,6 +1817,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const fresh = els.seats.querySelector('[data-mine]');
       if (fresh) fresh.replaceWith(keptHand);
       else keptHand.remove(); // I folded mid-gesture; let the cards go
+    } else if (mineHTML) {
+      const fresh = els.seats.querySelector('[data-mine]');
+      if (fresh && fresh.outerHTML === mineHTML) fresh.replaceWith(mine);
     }
     clearCardsOfPods();
     drawBoard(t, newHand, ctx.winCards);
@@ -2893,7 +2932,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.foldZone.classList.add('is-visible', 'is-hot', 'is-confirm');
     els.foldZone.innerHTML = `<div class="fold-confirm">
       <span>${mine ? 'Fold this hand?' : 'Fold when it’s your turn?'}</span>
-      <button class="pending-btn is-allin" data-fold-yes>${icons.fold}${mine ? 'Fold' : 'Queue it'}</button>
+      <button class="pending-btn is-allin" data-fold-yes>${icons.fold}${mine ? 'Fold' : 'Queue'}</button>
       <button class="pending-btn is-clear" data-fold-no aria-label="Keep my cards">${icons.leave}</button>
     </div>`;
     play('click');
