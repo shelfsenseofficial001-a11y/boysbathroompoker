@@ -840,6 +840,19 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true });
     });
 
+    // Turning your cards over for the table after the hand. Nobody is ever
+    // made to: it's asked for, and it only counts for the hand just played.
+    socket.on('showCards', (_payload, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (!room.table.showHand(userId)) {
+        return ack?.({ ok: false, error: 'There are no cards of yours to show.' });
+      }
+      ack?.({ ok: true });
+      announce(room, `${nameOf()} showed their hand.`, userId);
+      broadcastRoom(room);
+    });
+
     socket.on('leaveRoom', (_payload, ack) => {
       const room = roomFor(userId);
       if (room) {

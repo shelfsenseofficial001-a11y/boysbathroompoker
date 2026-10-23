@@ -157,6 +157,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let seatMenuFor = null; // userId whose seat menu is open
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
+  let showAskDone = 0; // hand whose "show your cards?" prompt has been answered
+  // Seat number -> the spot its cards were last nudged to, so a redraw during
+  // a peek can restore it without measuring anything. Declared up here with
+  // the rest of the state: the first draw can land before the body of this
+  // function has finished running, and a `const` further down isn't ready yet.
+  const cardNudges = new Map();
   let askingTransfer = null; // userId being offered the room, pending confirmation
   let askingSettings = false; // the settings panel is up
 
@@ -197,6 +203,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
+  document.addEventListener('pointerdown', onDocPointerDown);
   resync();
   // A note carried in from the lobby, e.g. joining a hand already in play.
   if (notice) later(() => showNotice(notice), 400);
@@ -223,6 +230,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     timers.forEach(clearTimeout);
     window.removeEventListener('resize', onResize);
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('pointerdown', onDocPointerDown);
   }
 
   function exit(notice, forced = false) {
@@ -941,7 +949,26 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (key === 'autoReveal' || key === 'motion') draw(); // the felt changes too
   }
 
+  // Backs out of whichever sheet is up, if it's one you're allowed to
+  // decline. The end of a game and busting out both need a real answer, so
+  // they aren't listed here.
+  function closeSheet() {
+    if (askingSettings) askingSettings = false;
+    else if (askingLeave) askingLeave = false;
+    else if (askingTransfer !== null) askingTransfer = null;
+    else return false;
+    drawOverlay(shown);
+    return true;
+  }
+
   function onOverlayClick(e) {
+    // Clicking the dimmed area around a sheet backs out of it, the same as
+    // its cancel button does.
+    if (e.target === e.currentTarget) {
+      if (closeSheet()) return;
+      if (resultHand) return dismissResult(resultHand);
+      return;
+    }
     const btn = e.target.closest('[data-ov]');
     if (!btn) return;
     const kind = btn.dataset.ov;
@@ -1081,6 +1108,42 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     hist?.addEventListener('click', () => {
       setHistoryOpen(!historyOpen);
       play('click');
+    });
+    root.querySelector('[data-history-close]')?.addEventListener('click', () => {
+      setHistoryOpen(false);
+      play('click');
+    });
+
+    // Narrowing the history. Every control feeds the same filter and redraws
+    // the list; none of them touch what's stored.
+    const onFilter = () => {
+      hhFilter.q = els.hhQ?.value || '';
+      hhFilter.winner = els.hhWinner?.value || '';
+      hhFilter.type = els.hhType?.value || '';
+      hhFilter.no = els.hhNo?.value || '';
+      if (els.hhX) els.hhX.hidden = !hhFilter.q;
+      drawHistory();
+    };
+    els.hhQ?.addEventListener('input', onFilter);
+    els.hhNo?.addEventListener('input', onFilter);
+    els.hhWinner?.addEventListener('change', onFilter);
+    els.hhType?.addEventListener('change', onFilter);
+    const clearFilters = () => {
+      if (els.hhQ) els.hhQ.value = '';
+      if (els.hhNo) els.hhNo.value = '';
+      if (els.hhWinner) els.hhWinner.value = '';
+      if (els.hhType) els.hhType.value = '';
+      onFilter();
+    };
+    els.hhClear?.addEventListener('click', clearFilters);
+    // Empties the search box alone; the dropdowns beneath it stay as they are.
+    els.hhX?.addEventListener('click', () => {
+      if (els.hhQ) els.hhQ.value = '';
+      onFilter();
+      els.hhQ?.focus();
+    });
+    els.historyList.addEventListener('click', (e) => {
+      if (e.target.closest('[data-hh-clear]')) clearFilters();
     });
     root.querySelector('[data-settings]')?.addEventListener('click', () => {
       askingSettings = true;
@@ -1353,7 +1416,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <div class="table-body">
       <button class="history-toggle${historyOpen ? '' : ' is-off'}" data-history aria-pressed="${historyOpen}" title="Show or hide the hand history" aria-label="Hand history">${icons.history}</button>
       <aside class="history" id="history" aria-label="Hand history">
-        <div class="history-head">Hand history</div>
+        <div class="history-head">
+          <button class="chat-x" data-history-close aria-label="Close hand history">${icons.fold}</button>
+          <span>Hand history</span>
+        </div>
+        <div class="hh-find">
+          <label class="hh-search">
+            <input type="search" id="hh-q" placeholder="Search name, hand or #" aria-label="Search hands" autocomplete="off">
+            <button type="button" class="hh-x" id="hh-x" hidden aria-label="Clear search">${icons.fold}</button>
+          </label>
+          <div class="hh-filters">
+            <select id="hh-winner" aria-label="Filter by winner"><option value="">Any winner</option></select>
+            <select id="hh-type" aria-label="Filter by hand"><option value="">Any hand</option></select>
+            <input type="number" id="hh-no" min="1" step="1" placeholder="Hand #" aria-label="Filter by hand number">
+            <button type="button" class="hh-clear" id="hh-clear" hidden>Clear</button>
+          </div>
+        </div>
         <ol class="history-list" id="history-list"></ol>
       </aside>
       <main class="stage" id="stage">
@@ -1383,6 +1461,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
       handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
       history: $('history'), historyList: $('history-list'),
+      hhQ: $('hh-q'), hhWinner: $('hh-winner'), hhType: $('hh-type'), hhNo: $('hh-no'),
+      hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
       chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
     };
@@ -1459,6 +1539,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         drawTable(null, shown);
       }
     });
+    // Dealing in is a one-off, so the class comes off once it has played.
+    // My own hand is the one node carried across redraws rather than rebuilt
+    // (a peek owns it, pointer capture and all), and putting an element back
+    // into the document restarts any animation still named on it — so every
+    // redraw during a peek re-dealt the cards I was already holding.
+    els.seats.addEventListener('animationend', (e) => {
+      if (e.animationName === 'dealIn') e.target.classList.remove('deal');
+      // The hint has had its say. Remembered, so it never appears again.
+      if (e.animationName === 'hintFade') retireHint(e.target);
+    });
+    // First time the cards are hovered, the hint plays once and bows out.
+    els.camera.addEventListener('pointerover', (e) => {
+      if (!e.target.closest('[data-mine]')) return;
+      els.seats.querySelector('[data-mine] .peek-hint')?.classList.add('is-showing');
+    });
     els.camera.addEventListener('pointerdown', onHandPointerDown);
     // Right-click holds a peek, so suppress the menu that would interrupt it.
     els.camera.addEventListener('contextmenu', (e) => {
@@ -1497,6 +1592,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (kind === 'clear') {
         pendingTotal = null;
         syncAmount();
+        return;
+      }
+      if (kind === 'show' || kind === 'show-no') {
+        showAskDone = shown?.table.handNumber ?? 0;
+        if (kind === 'show') revealCards();
+        else drawPending(); // showing redraws itself when the table updates
         return;
       }
       doAction(kind === 'raise' ? 'raise' : kind);
@@ -1704,10 +1805,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     tickClock();
     renderedHand = t.handNumber;
     renderedBoard = t.board.length;
-    if (ctx.justShowdown) {
-      renderedShowdown = t.handNumber;
-      recordHand(t.lastHandSummary);
-    }
+    if (ctx.justShowdown) renderedShowdown = t.handNumber;
+    // Not only on the first draw: a hand turned over after the fact has to
+    // reach the entry that's already in the list.
+    if (t.phase === 'showdown') recordHand(t.lastHandSummary);
     // Sound is deliberately not tied to the animation pass: the table is
     // meant to be followable by ear alone, so it still plays with animations
     // turned off (and when the player isn't looking at the screen at all).
@@ -1718,39 +1819,127 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // ---------------------------------------------------------------------------
   // Hand history sidebar
   // ---------------------------------------------------------------------------
-  // Called once per hand, the first time its showdown is drawn.
+  // Called when a hand's showdown is first drawn, and again whenever its
+  // summary changes — somebody can turn their cards over after the fact, and
+  // the entry already in the list has to pick that up.
   function recordHand(summary) {
     if (!summary || !summary.winners?.length) return;
-    if (history[0]?.hand === summary.handNumber) return; // already logged
-    const shown = new Map((summary.showdownHands || []).map((h) => [h.userId, h]));
-    history.unshift({
+    const shownHands = new Map((summary.showdownHands || []).map((h) => [h.userId, h]));
+    // My own cards go in my own history whatever happened. A pot nobody
+    // contested is never shown down, so this is the only record I get of
+    // what I was actually holding.
+    const mySeat = latest?.table.seats.find((s) => s && s.userId === user.id);
+    const winnerIds = new Set(summary.winners.map((w) => w.userId));
+    const entry = {
       hand: summary.handNumber,
       uncontested: !!summary.uncontested,
+      yourCards: shownHands.get(user.id)?.holeCards || mySeat?.holeCards || [],
       split: summary.winners.length > 1,
       board: summary.uncontested ? [] : summary.board || [],
       winners: summary.winners.map((w) => ({
         name: w.username,
         amount: w.amount,
         mine: w.userId === user.id,
-        // An uncontested pot was never shown down, so there's no hand to name
-        // and no cards to show - nobody at the table got to see them either.
+        // An uncontested pot has no hand to name, since it was never read
+        // against anyone else's. Cards appear only if they were turned over.
         desc: summary.uncontested ? '' : w.hand?.description || w.hand?.name || '',
         kicker: summary.uncontested ? '' : w.kicker || '',
-        cards: summary.uncontested ? [] : shown.get(w.userId)?.holeCards || [],
+        cards: shownHands.get(w.userId)?.holeCards || [],
+        // The category on its own ("Flush"), kept apart from the description
+        // ("Flush, Ace high") so hands can be filtered by what they were.
+        cat: summary.uncontested ? '' : w.hand?.name || '',
       })),
-    });
+      // Hands shown by players who didn't win the pot.
+      showed: [...shownHands.values()]
+        .filter((h) => !winnerIds.has(h.userId) && h.holeCards?.length)
+        .map((h) => ({ name: h.username, cards: h.holeCards, mine: h.userId === user.id })),
+    };
+
+    const at = history.findIndex((h) => h.hand === entry.hand);
+    if (at >= 0) {
+      if (JSON.stringify(history[at]) === JSON.stringify(entry)) return; // nothing new
+      history[at] = entry;
+      saveHistory();
+      redrawEntry(entry.hand);
+      syncHistoryOptions(); // a hand turned over can add a new kind of hand
+      return;
+    }
+    history.unshift(entry);
     if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
     saveHistory();
     prependEntry(history[0]);
+    // The dropdowns offer what the history holds, so a finished hand can put
+    // a new winner or a new kind of hand in them. Without this they only
+    // caught up on a reload.
+    syncHistoryOptions();
+  }
+
+  // What the sidebar is currently narrowed to.
+  const hhFilter = { q: '', winner: '', type: '', no: '' };
+
+  const hhActive = () => !!(hhFilter.q || hhFilter.winner || hhFilter.type || hhFilter.no);
+
+  // A hand matches the text if the search appears in anyone's name, in what
+  // they made, or in the hand's own number — so "flush", "quinn" and "12"
+  // all find something without having to say which you meant.
+  function hhMatches(h) {
+    if (hhFilter.no && h.hand !== Number(hhFilter.no)) return false;
+    if (hhFilter.winner && !h.winners.some((w) => w.name === hhFilter.winner)) return false;
+    if (hhFilter.type && !h.winners.some((w) => (w.cat || w.desc || '').startsWith(hhFilter.type))) return false;
+    const q = hhFilter.q.trim().toLowerCase();
+    if (!q) return true;
+    const hay = [
+      `#${h.hand}`,
+      String(h.hand),
+      h.uncontested ? 'everyone else folded uncontested' : '',
+      h.split ? 'split pot' : '',
+      ...h.winners.map((w) => `${w.name} ${w.desc} ${w.cat || ''} ${w.kicker}`),
+      ...(h.showed || []).map((s) => s.name),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return hay.includes(q);
+  }
+
+  // The two dropdowns only ever offer what the history actually holds, so
+  // there's no picking a player or a hand that returns nothing.
+  function syncHistoryOptions() {
+    const fill = (el, values, current, anyLabel) => {
+      if (!el) return;
+      const want = [anyLabel, ...values].join('|');
+      if (el._want === want) return; // unchanged; leave the open dropdown alone
+      el._want = want;
+      el.innerHTML =
+        `<option value="">${anyLabel}</option>` +
+        values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+      el.value = values.includes(current) ? current : '';
+    };
+    const names = [...new Set(history.flatMap((h) => h.winners.map((w) => w.name)))].sort();
+    const cats = [...new Set(history.flatMap((h) => h.winners.map((w) => w.cat).filter(Boolean)))].sort();
+    fill(els?.hhWinner, names, hhFilter.winner, 'Any winner');
+    fill(els?.hhType, cats, hhFilter.type, 'Any hand');
+    if (els?.hhClear) els.hhClear.hidden = !hhActive();
   }
 
   function drawHistory() {
     if (!els?.historyList) return;
+    syncHistoryOptions();
     if (!history.length) {
       setHTML(els.historyList, '<li class="history-empty">Finished hands show up here.</li>');
       return;
     }
-    setHTML(els.historyList, history.map(entryHTML).join(''));
+    const rows = history.filter(hhMatches);
+    if (!rows.length) {
+      setHTML(
+        els.historyList,
+        `<li class="history-empty">No hands match.${hhActive() ? '<button type="button" class="hh-reset" data-hh-clear>Clear the filters</button>' : ''}</li>`
+      );
+      return;
+    }
+    // What a search turned up is marked for a moment, so the hands that
+    // answered it are obvious before the glow settles away.
+    const found = hhActive() ? ' is-found' : '';
+    setHTML(els.historyList, rows.map((h) => entryHTML(h, found)).join(''));
   }
 
   // A finished hand is added on its own rather than by rebuilding the list:
@@ -1760,6 +1949,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function prependEntry(h) {
     const list = els?.historyList;
     if (!list) return;
+    // With a filter on, whether the new hand belongs in the list at all is
+    // the filter's call, so the list is rebuilt rather than pushed onto.
+    if (hhActive()) return drawHistory();
     if (history.length === 1 || !list.querySelector('.hh')) {
       drawHistory(); // first entry replaces the placeholder
       return;
@@ -1782,9 +1974,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     list._html = null;
   }
 
-  function entryHTML(h) {
-    // Only hands that were actually shown down have cards to look at.
-    const cards = h.winners.some((w) => w.cards?.length);
+  function entryHTML(h, extra = '') {
+    // Only hands that were actually shown down have cards to look at — plus
+    // my own, which I can always look back at.
+    const cards = h.winners.some((w) => w.cards?.length) || !!h.yourCards?.length || !!h.showed?.length;
     const open = expanded.has(h.hand);
     const note = h.uncontested ? 'Everyone else folded' : h.split ? 'Split pot' : '';
     // The eye rides on the first winner's row, beside what they won. On a
@@ -1803,10 +1996,27 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         ${open && w.cards?.length ? `<div class="hh-cards">${w.cards.map((c) => cardHTML(c, { simple: true })).join('')}</div>` : ''}`
       )
       .join('');
-    return `<li class="hh">
+    return `<li class="hh${extra}">
       <div class="hh-no">Hand #${h.hand}</div>
       ${wins}
       ${note ? `<div class="hh-note">${note}</div>` : ''}
+      ${
+        open
+          ? (h.showed || [])
+              .filter((s) => !s.mine)
+              .map(
+                (s) => `<div class="hh-board"><span class="hh-label">${esc(s.name)} showed</span><div class="hh-cards">${s.cards
+                  .map((c) => cardHTML(c, { simple: true }))
+                  .join('')}</div></div>`
+              )
+              .join('')
+          : ''
+      }
+      ${
+        open && h.yourCards?.length && !h.winners.some((w) => w.mine && w.cards?.length)
+          ? `<div class="hh-board"><span class="hh-label">You held</span><div class="hh-cards">${h.yourCards.map((c) => cardHTML(c, { simple: true })).join('')}</div></div>`
+          : ''
+      }
       ${open && h.board?.length ? `<div class="hh-board"><span class="hh-label">Board</span><div class="hh-cards">${h.board.map((c) => cardHTML(c, { simple: true })).join('')}</div></div>` : ''}
     </li>`;
   }
@@ -1919,8 +2129,26 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // player's name at this font size. This measures both afterwards and, where
   // they overlap, looks for the nearest spot that clears the nameplate while
   // staying off the community cards and inside the table.
+
+  function applyNudges() {
+    for (const hand of els.seats.querySelectorAll('[data-hand]')) {
+      const at = cardNudges.get(Number(hand.dataset.hand));
+      if (!at) continue;
+      hand.style.left = at.left;
+      hand.style.top = at.top;
+    }
+  }
+
   function clearCardsOfPods() {
     if (!layout || !els?.seats) return;
+    // Where a hand ends up is decided by measuring what's actually on screen,
+    // so the answer depends on the camera it's measured through. A peek zooms
+    // that camera, and every redraw while it's held — any bet, any fold —
+    // re-ran this and could settle on a different spot, so other players'
+    // cards twitched around the felt while you were reading your own. The
+    // seats are rebuilt from markup each time, so the last placements are
+    // put back rather than worked out afresh.
+    if (peeking || dragging) return applyNudges();
     const W = els.camera.offsetWidth;
     const H = els.camera.offsetHeight;
     if (!W || !H) return;
@@ -1963,7 +2191,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const podBox = box(pod);
       const handBox = box(hand);
       const blocked = (b) => hits(podBox, b, 0) || betBoxes.some((x) => hits(x, b, 0));
-      if (!blocked(handBox)) continue;
+      if (!blocked(handBox)) {
+        cardNudges.delete(seat); // sits fine where the layout put it
+        continue;
+      }
 
       const w = handBox.r - handBox.l;
       const h = handBox.b - handBox.t;
@@ -1983,8 +2214,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         }
       }
       if (!placed) continue; // nowhere better; leave it where it was
-      hand.style.left = `${(placed.nx / W) * 100}%`;
-      hand.style.top = `${(placed.ny / H) * 100}%`;
+      const at = { left: `${(placed.nx / W) * 100}%`, top: `${(placed.ny / H) * 100}%` };
+      cardNudges.set(seat, at);
+      hand.style.left = at.left;
+      hand.style.top = at.top;
     }
   }
 
@@ -2049,7 +2282,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const label = open ? 'Throw your cards to fold' : 'Hold to peek at your cards';
       return `<div class="anchor hand mine${cls}${lost}" style="${pos}" data-mine ${faceUp ? '' : `role="button" tabindex="0" aria-label="${label}"`}>
         ${p.holeCards.map((c, i) => cardHTML(c, { cls: (deal ? 'deal' : '') + winCls(c), style: `${deal ? dealStyle(L, i) : ''};--fd:${i * 70}ms`, flip: !up })).join('')}
-        ${faceUp ? '' : `<span class="peek-hint">${open ? 'Throw to fold' : 'Hold to peek · throw to fold'}</span>`}
+        ${faceUp || getSettings().peekHintSeen ? '' : `<span class="peek-hint">${open ? 'Throw to fold' : 'Hold to peek · throw to fold'}</span>`}
       </div>`;
     }
     if (p.holeCards) {
@@ -2355,10 +2588,50 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // Chips you've tossed out but not committed yet, shown on the felt with the
   // button that commits them: "Call" when they exactly cover the call,
   // otherwise "Raise"/"Bet".
+  // Still holding cards once the hand is over, and they haven't been turned
+  // over yet. Winner or not — a pot nobody contested never reaches a
+  // showdown, so showing is the only way to prove what you had.
+  function canShowCards() {
+    const t = shown?.table;
+    if (!t || t.phase !== 'showdown' || !t.lastHandSummary) return false;
+    const me = t.seats.find((s) => s && s.userId === user.id);
+    if (!me || me.folded || !me.hasCards) return false;
+    return !(t.lastHandSummary.showdownHands || []).some((h) => h.userId === user.id);
+  }
+
+  async function revealCards() {
+    if (!canShowCards()) return;
+    try {
+      await emitAck('showCards');
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // The same slot the bet confirmation uses, which is free once the betting
+  // is over. Nobody is shown automatically: it is asked, and declining is a
+  // button of its own rather than a timeout.
+  function drawShowAsk(el, L) {
+    if (!L || !canShowCards() || showAskDone === shown.table.handNumber) return false;
+    el.classList.remove('is-empty');
+    el.classList.toggle('is-side', layout.portrait);
+    const x = layout.portrait ? clamp(L.cards.x + 16, 12, 66) : clamp(L.cards.x + 12, 12, 86);
+    el.style.left = `${x}%`;
+    el.style.top = `${clamp(layout.portrait ? L.cards.y : L.cards.y - 1, 8, 92)}%`;
+    setHTML(el, `
+      <div class="show-ask">Show your hand?<small>Or hold your cards</small></div>
+      <div class="pending-actions">
+        <button class="pending-btn is-show" data-commit="show">${icons.eye}Show</button>
+        <button class="pending-btn is-clear" data-commit="show-no" aria-label="Keep them to myself">${icons.fold}</button>
+      </div>`);
+    return true;
+  }
+
   function drawPending() {
     const m = model;
     const L = myLayout();
     const el = els.pending;
+    if (drawShowAsk(el, L)) return;
     const total = pendingTotal ?? 0;
     const extra = m ? Math.min(total, m.maxTotal) - m.me?.betThisStreet : 0;
     if (!m?.canRaise || pendingTotal === null || !L || extra <= 0) {
@@ -2414,7 +2687,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawFoldButton();
   }
 
-  const foldQueued = () => queuedFold !== null && queuedFold === shown?.table.handNumber;
+  // A function declaration, not a const: the dock can be drawn before this
+  // point in the module has run, and an arrow assigned here isn't ready yet.
+  function foldQueued() {
+    return queuedFold !== null && queuedFold === shown?.table.handNumber;
+  }
 
   // Fold reads as one of four things: idle, asking, asking out of turn, or
   // waiting for the turn to come round. Only its text changes - the button
@@ -2648,8 +2925,39 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     syncAmount();
   }
 
+  // Anything that hangs open — a seat's menu, a message's menu, the watchers
+  // panel — shuts on the next click that lands outside it. Each used to watch
+  // only its own container, so a click anywhere else on the page (the felt,
+  // the dock, the top bar) left it open behind whatever you did next.
+  function closeMenus(target = null) {
+    const outside = (sel) => !target || !target.closest(sel);
+    if (seatMenuFor != null && outside('.pod-menu, [data-seat-menu]')) {
+      seatMenuFor = null;
+      if (shown && mode === 'table') drawTable(null, shown);
+    }
+    if (chatMenuFor != null && outside('.msg-menu, [data-msg-menu]')) {
+      chatMenuFor = null;
+      drawChat({ keepUnread: true });
+    }
+    if (specOpen && outside('.spec-panel, [data-spec]')) {
+      specOpen = false;
+      if (shown) drawSpectators(shown);
+    }
+  }
+
+  // Hoisted: this is handed to addEventListener while the module is still
+  // setting itself up, long before this line is reached.
+  function onDocPointerDown(e) {
+    closeMenus(e.target);
+  }
+
   function onKey(e) {
-    if (mode !== 'table' || e.target.matches('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+    const onField = e.target instanceof Element && e.target.matches('input, textarea, select');
+    if (onField || e.metaKey || e.ctrlKey || e.altKey) return;
+    // Escape backs out of an open sheet from either screen, before the
+    // table-only shortcuts below.
+    if (e.key === 'Escape' && closeSheet()) return;
+    if (mode !== 'table') return;
     const k = e.key.toLowerCase();
     const press = (kind) => {
       const b = els.dock.querySelector(`[data-act="${kind}"]`);
@@ -2657,7 +2965,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     };
     if (k === 'p') peekBriefly();
     else if (k === 'f') requestFold();
-    else if (k === 'escape') { setFoldArmed(false); setAllinArmed(false); }
+    else if (k === 'escape') { setFoldArmed(false); setAllinArmed(false); closeMenus(); }
     else if (k === 'c') press(model?.toCall > 0 ? 'call' : 'check');
     else if (k === 'r') press('raise');
   }
@@ -2683,9 +2991,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return hand && !hand.classList.contains('shown') ? hand : null;
   }
 
+  // Done with the hint: off the screen, and off the list of things to say.
+  function retireHint(el) {
+    el?.remove();
+    if (!getSettings().peekHintSeen) setSetting('peekHintSeen', true);
+  }
+
   function startPeek(hand = currentHand()) {
     const L = myLayout();
     if (!hand || !L || peeking) return false;
+    // They've worked out the gesture without needing to read it to the end —
+    // on a touchscreen the hint is covered by the peek before it can finish.
+    retireHint(hand.querySelector('.peek-hint'));
+    // Once the hand is over there's nothing private left to look at, so the
+    // same hold that hides your cards during play shows them afterwards.
+    if (canShowCards()) {
+      showAskDone = shown.table.handNumber;
+      revealCards();
+    }
     // Cards are already face up: nothing to lift, nothing to zoom into, and
     // no “they're looking” tell to send the rest of the table.
     if (autoReveal()) return false;

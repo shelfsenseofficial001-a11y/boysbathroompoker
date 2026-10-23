@@ -62,6 +62,19 @@ class Table {
     return seat;
   }
 
+  // Turning your cards face up for the table once the hand is over. Anyone
+  // still holding cards may, winner or not; a pot nobody contested is never
+  // shown down, so without this there's no way to prove what you had.
+  showHand(userId) {
+    const sum = this.lastHandSummary;
+    if (this.phase !== 'showdown' || !sum) return false;
+    const p = this.seats.find((s) => s && s.userId === userId);
+    if (!p || p.folded || !p.holeCards.length) return false;
+    if (sum.showdownHands.some((h) => h.userId === userId)) return false;
+    sum.showdownHands.push({ userId, username: p.username, holeCards: p.holeCards.slice(), shown: true });
+    return true;
+  }
+
   // Marks a player as looking at their cards, so everyone else sees the tell.
   // It expires on its own in case a client vanishes mid-peek.
   setPeeking(userId, on) {
@@ -540,10 +553,13 @@ class Table {
       seats: this.seats.map((p) => {
         if (!p) return null;
         const isViewer = p.userId === viewerUserId;
-        // Others' cards are shown only for hands that reached a real showdown;
-        // folded hands and uncontested wins stay hidden.
+        // Someone else's cards are visible exactly when they're part of the
+        // showdown: everyone still in at a contested one, and anyone who
+        // chose to show after a pot nobody contested. Folded hands stay down.
         const shownAtShowdown =
-          this.phase === 'showdown' && !p.folded && this.lastHandSummary && !this.lastHandSummary.uncontested;
+          this.phase === 'showdown' &&
+          !p.folded &&
+          !!this.lastHandSummary?.showdownHands.some((h) => h.userId === p.userId);
         return {
           seat: p.seat,
           userId: p.userId,

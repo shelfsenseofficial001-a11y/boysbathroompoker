@@ -569,12 +569,71 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 .history-toggle:hover { background: var(--bg-3); border-color: rgba(230, 180, 80, 0.5); }
+.history-toggle, .chat-toggle { transition: opacity 0.2s var(--ease-out), background-color 0.15s, color 0.15s, border-color 0.15s; }
 .history-toggle.is-off { color: var(--text-3); }
 .history-toggle .icon { width: 17px; height: 17px; }
+/* The close button takes the spot the floating toggle used to sit over, so
+   the heading no longer has to leave a gap for it. */
 .history-head {
-  flex: none; padding: 14px 14px 10px 50px; font: 800 11px var(--font-ui);
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px 10px; font: 800 11px var(--font-ui);
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3);
   border-bottom: 1px solid var(--line-2);
+}
+/* One way in and one way out: with the panel open its own X does the job, so
+   the floating button fades rather than sitting there doing the same thing. */
+.show-history .history-toggle { opacity: 0; pointer-events: none; }
+/* Searching and narrowing the history. Sits under the heading and stays put
+   while the list below it scrolls. */
+.hh-find {
+  flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+}
+.hh-search { position: relative; display: flex; }
+.hh-search input {
+  width: 100%; height: 30px; padding: 0 34px 0 10px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: var(--bg-1); color: var(--text-1);
+  font: 500 12.5px var(--font-ui);
+}
+.hh-search input::placeholder { color: var(--text-3); }
+/* The browser's own clear control is a different shape on every engine and
+   can't be styled, so it's switched off in favour of the one below. */
+.hh-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.hh-x {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 19px; height: 19px; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border-radius: 50%; border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.08); color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.hh-x:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); background: rgba(230, 180, 80, 0.14); }
+.hh-x .icon { width: 10px; height: 10px; }
+.hh-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.hh-filters select, .hh-filters input {
+  flex: 1 1 auto; min-width: 0; height: 27px; padding: 0 6px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: var(--bg-1); color: var(--text-2);
+  font: 600 11.5px var(--font-ui);
+}
+.hh-filters input[type='number'] { flex: 0 0 72px; }
+.hh-filters select:focus-visible, .hh-filters input:focus-visible, .hh-search input:focus-visible {
+  border-color: rgba(230, 180, 80, 0.6);
+}
+/* A row of its own, edge to edge: it undoes everything above it, so it reads
+   as a bar under them rather than one more control among them. */
+.hh-clear, .hh-reset {
+  flex: 1 1 100%; width: 100%; height: 27px; padding: 0 10px; cursor: pointer; border-radius: var(--r-s);
+  border: 1px solid rgba(230, 180, 80, 0.4); background: rgba(230, 180, 80, 0.1);
+  color: var(--gold-hi); font: 700 11px var(--font-ui);
+}
+.hh-clear:hover { background: rgba(230, 180, 80, 0.18); }
+.hh-reset { display: block; width: auto; height: auto; margin: 8px auto 0; padding: 4px 10px; }
+/* What a search turned up, marked just long enough to find your eye. The
+   outline is drawn with a shadow so the row never changes size. */
+.hh.is-found { animation: foundGlow 1.6s var(--ease-out) both; }
+@keyframes foundGlow {
+  0% { box-shadow: 0 0 0 1px rgba(230, 180, 80, 0.85), 0 0 16px rgba(230, 180, 80, 0.45); }
+  55% { box-shadow: 0 0 0 1px rgba(230, 180, 80, 0.7), 0 0 14px rgba(230, 180, 80, 0.3); }
+  100% { box-shadow: 0 0 0 1px transparent, 0 0 0 transparent; }
 }
 .history-list {
   flex: 1 1 auto; margin: 0; padding: 8px; list-style: none;
@@ -953,7 +1012,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .board .card:not(.flip-in) > .back { display: none; }
 
 /* Peek: both cards lift and fan apart, then turn face-up. */
-.hand.mine.lifted { z-index: 7; }
+/* The raised position is stated here rather than left to :hover. While the
+   hand is lifted the pointer is over it by definition, but every table
+   update re-inserts this node and :hover is only recomputed on the next hit
+   test — so the 4px hover nudge replayed on each one. Holding the same
+   offset means losing and regaining hover changes nothing. */
+.hand.mine.lifted { z-index: 7; transform: translate(-50%, calc(-50% - 4px)); }
 .hand.mine.lifted .card:first-child { transform: rotate(-10deg) translate(-9%, -10%); }
 .hand.mine.lifted .card:last-child { transform: rotate(10deg) translate(9%, -10%); }
 .hand.mine.lifted .card > .flip { transform: rotateY(180deg); }
@@ -985,14 +1049,31 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   animation: popIn2 0.25s var(--ease-spring);
 }
 .hand .peek-tell .icon { width: 1em; height: 1em; }
+/* Shown once, the first time you hover your own cards, then never again:
+   it's an instruction, and past the first reading it's clutter. */
 .hand.mine .peek-hint {
   position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
   font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--text-2); background: rgba(0, 0, 0, 0.55); padding: 3px 8px; border-radius: 999px;
-  white-space: nowrap; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  white-space: nowrap; opacity: 0; pointer-events: none;
+  /* Matches the hand's own transition, so the correction below lands in step
+     with the movement it's cancelling. */
+  transition: transform 0.25s var(--ease-out);
 }
-.hand.mine:hover .peek-hint { opacity: 1; }
-.hand.mine.lifted .peek-hint { opacity: 0; }
+/* The hand rises 4px under the pointer and while lifted. The hint gives that
+   back, so it holds still instead of riding along with the cards. */
+.hand.mine:hover .peek-hint,
+.hand.mine.lifted .peek-hint { transform: translate(-50%, 4px); }
+/* Its own fade, start to finish — nothing here follows the hover state. */
+.hand.mine .peek-hint.is-showing { animation: hintFade 3.4s var(--ease-out) forwards; }
+@keyframes hintFade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* Looking at the cards answers the question the hint was asking. */
+.hand.mine.lifted .peek-hint { animation: none; opacity: 0; }
 
 /* A hand that's been turned over is there to be read: the cards come up
    larger, fan apart instead of overlapping, and sit above the nameplate
@@ -1076,6 +1157,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pending-btn.is-call { background: linear-gradient(180deg, #4fd394, var(--green)); color: #052414; }
 .pending-btn.is-allin { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; }
 .pending-btn.is-short { background: rgba(0, 0, 0, 0.6); color: var(--text-3); border-color: var(--line-2); cursor: not-allowed; }
+.pending-btn.is-show { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; }
+.pending-btn.is-show .icon { width: 1.1em; height: 1.1em; }
+/* Asked, never assumed: showing your hand is a choice, so it reads as a
+   question with the gesture that also answers it spelled out underneath. */
+.show-ask {
+  display: flex; flex-direction: column; gap: 1px; white-space: nowrap;
+  font-size: 0.82em; font-weight: 700; color: var(--text-1);
+}
+.show-ask small { font-size: 0.85em; font-weight: 500; color: var(--text-3); }
 .pending-btn.is-clear { padding: 0; width: 2.3em; justify-content: center; background: rgba(0, 0, 0, 0.65); color: var(--text-2); border-color: var(--line-2); }
 .pending-btn.is-clear .icon { width: 1.1em; height: 1.1em; }
 @keyframes popIn2 { from { opacity: 0; transform: scale(0.8); } }
@@ -1517,6 +1607,18 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .status-row { height: 34px; margin-top: 0; width: 100%; min-width: 0; }
   .status-sub { flex-wrap: nowrap; gap: 5px; min-width: 0; }
   .status-row .stat { min-width: 0; overflow: hidden; padding-inline: 8px; }
+  /* The actions have a row to themselves from here down, so they span it
+     rather than bunching against the right edge. This belongs to the
+     stacked dock above, not to the narrow-phone block below. */
+  .dock-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-self: stretch; width: 100%; }
+  /* max-width is lifted here: the base cap keeps the buttons from spilling
+     over the betting controls on a wide dock, but in this four-column grid
+     it leaves each one short of its cell and the row reads as ragged. */
+  .act { width: auto; min-width: 0; max-width: none; height: 52px; padding: 0 6px; }
+  .act .act-label { font-size: 11.5px; letter-spacing: 0.06em; }
+  .act .icon { display: none; }
+  .kbd { display: none; }
+  .toast-host { bottom: 200px; }
 }
 /* The narrowest phones: three pills on one line only fit if the type comes
    down with them. Better slightly smaller than clipped mid-word. */
@@ -1536,16 +1638,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .sizer .amount-row { flex: 1 1 100%; min-width: 0; }
   .sizer .range { max-width: none; min-width: 0; }
   .stepper .input { width: 72px; }
-  /* Buttons span the full width of the dock rather than bunching right. */
-  .dock-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-self: stretch; width: 100%; }
-  /* max-width is lifted here: the base cap keeps the buttons from spilling
-     over the betting controls on a wide dock, but in this four-column grid
-     it leaves each one short of its cell and the row reads as ragged. */
-  .act { width: auto; min-width: 0; max-width: none; height: 52px; padding: 0 6px; }
-  .act .act-label { font-size: 11.5px; letter-spacing: 0.06em; }
-  .act .icon { display: none; }
-  .kbd { display: none; }
-  .toast-host { bottom: 200px; }
 }
 
 /* Icon-only status marks beside a player's name: room owner, biggest stack.

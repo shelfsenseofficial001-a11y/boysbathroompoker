@@ -18,6 +18,9 @@ const DEFAULTS = {
   peekZoom: true,
   zoomLevel: ZOOM.level.def,
   zoomSpeed: ZOOM.speed.def,
+  // Set once the "hold to peek" hint has been read, so it's never shown
+  // again on this browser.
+  peekHintSeen: false,
 };
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -39,6 +42,7 @@ export function getSettings() {
     peekZoom: stored.peekZoom !== false,
     zoomLevel: clamp(Number(stored.zoomLevel) || DEFAULTS.zoomLevel, ZOOM.level.min, ZOOM.level.max),
     zoomSpeed: clamp(Number(stored.zoomSpeed) || DEFAULTS.zoomSpeed, ZOOM.speed.min, ZOOM.speed.max),
+    peekHintSeen: stored.peekHintSeen === true,
   };
   return cache;
 }
