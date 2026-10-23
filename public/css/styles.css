@@ -1509,8 +1509,21 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   /* Long names can be clipped, but not while the badge is in the line: its
      glow ring sits outside the box and overflow:hidden squares it off. */
   .status-line:not(:has(.turn-badge)) { overflow: hidden; text-overflow: ellipsis; }
-  .status-row { height: auto; margin-top: 0; width: 100%; min-width: 0; }
-  .status-sub { flex-wrap: wrap; gap: 5px; }
+  /* One fixed-height line, whatever is in it. The figures used to wrap onto
+     a second row when there were three of them and collapse to a bare line
+     between hands, so the dock - and the whole table standing on it - grew
+     and shrank as the hand went on. The pills share the width instead and
+     trim their own text if they must. */
+  .status-row { height: 34px; margin-top: 0; width: 100%; min-width: 0; }
+  .status-sub { flex-wrap: nowrap; gap: 5px; min-width: 0; }
+  .status-row .stat { min-width: 0; overflow: hidden; padding-inline: 8px; }
+}
+/* The narrowest phones: three pills on one line only fit if the type comes
+   down with them. Better slightly smaller than clipped mid-word. */
+@media (max-width: 390px) {
+  .status-row .stat { font-size: 11.5px; gap: 4px; padding-inline: 6px; }
+  .status-row .stat b { font-size: 13px; }
+  .status-row .stat-call b { font-size: 14px; }
   .dock-sizing { flex-wrap: wrap; gap: 10px; }
   .tray { width: 100%; justify-content: space-between; }
   .chip-btn { width: 38px; height: 38px; }
