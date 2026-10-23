@@ -1688,11 +1688,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     if (keptHand) {
       const fresh = els.seats.querySelector('[data-mine]');
-      if (fresh) fresh.replaceWith(keptHand);
+      if (fresh) settleIn(fresh, keptHand);
       else keptHand.remove(); // I folded mid-gesture; let the cards go
     } else if (mineHTML) {
       const fresh = els.seats.querySelector('[data-mine]');
-      if (fresh && fresh.outerHTML === mineHTML) fresh.replaceWith(mine);
+      if (fresh && fresh.outerHTML === mineHTML) settleIn(fresh, mine);
     }
     clearCardsOfPods();
     drawBoard(t, newHand, ctx.winCards);
@@ -1986,6 +1986,19 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hand.style.left = `${(placed.nx / W) * 100}%`;
       hand.style.top = `${(placed.ny / H) * 100}%`;
     }
+  }
+
+  // Puts a node that was carried across a redraw back into the new markup.
+  // Rebuilding the seats detaches it, and Chrome keeps the computed style of
+  // an element it already knows, so re-attaching it animated the difference:
+  // the hand slid across the felt on every single table update. Transitions
+  // are pinned off for the frame it lands in, so it arrives where it belongs
+  // instead of travelling there.
+  function settleIn(fresh, node) {
+    node.classList.add('is-settling');
+    fresh.replaceWith(node);
+    void node.offsetWidth; // commit the landing position before they resume
+    node.classList.remove('is-settling');
   }
 
   // The board's keep-out, inflated by the cards' own size, in percent.
