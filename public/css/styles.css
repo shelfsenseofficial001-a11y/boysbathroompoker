@@ -721,7 +721,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 /* Closing from inside the panel, where the floating toggle used to sit on
    top of this heading. */
-.chat-x {
+.chat-x {ext-3
   flex: none; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer;
   border: 1px solid var(--line-2); border-radius: var(--r-s);
   background: transparent; color: var(--text-3);
@@ -742,14 +742,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 13px; line-height: 1.25; }
 .chat-row + .chat-row { margin-top: 3px; }
 /* The break between one person's run of messages and the next. */
-.chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 14px; }
+/* .chat-row.is-first + .chat-row.is-first, .chat-row.is-last + .chat-row { margin-top: 14px; } */
 .chat-row.is-mine { align-items: flex-end; }
 /* Sender's name and “Replied to …” share one line above the bubble. The
    parts are different sizes, so they centre on a common line box rather
    than sitting on their own baselines. */
-.chat-meta { display: flex; align-items: center; gap: 6px; line-height: 1; }
+.chat-meta { display: flex; align-items: center; gap: 6px; line-height: 1; margin-top: 4px; }
 .chat-row.is-mine .chat-meta { flex-direction: row-reverse; }
-.chat-who { font: 500 10.5px/1 var(--font-ui); color: var(--text-3); }
+.chat-who { font: 500 10.5px/1 var(--font-ui); color: var(--text-2); font-weight: bold;}
 .bubble-line { position: relative; display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
 .bubble-line > .bubble { flex: 0 1 auto; min-width: 0; }
 .chat-row.is-mine .bubble-line { flex-direction: row-reverse; }
