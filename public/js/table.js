@@ -1114,37 +1114,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       play('click');
     });
 
-    // Narrowing the history. Every control feeds the same filter and redraws
-    // the list; none of them touch what's stored.
-    const onFilter = () => {
-      hhFilter.q = els.hhQ?.value || '';
-      hhFilter.winner = els.hhWinner?.value || '';
-      hhFilter.type = els.hhType?.value || '';
-      hhFilter.no = els.hhNo?.value || '';
-      if (els.hhX) els.hhX.hidden = !hhFilter.q;
-      drawHistory();
-    };
-    els.hhQ?.addEventListener('input', onFilter);
-    els.hhNo?.addEventListener('input', onFilter);
-    els.hhWinner?.addEventListener('change', onFilter);
-    els.hhType?.addEventListener('change', onFilter);
-    const clearFilters = () => {
-      if (els.hhQ) els.hhQ.value = '';
-      if (els.hhNo) els.hhNo.value = '';
-      if (els.hhWinner) els.hhWinner.value = '';
-      if (els.hhType) els.hhType.value = '';
-      onFilter();
-    };
-    els.hhClear?.addEventListener('click', clearFilters);
-    // Empties the search box alone; the dropdowns beneath it stay as they are.
-    els.hhX?.addEventListener('click', () => {
-      if (els.hhQ) els.hhQ.value = '';
-      onFilter();
-      els.hhQ?.focus();
-    });
-    els.historyList.addEventListener('click', (e) => {
-      if (e.target.closest('[data-hh-clear]')) clearFilters();
-    });
+    wireHistoryFilters();
     root.querySelector('[data-settings]')?.addEventListener('click', () => {
       askingSettings = true;
       drawOverlay(shown);
@@ -1876,6 +1846,40 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // What the sidebar is currently narrowed to.
   const hhFilter = { q: '', winner: '', type: '', no: '' };
+
+  // Narrowing the history. Every control feeds the same filter and redraws
+  // the list; none of them touch what's stored. The waiting room shares the
+  // top bar but has no history panel, so this does nothing there rather than
+  // throwing and taking the rest of that screen's wiring down with it.
+  function wireHistoryFilters() {
+    if (!els?.historyList) return;
+    const onFilter = () => {
+      hhFilter.q = els.hhQ?.value || '';
+      hhFilter.winner = els.hhWinner?.value || '';
+      hhFilter.type = els.hhType?.value || '';
+      hhFilter.no = els.hhNo?.value || '';
+      if (els.hhX) els.hhX.hidden = !hhFilter.q;
+      drawHistory();
+    };
+    const clearFilters = () => {
+      for (const el of [els.hhQ, els.hhNo, els.hhWinner, els.hhType]) if (el) el.value = '';
+      onFilter();
+    };
+    els.hhQ?.addEventListener('input', onFilter);
+    els.hhNo?.addEventListener('input', onFilter);
+    els.hhWinner?.addEventListener('change', onFilter);
+    els.hhType?.addEventListener('change', onFilter);
+    els.hhClear?.addEventListener('click', clearFilters);
+    // Empties the search box alone; the dropdowns beneath it stay as they are.
+    els.hhX?.addEventListener('click', () => {
+      if (els.hhQ) els.hhQ.value = '';
+      onFilter();
+      els.hhQ?.focus();
+    });
+    els.historyList.addEventListener('click', (e) => {
+      if (e.target.closest('[data-hh-clear]')) clearFilters();
+    });
+  }
 
   const hhActive = () => !!(hhFilter.q || hhFilter.winner || hhFilter.type || hhFilter.no);
 
