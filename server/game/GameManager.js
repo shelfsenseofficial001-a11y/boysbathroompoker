@@ -42,9 +42,6 @@ class Room {
     this.kickVotes = new Map();
     // The other side of the same vote: who has spoken up to keep them.
     this.keepVotes = new Map();
-    // Who has pressed skip on the current hand's result screen.
-    this.resultHand = null;
-    this.resultSkips = new Set();
     // Everyone in the room without a seat: userId -> why they're watching,
     // 'bust' (ran out of chips, seat given up so the table isn't cluttered
     // with empty stacks) or 'watching' (pulled up a chair deliberately).

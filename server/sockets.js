@@ -627,31 +627,6 @@ function attachSockets(io, sessionMiddleware) {
     // An open vote: anyone in the room can call one on anyone else, and a
     // strict majority of the other players carries it. The host isn't special
     // here - a host who misbehaves can be voted out like anyone.
-    // The hand-result screen can be skipped. One player skipping only hides
-    // it for them; once everybody has, the table moves on together.
-    socket.on('skipResult', ({ hand } = {}, ack) => {
-      const room = roomFor(userId);
-      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
-      const n = Number(hand);
-      if (room.resultHand !== n) {
-        room.resultHand = n;
-        room.resultSkips = new Set();
-      }
-      room.resultSkips.add(userId);
-      const waiting = room.voters(null);
-      const everyone = [...waiting].every((id) => room.resultSkips.has(id));
-      const members = room.members();
-      for (const id of members) {
-        for (const sock of socketsByUser.get(id) || []) {
-          sock.emit('resultSkips', { hand: n, skips: room.resultSkips.size, of: waiting.size, all: everyone });
-        }
-      }
-      ack?.({ ok: true, all: everyone });
-      // Nobody is still reading it, so there's nothing left to wait for: the
-      // next hand goes out now rather than sitting on the rest of the timer.
-      if (everyone && room.table.phase === 'showdown') startNextHand(room);
-    });
-
     socket.on('voteKick', ({ userId: targetUserId } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });

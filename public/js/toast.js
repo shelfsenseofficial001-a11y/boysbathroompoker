@@ -33,19 +33,24 @@ let quietUntil = 0;
 
 // Counts down to its own removal, and notices if the toast was repeated
 // while it was waiting: the message's time starts again from the repeat
-// rather than from when it first appeared. Written as a chain of timeouts
-// because `schedule` hands back no handle to cancel.
-function scheduleRemoval(el, schedule) {
-  schedule(() => {
+// rather than from when it first appeared. A chain of timeouts, so a repeat
+// needs nothing cancelled.
+//
+// Deliberately plain setTimeout. The table used to lend its own scheduler so
+// its timers died with the screen, but the host hangs off <body> and outlives
+// any screen: a toast shown as the room closed had its removal cancelled
+// along with the table's other timers and then sat there for good. "Someone
+// left the game" arrives at exactly that moment, which is why it was the one
+// that stuck.
+function scheduleRemoval(el) {
+  setTimeout(() => {
     const left = el._expires - Date.now();
-    if (left > 20) return scheduleRemoval(el, schedule); // said again since
+    if (left > 20) return scheduleRemoval(el); // said again since
     el.remove();
   }, Math.max(0, el._expires - Date.now()));
 }
 
-// `schedule` lets a screen that tracks its own timers (the table clears its
-// own when you leave) hand in its version of setTimeout.
-export function showToast(msg, { info = false, atPage = false, ms = null, schedule = setTimeout } = {}) {
+export function showToast(msg, { info = false, atPage = false, ms = null } = {}) {
   const box = host(atPage);
   const kind = info ? 'info' : 'error';
   const life = ms ?? (info ? 4000 : 5000);
@@ -71,7 +76,6 @@ export function showToast(msg, { info = false, atPage = false, ms = null, schedu
         kind: 'error',
         role: 'alert',
         life: COOLDOWN_MS,
-        schedule,
       });
       return;
     }
@@ -86,10 +90,10 @@ export function showToast(msg, { info = false, atPage = false, ms = null, schedu
     return;
   }
 
-  addToast(box, { msg, key: msg, kind, role: info ? 'status' : 'alert', life, schedule });
+  addToast(box, { msg, key: msg, kind, role: info ? 'status' : 'alert', life });
 }
 
-function addToast(box, { msg, key, kind, role, life, schedule }) {
+function addToast(box, { msg, key, kind, role, life }) {
   const el = document.createElement('div');
   el.className = `toast is-${kind}`;
   el.setAttribute('role', role);
@@ -104,6 +108,6 @@ function addToast(box, { msg, key, kind, role, life, schedule }) {
   // Their own timers still fire later and find nothing to remove.
   while (box.children.length > MAX_TOASTS) box.firstElementChild.remove();
   el._expires = Date.now() + life;
-  scheduleRemoval(el, schedule);
+  scheduleRemoval(el);
   return el;
 }

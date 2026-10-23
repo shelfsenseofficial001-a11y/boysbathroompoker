@@ -129,6 +129,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let foldArmed = false; // Fold needs a second click to confirm
   let foldArmTimer = null;
   let queuedFold = null; // hand number a fold is lined up for, out of turn
+  let allinArmed = false; // All-in needs a second press to confirm
+  let allinArmTimer = null;
   const timers = new Set();
 
   // Whether my hole cards sit face up for the whole hand (a player setting,
@@ -153,10 +155,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let chatMenuFor = null; // id whose actions menu is open
   let openVotes = []; // vote-kicks currently running at this table
   let seatMenuFor = null; // userId whose seat menu is open
-  let resultHand = null; // hand whose result screen is showing
-  let resultSkipped = 0; // hand number the player has skipped past
-  let resultTimer = null;
-  let resultSkips = null; // { skips, of } from the server, for the button
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
   let askingTransfer = null; // userId being offered the room, pending confirmation
@@ -194,7 +192,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('chat', onChat);
   socket.on('chatUpdate', onChatUpdate);
   socket.on('votes', onVotes);
-  socket.on('resultSkips', onResultSkips);
   socket.on('chatHistory', onChatHistory);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
@@ -220,7 +217,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('chat', onChat);
     socket.off('chatUpdate', onChatUpdate);
     socket.off('votes', onVotes);
-    socket.off('resultSkips', onResultSkips);
     socket.off('chatHistory', onChatHistory);
     socket.off('connect', resync);
     clearInterval(clock);
@@ -783,9 +779,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (askingLeave) return leaveConfirmHTML(cur);
     if (askingTransfer != null) return transferConfirmHTML(cur);
     if (askingSettings) return settingsHTML();
-    if (resultHand && cur.table.handNumber === resultHand && cur.table.lastHandSummary) {
-      return resultHTML(cur);
-    }
     const over = cur.gameOver;
     if (over && dismissedGameOver !== gameOverKey(over)) return celebrationHTML(over);
     // Out of chips: the seat is already given up, but staying to watch is
@@ -798,116 +791,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   const gameOverKey = (o) => `${o.hands}:${o.winner?.userId ?? 'none'}`;
-
-  // The hand's result, shown properly rather than only as a pill on the felt.
-  // It clears itself after five seconds, and either player can wave it away.
-  const RESULT_MS = 5000;
-
-  function showResult(hand) {
-    if (resultSkipped === hand) return;
-    resultHand = hand;
-    resultSkips = null;
-    clearTimeout(resultTimer);
-    resultTimer = setTimeout(() => dismissResult(hand), RESULT_MS);
-    drawOverlay(shown);
-    countUpPot(); // the win/lose sound already plays at showdown
-  }
-
-  function dismissResult(hand) {
-    clearTimeout(resultTimer);
-    resultSkipped = hand;
-    resultHand = null;
-    drawOverlay(shown);
-  }
-
-  // Someone pressed skip: update the count, and if everyone has, move on.
-  function onResultSkips(payload) {
-    if (payload?.hand !== resultHand) return;
-    resultSkips = { skips: payload.skips, of: payload.of };
-    if (payload.all) return dismissResult(payload.hand);
-    drawOverlay(shown);
-  }
-
-  function resultHTML(cur) {
-    const sum = cur.table.lastHandSummary;
-    if (!sum) return '';
-    const iWon = sum.winners.some((w) => w.userId === user.id);
-    const split = sum.winners.length > 1;
-    const lead = sum.winners[0];
-    const waiting = resultSkips ? `${resultSkips.skips}/${resultSkips.of} ready` : '';
-    const total = sum.winners.reduce((n, w) => n + w.amount, 0);
-    const title = split ? 'Split pot' : iWon ? 'You win!' : `${esc(lead.username)} wins`;
-    // Every card that made a winning hand, across all winners on a split.
-    const made = new Set(sum.winners.flatMap((w) => w.hand?.cards || []));
-    const mark = (c) => (made.size ? (made.has(c) ? 'is-win' : 'is-dim') : '');
-    let i = 0; // running index so the cards land one after another
-    const card = (c) => cardHTML(c, { simple: true, cls: `${mark(c)} res-card`, style: `--i:${i++}` });
-
-    const winnersHTML = sum.winners
-      .map((w) => {
-        const hole = (sum.showdownHands || []).find((h) => h.userId === w.userId)?.holeCards || [];
-        return `<div class="res-player${w.userId === user.id ? ' is-me' : ''}">
-          <span class="res-face">${avatarSVG(w.username)}<span class="res-crown">${icons.crown}</span></span>
-          <span class="res-meta">
-            <span class="res-who">${esc(w.username)}${w.userId === user.id ? ' <em>you</em>' : ''}</span>
-            ${
-              w.hand?.description
-                ? `<span class="res-hand">${esc(w.hand.description)}${
-                    w.kicker ? ` · <span class="res-kick">${esc(w.kicker)}</span>` : ''
-                  }</span>`
-                : sum.uncontested
-                  ? '<span class="res-hand">Everyone else folded</span>'
-                  : ''
-            }
-          </span>
-          ${split ? `<span class="res-share">+${fmt(w.amount)}</span>` : ''}
-          ${hole.length ? `<span class="res-hole">${hole.map(card).join('')}</span>` : ''}
-        </div>`;
-      })
-      .join('');
-
-    return `<div class="sheet sheet-result${iWon ? ' is-mine' : ''}" role="dialog" aria-live="polite" aria-label="Hand result">
-      <div class="res-glow" aria-hidden="true"></div>
-      <button class="res-x" data-ov="skip-result" aria-label="Close">${icons.fold}</button>
-      <div class="res-kicker">Hand #${sum.handNumber}</div>
-      <h2 class="res-title">${title}</h2>
-      <div class="res-pot" data-count="${total}" data-hand="${sum.handNumber}">+${fmt(total)}</div>
-      <div class="res-players">${winnersHTML}</div>
-      ${
-        !sum.uncontested && sum.board?.length
-          ? `<div class="res-board"><div class="res-cards">${sum.board.map(card).join('')}</div></div>`
-          : ''
-      }
-      <div class="res-foot">
-        <span class="res-timer"><i style="animation-duration:${RESULT_MS}ms"></i></span>
-        <button class="res-skip" data-ov="skip-result">Skip${waiting ? `<span class="res-ready">${waiting}</span>` : ''}</button>
-      </div>
-    </div>`;
-  }
-
-  // Counts the pot up from nothing the first time a result is shown. Text
-  // only, run on animation frames for under a second, and it lands on the
-  // real figure either way, so a redraw mid-count costs nothing.
-  let countedHand = null;
-  function countUpPot() {
-    const el = root.querySelector('.res-pot[data-count]');
-    if (!el || reduceMotion) return;
-    const hand = Number(el.dataset.hand);
-    if (countedHand === hand) return;
-    countedHand = hand;
-    const to = Number(el.dataset.count) || 0;
-    const start = performance.now();
-    const dur = 900;
-    const step = (now) => {
-      const live = root.querySelector('.res-pot[data-count]');
-      if (!live || Number(live.dataset.hand) !== hand) return; // moved on
-      const t = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - t, 3);
-      live.textContent = `+${fmt(Math.round(to * eased))}`;
-      if (t < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }
 
   function celebrationHTML(over) {
     const w = over.winner;
@@ -1074,12 +957,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       return;
     }
     if (kind === 'settings-close') askingSettings = false;
-    if (kind === 'skip-result') {
-      const hand = resultHand;
-      dismissResult(hand);
-      emitAck('skipResult', { hand }).catch(() => {}); // tell the others
-      return;
-    }
     if (kind === 'spectate') {
       bustAnswered = true; // for this game only; being dealt back in clears it
       play('click');
@@ -1135,10 +1012,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     toast(msg, { info: true });
   }
 
-  // `later` so a toast still on screen when you leave the table doesn't keep
-  // a timer alive against markup that's already gone.
   function toast(msg, { info }) {
-    showToast(msg, { info, schedule: later });
+    showToast(msg, { info });
   }
 
   // ---------------------------------------------------------------------------
@@ -1832,7 +1707,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (ctx.justShowdown) {
       renderedShowdown = t.handNumber;
       recordHand(t.lastHandSummary);
-      showResult(t.handNumber);
     }
     // Sound is deliberately not tied to the animation pass: the table is
     // meant to be followable by ear alone, so it still plays with animations
@@ -2330,6 +2204,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       myTurnKey = turnKey;
       pendingTotal = null;
       if (foldArmed) setFoldArmed(false);
+      if (allinArmed) setAllinArmed(false);
     }
     els.dock.classList.toggle('not-turn', !m.myTurn);
     // Watching from the rail: there's no hand to size a bet for and nothing
@@ -2392,6 +2267,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     q('allin-amt').textContent = me ? fmt(me.chips) : '';
     els.dock.querySelectorAll('.quick-btn, .step-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
     drawFoldButton();
+    drawAllinButton();
     syncAmount();
   }
 
@@ -2542,7 +2418,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       note = mine ? 'Tap again' : 'Tap again';
     } else if (queued) {
       text = 'Folding';
-      note = 'Tap to cancel';
+      note = 'CANCEL';
     }
     btn.classList.toggle('is-armed', foldArmed);
     btn.classList.toggle('is-queued', queued && !foldArmed);
@@ -2553,6 +2429,34 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (label) label.innerHTML = `${icons.fold}${text}<span class="kbd">F</span>`;
     const amt = btn.querySelector('.act-amt');
     if (amt) amt.textContent = note;
+  }
+
+  // Pushing everything in can't be taken back either, so it asks first, the
+  // same way Fold does.
+  function setAllinArmed(on) {
+    allinArmed = on;
+    clearTimeout(allinArmTimer);
+    if (on) allinArmTimer = setTimeout(() => setAllinArmed(false), 4000);
+    drawAllinButton();
+  }
+
+  function drawAllinButton() {
+    const btn = els?.dock.querySelector('#allin-btn');
+    if (!btn) return;
+    btn.classList.toggle('is-armed', allinArmed);
+    const label = btn.querySelector('.act-label');
+    if (label) label.innerHTML = `${icons.allin}${allinArmed ? 'Confirm' : 'All-in'}`;
+  }
+
+  function requestAllin() {
+    if (!model?.myTurn) return;
+    if (!allinArmed) {
+      setAllinArmed(true);
+      play('click');
+      return;
+    }
+    setAllinArmed(false);
+    doAction('allin');
   }
 
   function requestFold() {
@@ -2587,9 +2491,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function onDockClick(e) {
     const act = e.target.closest('[data-act]');
     if (act && !act.disabled) {
-      if (act.dataset.act === 'fold') return requestFold();
-      setFoldArmed(false); // any other action cancels a pending fold
-      return doAction(act.dataset.act);
+      const kind = act.dataset.act;
+      if (kind !== 'fold') setFoldArmed(false); // any other action stands a fold down
+      if (kind !== 'allin') setAllinArmed(false);
+      if (kind === 'fold') return requestFold();
+      if (kind === 'allin') return requestAllin();
+      return doAction(kind);
     }
     const q = e.target.closest('[data-quick]');
     if (q && !q.disabled) {
@@ -2737,7 +2644,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     };
     if (k === 'p') peekBriefly();
     else if (k === 'f') requestFold();
-    else if (k === 'escape') setFoldArmed(false);
+    else if (k === 'escape') { setFoldArmed(false); setAllinArmed(false); }
     else if (k === 'c') press(model?.toCall > 0 ? 'call' : 'check');
     else if (k === 'r') press('raise');
   }
