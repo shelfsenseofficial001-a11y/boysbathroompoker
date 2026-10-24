@@ -558,7 +558,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   background: rgba(6, 12, 9, 0.75); border-right: 1px solid var(--line-2);
   transition: width 0.25s var(--ease-out);
 }
-.show-history .history { width: min(252px, 32vw); }
+.show-history .history { width: min(300px, 32vw); }
 /* Sits in the top-left corner under the navbar, and stays put when the panel
    opens underneath it - which is why the panel's heading is indented. */
 .history-toggle {
@@ -608,7 +608,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .hh-x:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); background: rgba(230, 180, 80, 0.14); }
 .hh-x .icon { width: 10px; height: 10px; }
-.hh-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.hh-filters { display: flex; gap: 6px; }
 .hh-filters select, .hh-filters input {
   flex: 1 1 auto; min-width: 0; height: 27px; padding: 0 6px; border-radius: var(--r-s);
   border: 1px solid var(--line-2); background: var(--bg-1); color: var(--text-2);
@@ -639,7 +639,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   flex: 1 1 auto; margin: 0; padding: 8px; list-style: none;
   overflow-y: auto; overscroll-behavior: contain; min-width: 252px;
 }
-.history-empty { display: flex; align-items: center; flex-direction: column; padding: 14px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+.history-empty { display: flex; align-items: c; flex-direction: column; padding: 14px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
 .hh {
   padding: 9px 10px; border-radius: var(--r-s); margin-bottom: 6px;
   background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2);
