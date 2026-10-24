@@ -825,32 +825,38 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return `<div class="sheet sheet-settings" role="dialog" aria-modal="true" aria-label="Table settings">
       <h2 class="sheet-title">Table settings</h2>
       <div class="set-list">
-        <label class="switch-row">
-          <input type="checkbox" data-set="autoReveal" ${s.autoReveal ? 'checked' : ''}>
-          <span>Turn my cards face up as soon as they're dealt</span>
-        </label>
-        <label class="switch-row">
-          <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
-          <span>Zoom in on my cards when peeking</span>
-        </label>
-        <div class="set-field" ${zoomOff ? 'hidden' : ''}>
-          <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
-          <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
-            min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
-        </div>
-        <div class="set-field" ${zoomOff ? 'hidden' : ''}>
-          <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
-          <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
-            min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
-        </div>
-        <label class="switch-row">
-          <input type="checkbox" data-set="motion" ${reduceMotion ? '' : 'checked'}>
-          <span>Table animations</span>
-        </label>
-        <label class="switch-row">
-          <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
-          <span>Table sounds</span>
-        </label>
+        <section class="set-group">
+          <h3 class="set-head">${icons.eye}Your cards</h3>
+          <label class="switch-row">
+            <input type="checkbox" data-set="autoReveal" ${s.autoReveal ? 'checked' : ''}>
+            <span>Turn my cards face up as soon as they're dealt<small>Nothing left to peek at, and the table can't see you looking</small></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
+            <span>Zoom in on my cards when peeking</span>
+          </label>
+          <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+            <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
+            <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
+              min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
+          </div>
+          <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+            <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
+            <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
+              min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
+          </div>
+        </section>
+        <section class="set-group">
+          <h3 class="set-head">${icons.sparkle}Table</h3>
+          <label class="switch-row">
+            <input type="checkbox" data-set="motion" ${reduceMotion ? '' : 'checked'}>
+            <span>Animations<small>Cards dealing, chips moving, the countdown ring</small></span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
+            <span>Sounds</span>
+          </label>
+        </section>
       </div>
       <div class="sheet-actions">
         <button class="btn btn-primary btn-lg" data-ov="settings-close">Done</button>
@@ -1028,6 +1034,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // own markup, which would take any overlay inside them with it.
     drawOverlay(shown);
     drawVotes();
+    refreshHistoryNames();
+  }
+
+  // Someone renaming themselves changes how every hand they won is listed,
+  // and what the winner filter offers. Redrawn only when a name has actually
+  // changed, so an ordinary update doesn't throw away the scroll position or
+  // close the cards somebody has open.
+  let nameSig = '';
+  function refreshHistoryNames() {
+    if (!els?.historyList) return;
+    const sig = [
+      ...(shown?.table.seats || []).filter(Boolean).map((s) => `${s.userId}:${s.username}`),
+      ...(shown?.lobby || []).map((l) => `${l.userId}:${l.username}`),
+    ].join('|');
+    if (sig === nameSig) return;
+    nameSig = sig;
+    drawHistory();
   }
 
   function showError(msg) {
@@ -1056,17 +1079,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </div>
       <div class="topbar-user">
         ${userPillHTML(user)}
-        <!-- One button's worth of room on a phone: the three on/off switches
-             share a dropdown there, and sit out on the bar on a wide screen.
-             Same markup either way, so they keep their one set of handlers. -->
-        <div class="topbar-tools" data-tools>
-          <button class="btn btn-ghost btn-sm btn-icon tools-btn" data-tools-btn aria-expanded="false" aria-haspopup="true" title="Display options" aria-label="Display options">${icons.sliders}</button>
-          <div class="topbar-toggles">
-            <button class="btn btn-ghost btn-sm btn-icon${soundMuted() ? ' is-off' : ''}" data-sound aria-pressed="${!soundMuted()}" title="Turn table sounds on or off" aria-label="Sounds"><span class="ic" data-sound-ic>${soundMuted() ? icons.soundOff : icons.soundOn}</span><span class="tools-label">Sounds</span><span class="tools-switch" aria-hidden="true"></span></button>
-            <button class="btn btn-ghost btn-sm${autoReveal() ? '' : ' is-off'}" data-reveal aria-pressed="${autoReveal()}" title="Keep my cards face up, or hold them to peek instead">${icons.eye}<span class="hide-md">Cards ${autoReveal() ? 'up' : 'hidden'}</span><span class="tools-label">Cards up</span><span class="tools-switch" aria-hidden="true"></span></button>
-            <button class="btn btn-ghost btn-sm${reduceMotion ? ' is-off' : ''}" data-motion aria-pressed="${!reduceMotion}" title="Turn table animations on or off">${icons.sparkle}<span class="hide-md">Animations ${reduceMotion ? 'off' : 'on'}</span><span class="tools-label">Animations</span><span class="tools-switch" aria-hidden="true"></span></button>
-          </div>
-        </div>
+        <!-- Sounds, face-up cards and animations all live in the settings
+             sheet now: one button on the bar, one place to look. -->
         <button class="btn btn-ghost btn-sm btn-icon" data-settings title="Table settings" aria-label="Table settings">${icons.gear}</button>
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
@@ -1079,31 +1093,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawOverlay(shown);
     });
     wireNameEditor(root, user);
-    const sound = root.querySelector('[data-sound]');
-    sound.addEventListener('click', () => {
-      const off = toggleSound();
-      sound.classList.toggle('is-off', off);
-      sound.setAttribute('aria-pressed', String(!off));
-      const ic = sound.querySelector('[data-sound-ic]');
-      if (ic) ic.innerHTML = off ? icons.soundOff : icons.soundOn;
-    });
-
-    // The dropdown the three switches live in on a phone.
-    const tools = root.querySelector('[data-tools]');
-    const toolsBtn = root.querySelector('[data-tools-btn]');
-    toolsBtn?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = !tools.classList.contains('is-open');
-      tools.classList.toggle('is-open', open);
-      toolsBtn.setAttribute('aria-expanded', String(open));
-    });
-    // Anywhere else shuts it, including picking one of the switches.
-    root.addEventListener('click', (e) => {
-      if (!tools?.classList.contains('is-open')) return;
-      if (e.target.closest('[data-tools]')) return; // the button, or a switch
-      tools.classList.remove('is-open');
-      toolsBtn.setAttribute('aria-expanded', 'false');
-    });
     const hist = root.querySelector('[data-history]');
     hist?.addEventListener('click', () => {
       setHistoryOpen(!historyOpen);
@@ -1118,27 +1107,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     root.querySelector('[data-settings]')?.addEventListener('click', () => {
       askingSettings = true;
       drawOverlay(shown);
-    });
-    const reveal = root.querySelector('[data-reveal]');
-    reveal.addEventListener('click', () => {
-      const on = !autoReveal();
-      setSetting('autoReveal', on);
-      reveal.classList.toggle('is-off', !on);
-      reveal.setAttribute('aria-pressed', String(on));
-      const label = reveal.querySelector('.hide-md');
-      if (label) label.textContent = `Cards ${on ? 'up' : 'hidden'}`;
-      if (peeking) endPeek(); // a peek in progress has just become pointless
-      play('flip');
-      draw(); // turn the cards over straight away rather than next update
-    });
-    const btn = root.querySelector('[data-motion]');
-    btn.addEventListener('click', () => {
-      toggleMotion();
-      reduceMotion = motionReduced();
-      btn.classList.toggle('is-off', reduceMotion);
-      btn.setAttribute('aria-pressed', String(!reduceMotion));
-      const label = btn.querySelector('.hide-md');
-      if (label) label.textContent = `Animations ${reduceMotion ? 'off' : 'on'}`;
     });
   }
 
@@ -1807,6 +1775,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       split: summary.winners.length > 1,
       board: summary.uncontested ? [] : summary.board || [],
       winners: summary.winners.map((w) => ({
+        // The name as it was, plus who it belongs to. Players can rename
+        // themselves, and the history should follow them rather than keep
+        // calling them what they were called at the time.
+        id: w.userId,
         name: w.username,
         amount: w.amount,
         mine: w.userId === user.id,
@@ -1822,7 +1794,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // Hands shown by players who didn't win the pot.
       showed: [...shownHands.values()]
         .filter((h) => !winnerIds.has(h.userId) && h.holeCards?.length)
-        .map((h) => ({ name: h.username, cards: h.holeCards, mine: h.userId === user.id })),
+        .map((h) => ({ id: h.userId, name: h.username, cards: h.holeCards, mine: h.userId === user.id })),
     };
 
     const at = history.findIndex((h) => h.hand === entry.hand);
@@ -1846,6 +1818,19 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // What the sidebar is currently narrowed to.
   const hhFilter = { q: '', winner: '', type: '', no: '' };
+
+  // A history entry keeps the name a player had when the hand was recorded.
+  // They can rename themselves afterwards, so the name shown — and the one
+  // offered in the filter — is whatever they go by now, falling back to the
+  // stored one for anyone who has since left.
+  function liveName(p) {
+    if (p?.id == null) return p?.name || '';
+    const t = shown?.table;
+    const seated = t?.seats.find((s) => s && s.userId === p.id);
+    if (seated) return seated.username;
+    const waiting = shown?.lobby?.find((l) => l.userId === p.id);
+    return waiting?.username || p.name || '';
+  }
 
   // Narrowing the history. Every control feeds the same filter and redraws
   // the list; none of them touch what's stored. The waiting room shares the
@@ -1888,7 +1873,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // all find something without having to say which you meant.
   function hhMatches(h) {
     if (hhFilter.no && h.hand !== Number(hhFilter.no)) return false;
-    if (hhFilter.winner && !h.winners.some((w) => w.name === hhFilter.winner)) return false;
+    if (hhFilter.winner && !h.winners.some((w) => liveName(w) === hhFilter.winner)) return false;
     if (hhFilter.type && !h.winners.some((w) => (w.cat || w.desc || '').startsWith(hhFilter.type))) return false;
     const q = hhFilter.q.trim().toLowerCase();
     if (!q) return true;
@@ -1897,8 +1882,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       String(h.hand),
       h.uncontested ? 'everyone else folded uncontested' : '',
       h.split ? 'split pot' : '',
-      ...h.winners.map((w) => `${w.name} ${w.desc} ${w.cat || ''} ${w.kicker}`),
-      ...(h.showed || []).map((s) => s.name),
+      ...h.winners.map((w) => `${liveName(w)} ${w.name} ${w.desc} ${w.cat || ''} ${w.kicker}`),
+      ...(h.showed || []).map((s) => `${liveName(s)} ${s.name}`),
     ]
       .join(' ')
       .toLowerCase();
@@ -1918,7 +1903,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         values.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
       el.value = values.includes(current) ? current : '';
     };
-    const names = [...new Set(history.flatMap((h) => h.winners.map((w) => w.name)))].sort();
+    const names = [...new Set(history.flatMap((h) => h.winners.map(liveName)))].sort();
     const cats = [...new Set(history.flatMap((h) => h.winners.map((w) => w.cat).filter(Boolean)))].sort();
     fill(els?.hhWinner, names, hhFilter.winner, 'Any winner');
     fill(els?.hhType, cats, hhFilter.type, 'Any hand');
@@ -1992,7 +1977,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const wins = h.winners
       .map(
         (w, i) => `<div class="hh-win${w.mine ? ' is-me' : ''}">
-          <span class="hh-who">${esc(w.name)}</span>
+          <span class="hh-who">${esc(liveName(w))}</span>
           <span class="hh-amt">+${fmt(w.amount)}</span>
           ${i === 0 && cards ? eye : ''}
         </div>
@@ -2009,7 +1994,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           ? (h.showed || [])
               .filter((s) => !s.mine)
               .map(
-                (s) => `<div class="hh-board"><span class="hh-label">${esc(s.name)} showed</span><div class="hh-cards">${s.cards
+                (s) => `<div class="hh-board"><span class="hh-label">${esc(liveName(s))} showed</span><div class="hh-cards">${s.cards
                   .map((c) => cardHTML(c, { simple: true }))
                   .join('')}</div></div>`
               )

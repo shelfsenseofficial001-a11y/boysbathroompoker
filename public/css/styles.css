@@ -199,8 +199,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   gap: 12px;
   padding: 0 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(6, 11, 9, 0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(6, 11, 9, 0.96);
   position: relative;
   /* Above the side panels (30), so the options dropdown hanging off the bar
      isn't covered by the chat column on a phone. */
@@ -235,12 +234,6 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .name-edit input { width: 160px; }
 .name-edit[data-error] input { border-color: var(--red); }
 .topbar > * { min-width: 0; }
-/* The three on/off switches. On a wide bar `display: contents` dissolves
-   their wrapper so they lay out exactly as they always did; the button that
-   would open them is hidden. */
-.topbar-tools { display: contents; }
-.topbar-toggles { display: contents; }
-.tools-btn, .tools-label, .tools-switch { display: none; }
 @media (max-width: 1100px) {
   .topbar .hide-md { display: none; }
 }
@@ -250,48 +243,6 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @media (max-width: 720px) {
   .topbar { padding: 0 10px; height: 50px; }
   .brand span, .user-pill .user-name, .topbar .hide-sm { display: none; }
-  /* On a phone four icons in a row left nothing to tell them apart, so they
-     fold into one button. Inside the panel there's room for words, which the
-     bar itself never had. */
-  .topbar-tools { display: block; position: relative; }
-  .tools-btn { display: inline-grid; }
-  .topbar-toggles {
-    display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
-    min-width: 215px; padding: 6px; flex-direction: column; align-items: stretch; gap: 2px;
-    background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-m);
-    box-shadow: var(--shadow-2);
-  }
-  .topbar-tools.is-open .topbar-toggles { display: flex; }
-  /* Rows in a menu, not buttons in a row: no border of their own, and the
-     icon-only sizing the bar gives the sound button is undone so its icon
-     lines up with the other two. */
-  .topbar-toggles .btn {
-    width: 100%; justify-content: flex-start; gap: 9px; height: 38px; white-space: nowrap;
-    padding: 0 10px; border-color: transparent; background: transparent;
-  }
-  .topbar-toggles .btn:hover { background: rgba(255, 255, 255, 0.06); }
-  .topbar-toggles .btn .ic { display: inline-flex; align-items: center; }
-  /* The bar's labels say which way each setting is set; in the panel the
-     switch does that, so the label is just the name of the thing. */
-  .topbar-toggles .tools-label { display: inline; }
-  /* Each row reads as the setting it is: a switch showing its own state,
-     like every other on/off in the game. Driven by aria-pressed, which the
-     buttons already carry, so there's one source of truth for on and off. */
-  .topbar-toggles .tools-switch {
-    display: block; position: relative; flex: none; margin-left: auto;
-    width: 34px; height: 20px; border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line-2);
-    transition: background-color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
-  }
-  .topbar-toggles .tools-switch::after {
-    content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
-    border-radius: 50%; background: var(--text-3);
-    transition: transform 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
-  }
-  .topbar-toggles [aria-pressed='true'] .tools-switch { background: var(--gold); border-color: var(--gold); }
-  .topbar-toggles [aria-pressed='true'] .tools-switch::after { transform: translateX(14px); background: #2a1c05; }
-  /* The row is a switch now, so it shouldn't also dim itself when off. */
-  .topbar-toggles .btn.is-off { opacity: 1; color: var(--text-2); }
 }
 
 /* ---------- Pages (auth, lobby, waiting room) ---------- */
@@ -316,6 +267,8 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    only its appearance is replaced - so keyboard and screen readers are
    untouched. */
 .switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; font-size: 14px; color: var(--text-2); margin: 4px 0 14px; }
+.set-group .switch-row { align-items: flex-start; }
+.set-group .switch-row input[type='checkbox'] { margin-top: 1px; }
 .switch-row input[type='checkbox'] {
   appearance: none; -webkit-appearance: none; flex: none; margin: 0; cursor: pointer;
   position: relative; width: 42px; height: 24px; border-radius: 999px;
@@ -1583,8 +1536,27 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .toast.is-info b { color: var(--gold-hi); }
 
 /* ---------- Responsive dock ---------- */
+/* Too narrow for three groups side by side, wide enough that stacking them
+   wastes the room. The chips come up beside what the table is waiting for,
+   the sizing controls take the line below, and the actions hold the right
+   edge across both — bottom aligned, where the thumb already is.
+   Bounded below by the phone layout, which stacks instead. */
+@media (max-width: 1080px) and (min-width: 721px) {
+  .dock {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'status tray actions'
+      'sizer  sizer actions';
+    padding-inline: 16px;
+  }
+  /* The tray and the sizer become grid items in their own right, so they can
+     sit in different places instead of travelling together. */
+  .dock-sizing { display: contents; }
+  .dock-sizing > .tray { grid-area: tray; justify-content: center; }
+  .dock-sizing > .sizer { grid-area: sizer; width: 100%; max-width: none; }
+  .dock-actions { grid-area: actions; align-self: end; justify-self: end; }
+}
 @media (max-width: 1080px) {
-  .dock { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'status actions' 'sizing sizing'; padding-inline: 16px; }
   .dock-sizing { width: 100%; }
 }
 @media (max-width: 720px) {
@@ -1891,7 +1863,10 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .overlay {
   position: fixed; inset: 0; z-index: 200;
   display: grid; place-items: center; padding: 20px;
-  background: rgba(3, 7, 5, 0.82); backdrop-filter: blur(6px);
+  /* No backdrop blur: it repaints the whole table underneath on every frame
+     a sheet is up, which is exactly when the felt is still animating. The
+     dimming is carried a little further instead. */
+  background: rgba(3, 7, 5, 0.9);
   animation: fadeIn 0.25s var(--ease-out);
 }
 .overlay.is-empty { display: none; }
@@ -1923,8 +1898,17 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* In-game settings: the lobby's visual options, without leaving the table. */
 .sheet-settings { text-align: left; }
 .sheet-settings .sheet-title { text-align: center; font-size: 24px; margin-bottom: 18px; }
-.set-list { display: flex; flex-direction: column; gap: 14px; }
+.set-list { display: flex; flex-direction: column; gap: 14px; text-align: left; }
 .set-list .switch-row { margin: 0; }
+/* Grouped by what they affect, so a growing list stays readable. */
+.set-group { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border-radius: var(--r-m); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
+.set-head {
+  display: flex; align-items: center; gap: 7px; margin: 0;
+  font: 800 10.5px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3);
+}
+.set-head .icon { width: 13px; height: 13px; color: var(--gold); }
+/* The line under a switch saying what it actually does. */
+.switch-row small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
 .set-field { display: flex; flex-direction: column; gap: 6px; }
 .set-field label { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); text-transform: none; letter-spacing: 0; }
 .set-field label b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
