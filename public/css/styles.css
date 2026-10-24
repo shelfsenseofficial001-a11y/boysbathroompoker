@@ -219,6 +219,26 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   white-space: nowrap;
 }
 .meta-chip b { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Copying the code is the one thing anyone does with it, so the button
+   lives on the chip rather than somewhere else on the screen. */
+.code-copy {
+  flex: none; width: 22px; height: 22px; margin-left: 7px; padding: 0; cursor: pointer;
+  display: inline-grid; place-items: center; vertical-align: middle;
+  border-radius: 6px; border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.05); color: var(--text-3);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.code-copy:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: rgba(230, 180, 80, 0.12); }
+.code-copy.is-done { color: var(--green); border-color: rgba(60, 194, 127, 0.55); background: rgba(60, 194, 127, 0.14); }
+.code-copy .icon { width: 12px; height: 12px; }
+/* Leaving ends the room for the host and your seat for everyone else, so it
+   doesn't look like the buttons beside it. */
+.topbar [data-leave] {
+  border-color: rgba(224, 86, 79, 0.45); background: rgba(90, 24, 21, 0.55); color: #ff9b94;
+}
+.topbar [data-leave]:hover:not(:disabled) {
+  border-color: var(--red); background: rgba(124, 32, 28, 0.75); color: #ffd2cf;
+}
 .meta-chip b.code { color: var(--gold); letter-spacing: 0.12em; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
 .user-pill {
@@ -1307,7 +1327,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   display: grid;
   /* Equal side columns keep the chips on the true centre line, and capping
      them stops the three groups drifting to the far edges on wide screens. */
-  grid-template-columns: minmax(230px, 1fr) minmax(300px, 680px) minmax(230px, 1fr);
+  /* The actions column is floored at what four buttons actually need. The
+     middle column grows into spare room before the side columns do, so a
+     230px floor left the buttons overflowing their own track and the last
+     two running off the edge of the dock. */
+  grid-template-columns: minmax(230px, 1fr) minmax(300px, 680px) minmax(368px, 1fr);
   grid-template-areas: 'status sizing actions';
   align-items: center;
   align-items: center;
@@ -1543,18 +1567,64 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    Bounded below by the phone layout, which stacks instead. */
 @media (max-width: 1080px) and (min-width: 721px) {
   .dock {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      'status tray actions'
-      'sizer  sizer actions';
+      'status tray'
+      'sizer  actions';
+    align-items: center;
+    gap: 10px 16px;
     padding-inline: 16px;
   }
   /* The tray and the sizer become grid items in their own right, so they can
-     sit in different places instead of travelling together. */
+     sit on different rows instead of travelling together. */
   .dock-sizing { display: contents; }
-  .dock-sizing > .tray { grid-area: tray; justify-content: center; }
-  .dock-sizing > .sizer { grid-area: sizer; width: 100%; max-width: none; }
-  .dock-actions { grid-area: actions; align-self: end; justify-self: end; }
+  /* Spread across the row the buttons set the width of, rather than bunched
+     at one end with the rest of it empty. */
+  .dock-sizing > .tray { grid-area: tray; justify-content: space-between; }
+  /* Takes whatever the buttons leave. Every part can give a little, and the
+     row folds rather than sliding under the buttons if it still can't fit:
+     the pieces inside have real minimum widths, so the wrap actually fires
+     instead of the content quietly overflowing its own box. */
+  .dock-sizing > .sizer {
+    grid-area: sizer; width: 100%; max-width: none; min-width: 0; flex-wrap: wrap; row-gap: 8px;
+  }
+  /* Each line fills the width it's given. The slider and the stepper stay
+     together on one line — wrapping between them left the stepper short and
+     a band of empty felt beside it. */
+  .dock-sizing > .sizer .quick { flex: 1 1 auto; }
+  .dock-sizing > .sizer .quick-btn { flex: 1 1 0; min-width: 44px; padding: 0 6px; }
+  /* Nothing here may demand more room than the column has, or it slides out
+     under the buttons instead of wrapping. Everything can shrink; the slider
+     is the part that grows, so wherever there's room it ends up wider than
+     the typed amount, which only has four digits to hold. */
+  .dock-sizing > .sizer .amount-row { flex: 1 1 220px; min-width: 0; flex-wrap: nowrap; align-items: center; }
+  .dock-sizing > .sizer .range { flex: 1 1 auto; min-width: 50px; max-width: none; }
+  .dock-sizing > .sizer .stepper { flex: 0 0 auto; }
+  .dock-sizing > .sizer .stepper .input { width: 56px; }
+  .dock-actions { grid-area: actions; justify-self: end; }
+}
+/* Narrow enough that the sizing controls are gone (see the 760px rule), which
+   would leave the whole lower-left of the dock empty. The status takes that
+   room instead and spreads down into it, beside the buttons. */
+@media (max-width: 760px) and (min-width: 721px) {
+  .dock {
+    grid-template-areas:
+      'status tray'
+      'status actions';
+  }
+  .dock-status { align-self: stretch; display: flex; flex-direction: column; justify-content: space-evenly; gap: 8px; }
+  .dock-status .status-row { margin-top: 0; }
+}
+/* A long name has nowhere to go in a column this narrow, so the line wraps
+   onto as many as it needs instead of running out under the chips and the
+   buttons. The fixed height goes with it — it only existed to stop the dock
+   jumping as the message changed, which a wrapped line does anyway. */
+@media (max-width: 1080px) and (min-width: 721px) {
+  .dock .status-line {
+    height: auto; min-height: 36px; line-height: 1.25; white-space: normal;
+    overflow-wrap: anywhere; display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-wrap: wrap;
+  }
 }
 @media (max-width: 1080px) {
   .dock-sizing { width: 100%; }

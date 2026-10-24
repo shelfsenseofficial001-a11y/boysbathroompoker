@@ -1073,7 +1073,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return `<header class="topbar">
       <div class="brand">${icons.logo}<span>Boysbathroom <em>Poker</em></span></div>
       <div class="topbar-meta">
-        <span class="meta-chip">Room <b class="code selectable">${esc(roomCode)}</b></span>
+        <span class="meta-chip">Room <b class="code selectable">${esc(roomCode)}</b>
+          <button class="code-copy" data-copy-code title="Copy room code" aria-label="Copy room code">${icons.copy}</button>
+        </span>
+        <span class="room-kind hide-sm${shown?.isPrivate ? ' is-private' : ''}" title="${
+          shown?.isPrivate ? 'Hidden from open tables — the host lets each player in' : 'Listed in open tables for anyone to join'
+        }">${shown?.isPrivate ? icons.key : icons.eye}${shown?.isPrivate ? 'Private' : 'Public'}</span>
         <span class="meta-chip hide-sm">Blinds <b>${fmt(t.smallBlind)}/${fmt(t.bigBlind)}</b></span>
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
@@ -1091,6 +1096,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     root.querySelector('[data-leave]').addEventListener('click', () => {
       askingLeave = true;
       drawOverlay(shown);
+    });
+    // Copying the code is how anyone else gets in, so it sits on the code
+    // itself rather than only in the waiting room.
+    const copyCode = root.querySelector('[data-copy-code]');
+    copyCode?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(roomCode);
+        copyCode.classList.add('is-done');
+        copyCode.innerHTML = icons.check;
+        later(() => {
+          copyCode.classList.remove('is-done');
+          copyCode.innerHTML = icons.copy;
+        }, 1400);
+      } catch {
+        showError('Copy failed — select the code instead.');
+      }
     });
     wireNameEditor(root, user);
     const hist = root.querySelector('[data-history]');
@@ -1206,11 +1227,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           </div>
           <div class="meta-row">
             <span class="seat-count"><b>${n}</b>/${t.maxSeats || 9} seats</span>
-            <span class="room-kind${state.isPrivate ? ' is-private' : ''}" title="${
-              state.isPrivate
-                ? `Hidden from open tables — ${isHost ? 'you let each player in' : 'the host lets people in'}`
-                : 'Listed in open tables for anyone to join'
-            }">${state.isPrivate ? icons.key : icons.eye}${state.isPrivate ? 'Private' : 'Public'}</span>
             ${isHost ? `<span class="add-bot">
               ${levelSelectHTML(botLevel, n >= (t.maxSeats || 9))}
               <button class="btn btn-ghost btn-sm" data-add-bot ${n >= (t.maxSeats || 9) ? 'disabled' : ''}>${icons.robot}Add bot</button>
