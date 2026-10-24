@@ -708,8 +708,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function drawSpectators(cur) {
     if (!els?.spectators) return;
     const list = cur?.spectators || [];
-    els.spectators.hidden = list.length === 0;
-    if (!list.length) {
+    const isHost = cur?.hostUserId === user.id;
+    // The eye stays out for the host even with nobody behind the table:
+    // it's where they say whether there may be anyone there at all, and
+    // that's a decision usually taken while the crowd is still empty.
+    els.spectators.hidden = list.length === 0 && !isHost;
+    if (els.spectators.hidden) {
       specOpen = false;
       els.specPanel.hidden = true;
       return;
@@ -718,13 +722,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const btn = els.spectators.querySelector('[data-spec]');
     btn.setAttribute('aria-expanded', String(specOpen));
     btn.classList.toggle('is-open', specOpen);
-    btn.title = `${fmt(list.length)} watching`;
+    btn.title = list.length ? `${fmt(list.length)} watching` : 'Nobody is watching';
     els.specPanel.hidden = !specOpen;
     if (!specOpen) return;
-    const isHost = cur.hostUserId === user.id;
+    const allows = cur?.allowSpectators !== false;
     setHTML(
       els.specPanel,
       `<div class="spec-head">${icons.eye}Watching<b>${compact(list.length)}</b></div>
+       ${
+         isHost
+           ? `<label class="spec-allow">
+               <span>Let people watch<small>${
+                 allows ? 'Anyone with the code can pull up a chair' : 'The door is shut — nobody new can watch'
+               }</small></span>
+               <input type="checkbox" data-allow-specs ${allows ? 'checked' : ''}>
+             </label>`
+           : ''
+       }
+       ${list.length ? '' : '<p class="spec-none">Nobody is watching.</p>'}
        <ul class="spec-list">${list
          .map(
            (sp) => `<li class="spec-row${sp.userId === user.id ? ' is-me' : ''}">
@@ -1725,7 +1740,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       doAction(kind === 'raise' ? 'raise' : kind);
     });
 
+    // The switch is inside the panel, which is rebuilt on every update, so
+    // the listener sits on the corner that outlives it.
+    els.spectators.addEventListener('change', async (e) => {
+      const sw = e.target.closest('[data-allow-specs]');
+      if (!sw) return;
+      try {
+        await emitAck('setAllowSpectators', { allow: sw.checked });
+      } catch (err) {
+        sw.checked = !sw.checked; // put the switch back before saying why
+        showError(err.message);
+      }
+    });
+
     els.spectators.addEventListener('click', async (e) => {
+      // The switch's own label; the click handler below would read it as a
+      // tap on the eye and close the panel out from under it.
+      if (e.target.closest('.spec-allow')) return;
       const take = e.target.closest('[data-take-seat]');
       const remove = e.target.closest('[data-spec-remove]');
       const block = e.target.closest('[data-spec-block]');
