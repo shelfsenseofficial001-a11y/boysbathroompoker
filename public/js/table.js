@@ -60,6 +60,24 @@ const levelLabel = (id) => BOT_LEVELS.find((l) => l.id === id)?.label || 'Bot';
 const levelClass = (id) => `lvl-${BOT_LEVELS.some((l) => l.id === id) ? id : 'casual'}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+
+// Headcounts that have to fit in a small badge: 1,200 watchers reads as
+// 1.2k. Trailing zeroes are dropped, so it's 2k rather than 2.0k.
+const compact = (n) => {
+  const v = Number(n) || 0;
+  if (v < 1000) return String(v);
+  const units = [
+    [1e9, 'b'],
+    [1e6, 'm'],
+    [1e3, 'k'],
+  ];
+  for (const [size, suffix] of units) {
+    if (v < size) continue;
+    const scaled = v / size;
+    return `${scaled < 10 ? scaled.toFixed(1).replace(/\.0$/, '') : Math.floor(scaled)}${suffix}`;
+  }
+  return String(v);
+};
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -622,22 +640,31 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       els.specPanel.hidden = true;
       return;
     }
-    els.specCount.textContent = String(list.length);
+    els.specCount.textContent = compact(list.length);
     const btn = els.spectators.querySelector('[data-spec]');
     btn.setAttribute('aria-expanded', String(specOpen));
     btn.classList.toggle('is-open', specOpen);
-    btn.title = `${list.length} watching`;
+    btn.title = `${fmt(list.length)} watching`;
     els.specPanel.hidden = !specOpen;
     if (!specOpen) return;
+    const isHost = cur.hostUserId === user.id;
     setHTML(
       els.specPanel,
-      `<div class="spec-head">${icons.eye}Watching<b>${list.length}</b></div>
+      `<div class="spec-head">${icons.eye}Watching<b>${compact(list.length)}</b></div>
        <ul class="spec-list">${list
          .map(
            (sp) => `<li class="spec-row${sp.userId === user.id ? ' is-me' : ''}">
              <span class="spec-face">${avatarSVG(sp.username)}</span>
              <span class="spec-who">${esc(sp.username)}${sp.userId === user.id ? ' <em>you</em>' : ''}</span>
              ${sp.bust ? '<span class="spec-why" title="Out of chips">0</span>' : ''}
+             ${
+               isHost && sp.userId !== user.id
+                 ? `<span class="spec-acts">
+                     <button class="spec-act" data-spec-remove="${sp.userId}" title="Remove ${esc(sp.username)}" aria-label="Remove ${esc(sp.username)}">${icons.fold}</button>
+                     <button class="spec-act is-block" data-spec-block="${sp.userId}" title="Block ${esc(sp.username)} from the room" aria-label="Block ${esc(sp.username)}">${icons.leave}</button>
+                   </span>`
+                 : ''
+             }
            </li>`
          )
          .join('')}</ul>`
@@ -1557,7 +1584,20 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       doAction(kind === 'raise' ? 'raise' : kind);
     });
 
-    els.spectators.addEventListener('click', (e) => {
+    els.spectators.addEventListener('click', async (e) => {
+      const take = e.target.closest('[data-take-seat]');
+      const remove = e.target.closest('[data-spec-remove]');
+      const block = e.target.closest('[data-spec-block]');
+      if (take || remove || block) {
+        try {
+          if (take) return takeSeat();
+          if (remove) await emitAck('removeSpectator', { userId: Number(remove.dataset.specRemove) });
+          else await emitAck('removeSpectator', { userId: Number(block.dataset.specBlock), block: true });
+        } catch (err) {
+          showError(err.message);
+        }
+        return;
+      }
       if (!e.target.closest('[data-spec]')) return;
       specOpen = !specOpen;
       play('click');
@@ -2474,6 +2514,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     let sub = '';
     if (!me) {
       main = 'Spectating';
+      // Taking a chair belongs with the rest of the controls, not tucked
+      // inside the watchers list.
+      sub =
+        (shown?.seatsFree ?? 0) > 0
+          ? `<button class="spec-join dock-join" data-take-seat>${icons.chevron}Take a seat<small>Dealt in next hand</small></button>`
+          : '<span class="stat">Every seat is taken — you\'ll be dealt in when one frees up</span>';
     } else if (t.phase === 'showdown') {
       main = 'Hand complete';
       sub = 'Next hand shortly<span class="dots"></span>';
@@ -2602,6 +2648,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const me = t.seats.find((s) => s && s.userId === user.id);
     if (!me || me.folded || !me.hasCards) return false;
     return !(t.lastHandSummary.showdownHands || []).some((h) => h.userId === user.id);
+  }
+
+  // Leaving the rail for a chair. Offered from the dock while watching.
+  async function takeSeat() {
+    try {
+      await emitAck('takeSeat');
+    } catch (err) {
+      showError(err.message);
+    }
   }
 
   async function revealCards() {
@@ -2784,6 +2839,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function onDockClick(e) {
+    if (e.target.closest('[data-take-seat]')) return takeSeat();
     const act = e.target.closest('[data-act]');
     if (act && !act.disabled) {
       const kind = act.dataset.act;

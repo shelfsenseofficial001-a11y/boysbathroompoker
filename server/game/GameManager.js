@@ -47,6 +47,18 @@ class Room {
     // with empty stacks) or 'watching' (pulled up a chair deliberately).
     // Either way they can talk, and the next game deals them in.
     this.spectators = new Map();
+    // Watchers the host has turned away. They can't come back, as a player
+    // or a watcher, until the room is gone.
+    this.blocked = new Set();
+  }
+
+  // Lobby members who hold or are owed a seat. Watchers are in the lobby so
+  // they can talk and be dealt in next game, but they aren't taking a chair,
+  // so a full table never stops someone watching.
+  seatHolders() {
+    let n = 0;
+    for (const id of this.lobby.keys()) if (!this.spectators.has(id)) n += 1;
+    return n;
   }
 
   // Everyone in the room: waiting in the lobby, sat at the table, or watching
@@ -126,13 +138,13 @@ class Room {
   // Everyone actually in the room: waiting in the lobby before the deal, or
   // still sitting at the table once it's under way.
   playerCount() {
-    if (this.table.phase === 'waiting') return this.lobby.size;
+    if (this.table.phase === 'waiting') return this.seatHolders();
     return this.table.seats.filter((p) => p && !p.left).length;
   }
 
   // No seat to give: either every chair is taken or the lobby is at capacity.
   isFull() {
-    if (this.lobby.size >= this.table.maxSeats) return true;
+    if (this.seatHolders() >= this.table.maxSeats) return true;
     return this.table.phase !== 'waiting' && this.table.seats.every((seat) => seat !== null);
   }
 
@@ -177,7 +189,7 @@ class GameManager {
   // joiner is dealt in from the next hand.
   listOpenRooms() {
     return [...this.rooms.values()]
-      .filter((r) => !r.isPrivate && !r.isFull())
+      .filter((r) => !r.isPrivate)
       .map((r) => ({
         code: r.code,
         host: r.hostUsername,
@@ -188,6 +200,9 @@ class GameManager {
         bigBlind: r.table.bigBlind,
         chips: r.stakeForJoiner(),
         inPlay: r.table.phase !== 'waiting',
+        // Listed even with every chair taken: there's no seat to join, but
+        // a game is still worth watching.
+        full: r.isFull(),
         hand: r.table.handNumber,
       }));
   }

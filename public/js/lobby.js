@@ -308,16 +308,20 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
               <div class="room-main">
                 <div class="code">${esc(r.code)}${
                   r.inPlay ? `<span class="room-live">Hand #${r.hand}</span>` : ''
-                }</div>
+                }${r.full ? '<span class="room-full">Full</span>' : ''}</div>
                 <div class="sub">${esc(r.host)} · ${r.players}/${r.seats} ${r.inPlay ? 'playing' : 'waiting'}</div>
                 <div class="room-terms">
                   <span>Blinds <b>${fmt(r.smallBlind)}/${fmt(r.bigBlind)}</b></span>
-                  <span>${r.inPlay ? 'Sit in with' : 'Start with'} <b>${fmt(r.chips)}</b> chips</span>
+                  ${
+                    r.full
+                      ? '<span>Watch now, seat when one frees up</span>'
+                      : `<span>${r.inPlay ? 'Sit in with' : 'Start with'} <b>${fmt(r.chips)}</b> chips</span>`
+                  }
                 </div>
               </div>
               <span class="room-acts">
                 ${r.inPlay ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}">Spectate</button>` : ''}
-                <button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>
+                ${r.full ? '' : `<button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>`}
               </span>
             </div>`
               )

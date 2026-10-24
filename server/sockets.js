@@ -136,6 +136,10 @@ function attachSockets(io, sessionMiddleware) {
         joinChips: room.lateJoinChips(),
         isPrivate: room.isPrivate,
         spectators: room.spectatorList(),
+        // Whether this viewer is watching, and whether there's a chair for
+        // them to take if they are.
+        watching: room.spectators.has(userId),
+        seatsFree: Math.max(0, room.table.maxSeats - room.seatHolders()),
         // Only the host is asked to answer the door, so only the host is told
         // who is standing at it.
         knocks: userId === room.hostUserId
@@ -298,6 +302,7 @@ function attachSockets(io, sessionMiddleware) {
   // public table or the host just opened the door of a private one. Returns
   // what the joiner's client needs to know, or why they can't come in.
   function admit(room, uid, username) {
+    if (room.blocked.has(uid)) return { ok: false, error: 'The host has blocked them from this room.' };
     if (room.nameTaken(username, uid)) {
       return { ok: false, error: 'Someone in that room already uses that name.' };
     }
@@ -416,6 +421,9 @@ function attachSockets(io, sessionMiddleware) {
     socket.on('joinRoom', ({ code, buyIn, fromList } = {}, ack) => {
       const room = manager.getRoom(code);
       if (!room) return ack?.({ ok: false, error: 'Room not found.' });
+      if (room.blocked.has(userId)) {
+        return ack?.({ ok: false, error: 'The host has blocked you from this room.' });
+      }
       // The open-tables list only ever shows public rooms. A click on an entry
       // that has since gone private is refused, unless they're already in it;
       // the code itself still works for the people the host gave it to.
@@ -464,7 +472,11 @@ function attachSockets(io, sessionMiddleware) {
       if (room.isPrivate && userId !== room.hostUserId) {
         return ack?.({ ok: false, error: 'That room is private — ask the host for the code.' });
       }
-      if (room.lobby.size >= room.table.maxSeats) return ack?.({ ok: false, error: 'That room is full.' });
+      // No seat check: a watcher takes no chair, so a full table is still
+      // worth watching.
+      if (room.blocked.has(userId)) {
+        return ack?.({ ok: false, error: 'The host has blocked you from this room.' });
+      }
       const username = nameOf();
       if (room.nameTaken(username, userId)) {
         return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
@@ -838,6 +850,50 @@ function attachSockets(io, sessionMiddleware) {
       if (!room) return ack?.({ ok: true });
       if (room.table.setPeeking(userId, !!on)) broadcastRoom(room);
       ack?.({ ok: true });
+    });
+
+    // A watcher pulling up a chair. There's no seat to take mid-hand, so
+    // they're dealt in from the next one, on the host's late-join stake.
+    socket.on('takeSeat', (_payload, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (!room.spectators.has(userId)) return ack?.({ ok: false, error: 'You already have a seat.' });
+      if (room.isFull()) return ack?.({ ok: false, error: 'Every seat is taken.' });
+      const chips = room.lateJoinChips();
+      const info = room.lobby.get(userId);
+      room.spectators.delete(userId);
+      if (info) info.buyIn = chips;
+      if (room.table.phase !== 'waiting') room.table.addLatePlayer(userId, nameOf(), chips);
+      ack?.({ ok: true, chips });
+      announce(room, `${nameOf()} is taking a seat.`, userId);
+      broadcastRoom(room);
+      roomsChanged();
+    });
+
+    // The host clearing a watcher out. Blocking also bars them from coming
+    // back, as a player or a watcher, for as long as the room lives.
+    socket.on('removeSpectator', ({ userId: targetUserId, block } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can do that.' });
+      const target = Number(targetUserId);
+      if (target === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
+      if (!room.spectators.has(target)) return ack?.({ ok: false, error: 'They aren’t watching.' });
+      const who = room.lobby.get(target)?.username || 'Someone';
+      room.spectators.delete(target);
+      room.removeFromLobby(target);
+      room.table.removePlayer(target);
+      if (block) room.blocked.add(target);
+      for (const s of socketsByUser.get(target) || []) {
+        s.emit('kicked', {
+          code: room.code,
+          reason: block ? 'The host has blocked you from this room.' : 'The host removed you from the room.',
+        });
+      }
+      ack?.({ ok: true });
+      announce(room, `${who} is no longer watching.`, userId);
+      broadcastRoom(room);
+      roomsChanged();
     });
 
     // Turning your cards over for the table after the hand. Nobody is ever
