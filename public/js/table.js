@@ -1552,6 +1552,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <div class="fx" id="fx"></div>
         </div>
       </main>
+      <button class="table-join" data-take-seat id="table-join" hidden>${icons.chevron}Take a seat</button>
       <div class="spectators" id="spectators" hidden>
         <button class="spec-toggle" data-spec aria-expanded="false" aria-controls="spec-panel">${icons.eye}<b class="spec-count">0</b></button>
         <div class="spec-panel" id="spec-panel" role="group" aria-label="Watching" hidden></div>
@@ -1570,6 +1571,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hhQ: $('hh-q'), hhWinner: $('hh-winner'), hhType: $('hh-type'), hhNo: $('hh-no'),
       hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
+      tableJoin: $('table-join'),
       chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
       chatJump: $('chat-jump'),
     };
@@ -2596,7 +2598,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <button class="act act-call" data-act="check" id="call-btn"><span class="act-label"><span class="ic" id="call-ic">${icons.check}</span><span id="call-label">Check</span><span class="kbd">C</span></span><span class="act-amt" id="call-amt"></span></button>
         <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span></button>
         <button class="act act-allin" data-act="allin" id="allin-btn"><span class="act-label">${icons.allin}All-in</span><span class="act-amt" id="allin-amt"></span></button>
-        <button class="act act-join" data-take-seat id="join-btn"><span class="act-label" id="join-label">${icons.chevron}Take a seat</span></button>
       </div>`;
   }
 
@@ -2630,6 +2631,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // to act on, so the tray and the action buttons go rather than sitting
     // there greyed out.
     els.dock.classList.toggle('is-watching', !me);
+    // Offered on the felt, in the corner nearest the seats, and only while
+    // there's a chair going spare.
+    if (els.tableJoin) els.tableJoin.hidden = !!me || (shown?.seatsFree ?? 0) < 1;
 
     // The turn has come round to a hand already given up on: send it now,
     // rather than making the player sit and wait to press the button again.
@@ -2642,9 +2646,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     let sub = '';
     if (!me) {
       main = 'Spectating';
-      // Taking a chair is an action, so it sits with the actions - the
-      // status line stays what it is everywhere else, a read on the hand.
-      sub = `<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
+      // Nothing else: there's no hand of your own to read, and taking a
+      // chair is offered on the felt rather than down here.
+      sub = '';
     } else if (t.phase === 'showdown') {
       main = 'Hand complete';
       sub = 'Next hand shortly<span class="dots"></span>';

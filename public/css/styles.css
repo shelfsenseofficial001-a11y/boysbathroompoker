@@ -1447,11 +1447,6 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .dock.is-watching .dock-status { flex: 0 1 300px; min-width: 0; }
 .dock.is-watching .dock-actions { flex: 0 1 auto; display: flex; justify-self: auto; }
-/* Matches the pot pill it stands next to: same height, same baseline, one
-   line of label. What it does when pressed is in its title. */
-.dock.is-watching .act-join {
-  width: auto; min-width: 190px; height: 34px; flex-direction: row; gap: 7px; padding: 0 14px;
-}
 .dock.not-turn .dock-sizing { opacity: 0.4; pointer-events: none; }
 
 .turn-badge {
@@ -1633,13 +1628,9 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .dock.is-watching .dock-sizing { display: none; }
 /* Watching: nothing to bet with, so the four betting actions give their row
    over to the one action a watcher does have, stretched across all of it. */
-.act-join { display: none; }
 .dock.is-watching .act { display: none; }
 /* max-width caps the betting buttons at four across; this one is alone and
    takes the whole row. */
-.dock.is-watching .act-join { display: flex; flex: 1 1 auto; width: 100%; max-width: none; }
-.act-join { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28); }
-.act-join .icon { transform: rotate(-90deg); }
 .act-call { background: linear-gradient(180deg, #2a3f36, #1a2b24); border-color: var(--line-2); }
 .act-raise { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28); }
 .act-allin { background: linear-gradient(180deg, #e8655e, var(--red-lo)); color: #fff; }
@@ -1862,6 +1853,27 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    opens is built like the chat column on purpose: both are lists of people in
    the room who aren't part of the hand. */
 .spectators { position: absolute; left: 8px; bottom: 8px; z-index: 32; }
+/* Taking a chair is offered on the felt, in the corner nearest where the
+   seats are, rather than in a dock that has nothing else to say while
+   you're watching. */
+.table-join {
+  position: absolute; right: 8px; bottom: 8px; z-index: 32;
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  height: 40px; padding: 0 18px; border-radius: var(--r-s);
+  border: 1px solid var(--gold); background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+  color: #2a1c05; font: 800 13px var(--font-ui); letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28);
+  transition: transform 0.12s var(--ease-out), filter 0.15s, right 0.25s var(--ease-out), bottom 0.25s var(--ease-out);
+}
+/* The chat slides in over the same corner, so step aside rather than sit on
+   top of the message box. */
+.show-chat .table-join { right: calc(min(330px, 38vw) + 18px); }
+/* Narrow screens: the chat is a full-height sheet over the felt, so there's
+   no corner left to step into — wait until it's closed. */
+@media (max-width: 1024px) { .show-chat .table-join { display: none; } }
+.table-join:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.table-join:active { transform: scale(0.97); }
+.table-join .icon { width: 14px; height: 14px; transform: rotate(-90deg); }
 .spec-toggle {
   display: flex; align-items: center; gap: 6px; cursor: pointer;
   height: 34px; padding: 0 11px; border-radius: var(--r-s);
