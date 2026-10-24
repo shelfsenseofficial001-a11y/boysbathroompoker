@@ -881,6 +881,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function drawOverlay(cur) {
     const el = overlayHost();
+    // An open settings sheet keeps itself up to date in place. Rebuilding it
+    // replaces the node under the switch being pressed, which replays its
+    // entrance animation — every toggle made the panel blink out and back.
+    if (askingSettings && el.querySelector('.sheet-settings')) return syncSettingsSheet();
     const html = overlayHTML(cur);
     el.classList.toggle('is-empty', !html);
     setHTML(el, html);
@@ -1054,8 +1058,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     } else {
       setSetting(key, el.checked);
     }
-    drawOverlay(shown); // the zoom rows appearing or hiding
+    // Updated where it stands rather than redrawn. Rebuilding the sheet
+    // replaced the node under the switch, which replayed its entrance
+    // animation — the panel appeared to blink out and back on every toggle.
+    syncSettingsSheet();
     if (key === 'autoReveal' || key === 'motion') draw(); // the felt changes too
+  }
+
+  // The only parts of the settings sheet that answer to another control:
+  // turning the cards face up takes the peek zoom out of play.
+  function syncSettingsSheet() {
+    const sheet = root.querySelector('.sheet-settings');
+    if (!sheet) return;
+    const s = getSettings();
+    const zoom = sheet.querySelector('[data-set="peekZoom"]');
+    if (zoom) zoom.disabled = s.autoReveal;
+    const off = s.autoReveal || !s.peekZoom;
+    sheet.querySelectorAll('.set-field').forEach((f) => (f.hidden = off));
   }
 
   // Backs out of whichever sheet is up, if it's one you're allowed to
@@ -1137,6 +1156,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // own markup, which would take any overlay inside them with it.
     drawOverlay(shown);
     drawVotes();
+    resetHistoryOnNewMatch();
     refreshHistoryNames();
   }
 
@@ -1144,6 +1164,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // and what the winner filter offers. Redrawn only when a name has actually
   // changed, so an ordinary update doesn't throw away the scroll position or
   // close the cards somebody has open.
+  // A match's hands are numbered from one, so the next match's hand #1 ran
+  // straight into the last one's entry and overwrote it instead of being
+  // added — which is why the log looked like it stopped recording after a
+  // game was won. The log belongs to the match, so it starts empty with one.
+  let seenGameOver = null;
+  function resetHistoryOnNewMatch() {
+    const over = shown?.gameOver;
+    if (!over) return;
+    const key = gameOverKey(over);
+    if (seenGameOver === key) return;
+    seenGameOver = key;
+    if (!history.length) return;
+    history.length = 0;
+    expanded.clear();
+    saveHistory();
+    drawHistory();
+  }
+
   let nameSig = '';
   function refreshHistoryNames() {
     if (!els?.historyList) return;
@@ -1180,7 +1218,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         shown?.isPrivate ? 'Hidden from open tables — the host lets each player in' : 'Listed in open tables for anyone to join'
       }">${shown?.isPrivate ? icons.key : icons.eye}${shown?.isPrivate ? 'Private' : 'Public'}</span>
         <span class="meta-chip">Room <b class="code selectable">${esc(roomCode)}</b>
-          <button class="code-copy" data-copy-code title="Copy invite link" aria-label="Copy invite link">${icons.copy}</button>
+          <button class="code-copy" data-copy-code="link" title="Copy invite link" aria-label="Copy invite link">${icons.copy}</button>
+          <button class="code-copy" data-copy-code="code" title="Copy room code" aria-label="Copy room code">${icons.key}</button>
         </span>
         <span class="meta-chip hide-sm">Blinds <b>${fmt(t.smallBlind)}/${fmt(t.bigBlind)}</b></span>
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
@@ -1202,17 +1241,20 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
     // Copying the code is how anyone else gets in, so it sits on the code
     // itself rather than only in the waiting room.
-    const copyCode = root.querySelector('[data-copy-code]');
-    copyCode?.addEventListener('click', async () => {
-      if (!(await copyText(inviteLink()))) {
-        return showError('Couldn’t reach the clipboard — the room code is in the bar beside this.');
-      }
-      copyCode.classList.add('is-done');
-      copyCode.innerHTML = icons.check;
-      later(() => {
-        copyCode.classList.remove('is-done');
-        copyCode.innerHTML = icons.copy;
-      }, 1400);
+    root.querySelectorAll('[data-copy-code]').forEach((btn) => {
+      const wantsLink = btn.dataset.copyCode === 'link';
+      const idle = wantsLink ? icons.copy : icons.key;
+      btn.addEventListener('click', async () => {
+        if (!(await copyText(wantsLink ? inviteLink() : roomCode))) {
+          return showError('Couldn’t reach the clipboard — the room code is in the bar beside this.');
+        }
+        btn.classList.add('is-done');
+        btn.innerHTML = icons.check;
+        later(() => {
+          btn.classList.remove('is-done');
+          btn.innerHTML = idle;
+        }, 1400);
+      });
     });
     wireNameEditor(root, user);
     const hist = root.querySelector('[data-history]');
@@ -1324,7 +1366,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <p class="lead">${isHost ? 'Share the code, set everyone’s starting chips, then deal the first hand.' : 'The host sets everyone’s starting chips and deals the first hand.'}</p>
           <div class="code-block">
             <div><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
-            <button class="btn btn-ghost btn-sm" data-copy title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
+            <span class="code-acts">
+              <button class="btn btn-ghost btn-sm" data-copy="link" title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
+              <button class="btn btn-ghost btn-sm" data-copy="code" title="Copy just the five-letter code">${icons.copy}<span>Copy code</span></button>
+            </span>
           </div>
           <div class="meta-row">
             <span class="seat-count"><b>${n}</b>/${t.maxSeats || 9} seats</span>
@@ -1397,11 +1442,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     wireTopbar();
     wireSteppers(root);
-    const copyBtn = root.querySelector('[data-copy]');
-    copyBtn.addEventListener('click', async () => {
-      const ok = await copyText(inviteLink());
-      copyBtn.querySelector('span').textContent = ok ? 'Copied link' : 'Copy failed';
-      if (!ok) showError('Couldn’t reach the clipboard — read the room code out instead.');
+    root.querySelectorAll('[data-copy]').forEach((btn) => {
+      const wantsLink = btn.dataset.copy === 'link';
+      const label = btn.querySelector('span');
+      const idle = wantsLink ? 'Copy link' : 'Copy code';
+      btn.addEventListener('click', async () => {
+        const ok = await copyText(wantsLink ? inviteLink() : roomCode);
+        label.textContent = ok ? (wantsLink ? 'Copied link' : 'Copied code') : 'Copy failed';
+        if (!ok) showError('Couldn’t reach the clipboard — read the room code out instead.');
+        later(() => (label.textContent = idle), 1600);
+      });
     });
     root.querySelector('[data-start]')?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;

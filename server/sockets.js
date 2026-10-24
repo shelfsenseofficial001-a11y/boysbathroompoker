@@ -155,8 +155,32 @@ function attachSockets(io, sessionMiddleware) {
 
   function scheduleNextHand(room) {
     manager.recordHandResult(room);
+    announceHandResult(room);
     clearTimeout(room.handTimer);
     room.handTimer = setTimeout(() => startNextHand(room), NEXT_HAND_DELAY_MS);
+  }
+
+  // Every hand's result goes in the chat as it happens. The banner on the
+  // felt and the result sheet are both gone within seconds; the chat is the
+  // only place somebody who looked away can catch up.
+  function announceHandResult(room) {
+    const sum = room.table.lastHandSummary;
+    if (!sum?.winners?.length) return;
+    const pot = sum.winners.reduce((n, w) => n + w.amount, 0);
+    const money = (n) => n.toLocaleString('en-US');
+    const names = sum.winners.map((w) => w.username);
+    const who =
+      names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    let line;
+    if (sum.winners.length > 1) {
+      line = `Hand #${sum.handNumber}: ${who} split ${money(pot)} chips.`;
+    } else if (sum.uncontested) {
+      line = `Hand #${sum.handNumber}: ${who} wins ${money(pot)} chips — everyone else folded.`;
+    } else {
+      const made = sum.winners[0].hand?.description || sum.winners[0].hand?.name;
+      line = `Hand #${sum.handNumber}: ${who} wins ${money(pot)} chips${made ? ` with ${made}` : ''}.`;
+    }
+    sendSystemChat(room, line);
   }
 
   // Deals the next hand, or ends the game if there's no longer one to play.

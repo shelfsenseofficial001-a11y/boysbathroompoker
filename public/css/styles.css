@@ -226,6 +226,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .meta-chip b { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Copying the code is the one thing anyone does with it, so the button
    lives on the chip rather than somewhere else on the screen. */
+/* Link and code, side by side: most people want the link, but reading five
+   letters down a phone call still has its place. Equal columns, so neither
+   is wider than the other just because its word is longer. */
+.code-acts { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.code-acts .btn { width: 100%; justify-content: center; white-space: nowrap; }
+.code-copy + .code-copy { margin-left: 4px; }
 .code-copy {
   flex: none; width: 22px; height: 22px; margin-left: 7px; padding: 0; cursor: pointer;
   display: inline-grid; place-items: center; vertical-align: middle;
@@ -284,6 +290,13 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .hero { margin-bottom: 28px; }
 .lobby-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 760px) { .lobby-grid { grid-template-columns: 1fr; } .page { padding-top: 26px; } }
+/* On a phone the code and its buttons stop competing for one line: the code
+   keeps the top of the block and the buttons take a full-width row under it,
+   sharing it equally. */
+@media (max-width: 560px) {
+  .code-block { flex-direction: column; align-items: stretch; gap: 14px; }
+  .room-code { font-size: 32px; letter-spacing: 0.18em; }
+}
 
 /* Settings rows */
 /* Every on/off setting in the game is one of these: a sliding switch rather
