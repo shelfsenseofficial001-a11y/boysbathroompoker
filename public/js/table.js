@@ -655,7 +655,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
          .map(
            (sp) => `<li class="spec-row${sp.userId === user.id ? ' is-me' : ''}">
              <span class="spec-face">${avatarSVG(sp.username)}</span>
-             <span class="spec-who">${esc(sp.username)}${sp.userId === user.id ? ' <em>you</em>' : ''}</span>
+             <span class="spec-who"><span class="spec-name">${esc(sp.username)}</span>${
+               sp.userId === user.id ? '<em>you</em>' : ''
+             }</span>
              ${sp.bust ? '<span class="spec-why" title="Out of chips">0</span>' : ''}
              ${
                isHost && sp.userId !== user.id
@@ -2469,6 +2471,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <button class="act act-call" data-act="check" id="call-btn"><span class="act-label"><span class="ic" id="call-ic">${icons.check}</span><span id="call-label">Check</span><span class="kbd">C</span></span><span class="act-amt" id="call-amt"></span></button>
         <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span></button>
         <button class="act act-allin" data-act="allin" id="allin-btn"><span class="act-label">${icons.allin}All-in</span><span class="act-amt" id="allin-amt"></span></button>
+        <button class="act act-join" data-take-seat id="join-btn"><span class="act-label">${icons.chevron}Take a seat</span><span class="act-amt" id="join-note"></span></button>
       </div>`;
   }
 
@@ -2514,12 +2517,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     let sub = '';
     if (!me) {
       main = 'Spectating';
-      // Taking a chair belongs with the rest of the controls, not tucked
-      // inside the watchers list.
-      sub =
-        (shown?.seatsFree ?? 0) > 0
-          ? `<button class="spec-join dock-join" data-take-seat>${icons.chevron}Take a seat<small>Dealt in next hand</small></button>`
-          : '<span class="stat">Every seat is taken — you\'ll be dealt in when one frees up</span>';
+      // Taking a chair is an action, so it sits with the actions - the
+      // status line stays what it is everywhere else, a read on the hand.
+      sub = `<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     } else if (t.phase === 'showdown') {
       main = 'Hand complete';
       sub = 'Next hand shortly<span class="dots"></span>';
@@ -2565,6 +2565,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.dock.querySelectorAll('.quick-btn, .step-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
     drawFoldButton();
     drawAllinButton();
+    const join = q('join-btn');
+    if (join) {
+      const free = shown?.seatsFree ?? 0;
+      join.disabled = free < 1;
+      setHTML(q('join-note'), free > 0 ? 'Dealt in next hand' : 'Every seat is taken');
+    }
     syncAmount();
   }
 
