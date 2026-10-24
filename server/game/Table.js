@@ -110,6 +110,20 @@ class Table {
     if (remaining.length === 1) this._awardUncontestedPot(remaining[0]);
   }
 
+  // Hands a seat straight back. Only for somebody who has nothing in the
+  // hand - no cards, nothing in the pot - so the chair can be emptied there
+  // and then rather than being held, folded, until the next deal the way
+  // removePlayer has to hold a seat whose chips are already in the middle.
+  releaseSeat(userId) {
+    const idx = this.seats.findIndex((s) => s && s.userId === userId);
+    if (idx === -1) return false;
+    const p = this.seats[idx];
+    if (p.committed > 0 || p.betThisStreet > 0 || p.holeCards.length) return false;
+    this.seats[idx] = null;
+    this.toAct.delete(idx);
+    return true;
+  }
+
   activePlayers() {
     return this.seats.filter((s) => s && !s.sittingOut);
   }

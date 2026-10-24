@@ -1722,7 +1722,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function myLayout() {
-    const me = shown?.table.seats.find((s) => s && s.userId === user.id);
+    const me = shown?.table.seats.find((s) => s && s.userId === user.id && !s.left);
     return me && layout ? layout.map.get(me.seat) : null;
   }
 
@@ -1824,7 +1824,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // My own cards go in my own history whatever happened. A pot nobody
     // contested is never shown down, so this is the only record I get of
     // what I was actually holding.
-    const mySeat = latest?.table.seats.find((s) => s && s.userId === user.id);
+    const mySeat = latest?.table.seats.find((s) => s && s.userId === user.id && !s.left);
     const winnerIds = new Set(summary.winners.map((w) => w.userId));
     const entry = {
       hand: summary.handNumber,
@@ -2417,7 +2417,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // ---------------------------------------------------------------------------
   function dockModel(cur) {
     const t = cur.table;
-    const me = t.seats.find((s) => s && s.userId === user.id) || null;
+    const me = t.seats.find((s) => s && s.userId === user.id && !s.left) || null;
     const betting = BETTING.includes(t.phase);
     const myTurn = !!me && betting && t.actingSeat === me.seat;
     const toCall = me ? Math.max(0, t.currentBet - me.betThisStreet) : 0;
@@ -2652,7 +2652,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function canShowCards() {
     const t = shown?.table;
     if (!t || t.phase !== 'showdown' || !t.lastHandSummary) return false;
-    const me = t.seats.find((s) => s && s.userId === user.id);
+    const me = t.seats.find((s) => s && s.userId === user.id && !s.left);
     if (!me || me.folded || !me.hasCards) return false;
     return !(t.lastHandSummary.showdownHands || []).some((h) => h.userId === user.id);
   }

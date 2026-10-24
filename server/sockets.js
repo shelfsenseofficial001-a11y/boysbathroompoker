@@ -336,8 +336,10 @@ function attachSockets(io, sessionMiddleware) {
   // where taking it found them.
   function releaseQueuedSeat(room, uid) {
     const p = room.table.seats.find((s) => s && s.userId === uid && !s.left);
-    if (!p || !p.sittingOut || p.committed > 0 || p.holeCards.length) return false;
-    room.table.removePlayer(uid);
+    if (!p || !p.sittingOut) return false;
+    // The chair empties outright: held as a folded seat it would keep saying
+    // the hand was theirs until the next deal.
+    if (!room.table.releaseSeat(uid)) return false;
     if (room.lobby.has(uid)) room.spectators.set(uid, 'watching');
     announce(room, `${p.username} is no longer taking a seat.`, uid);
     roomsChanged(); // a seat has come free again
@@ -941,7 +943,10 @@ function attachSockets(io, sessionMiddleware) {
         for (const votes of room.kickVotes.values()) votes.delete(userId);
         for (const keeps of room.keepVotes.values()) keeps.delete(userId);
         room.removeFromLobby(userId);
-        room.table.removePlayer(userId);
+        // Somebody with nothing in the hand - queued for the next one, or
+        // between hands - gives the chair straight back. Only a seat with
+        // chips in the pot has to be held, folded, until the deal is over.
+        if (!room.table.releaseSeat(userId)) room.table.removePlayer(userId);
         announce(room, `${who} left the game.`, userId);
         broadcastRoom(room);
         // Once the last human is gone the room (and its bots) is finished.
