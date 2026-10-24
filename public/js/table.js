@@ -2471,7 +2471,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <button class="act act-call" data-act="check" id="call-btn"><span class="act-label"><span class="ic" id="call-ic">${icons.check}</span><span id="call-label">Check</span><span class="kbd">C</span></span><span class="act-amt" id="call-amt"></span></button>
         <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span></button>
         <button class="act act-allin" data-act="allin" id="allin-btn"><span class="act-label">${icons.allin}All-in</span><span class="act-amt" id="allin-amt"></span></button>
-        <button class="act act-join" data-take-seat id="join-btn"><span class="act-label">${icons.chevron}Take a seat</span><span class="act-amt" id="join-note"></span></button>
+        <button class="act act-join" data-take-seat id="join-btn"><span class="act-label" id="join-label">${icons.chevron}Take a seat</span></button>
       </div>`;
   }
 
@@ -2569,7 +2569,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (join) {
       const free = shown?.seatsFree ?? 0;
       join.disabled = free < 1;
-      setHTML(q('join-note'), free > 0 ? 'Dealt in next hand' : 'Every seat is taken');
+      setHTML(q('join-label'), `${icons.chevron}${free > 0 ? 'Take a seat' : 'Every seat is taken'}`);
+      join.title = free > 0 ? 'You’ll be dealt in on the next hand' : 'Every seat is taken right now';
     }
     syncAmount();
   }

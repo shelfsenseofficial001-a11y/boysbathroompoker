@@ -210,6 +210,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .brand .logo { width: 30px; height: 30px; }
 .topbar-meta { display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center; min-width: 0; }
 .meta-chip {
+  /* A chip holding a button (the room code) or an icon (public/private) gets
+     a different inline baseline from one holding plain text, which left the
+     labels sitting at different heights along the bar. Centred as a box, so
+     every chip reads off the same line whatever is in it. */
+  display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--fs-small);
   color: var(--text-3);
   background: var(--bg-2);
@@ -709,10 +714,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-x .icon { width: 13px; height: 13px; }
 /* With a close button in the heading the floating one would only overlap it. */
 .show-chat .chat-toggle { opacity: 0; pointer-events: none; }
+/* `scroll`, not `auto`: the track is there from the first message, so the
+   column reads as something you scroll back through and the bubbles keep one
+   width instead of narrowing by a scrollbar once the talk fills the panel. */
 .chat-log {
   flex: 1 1 auto; margin: 0; padding: 10px; list-style: none;
-  overflow-y: auto; overscroll-behavior: contain; min-width: 330px;
+  overflow-y: scroll; overscroll-behavior: contain; min-width: 330px;
   display: flex; flex-direction: column; gap: 2px;
+  /* The standard properties, not ::-webkit-scrollbar: scrollbar-color is
+     inherited from <html>, and Chrome drops the webkit pseudo-elements for
+     any element that has it. Thin also means no stepper arrow stranded at
+     the top of an empty column. The track is lightened so the groove reads
+     as a scrollbar before there is a thumb in it. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(230, 180, 80, 0.5) rgba(255, 255, 255, 0.06);
 }
 .chat-empty { color: var(--text-3); font-size: 12.5px; line-height: 1.5; padding: 4px; }
 /* Bubbles: mine right and gold, everyone else's left and dark. A run from
@@ -1359,12 +1374,23 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border-inline: 1px solid var(--line);
 }
 .dock-actions { grid-area: actions; display: flex; gap: 8px; justify-self: end; min-width: 0; max-width: 100%; }
-/* Watching, the dock carries one status line and one action, so it drops to
-   a single column and the button gets the whole width of it. Specificity
-   beats every layout the media queries set, including the four-button grid
-   the narrow one uses. */
-.dock.is-watching { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'actions'; }
-.dock.is-watching .dock-actions { display: flex; justify-self: stretch; width: 100%; }
+/* Watching, the dock carries one status line and one action, so it leaves the
+   grid behind and sets them side by side in the middle: "Spectating / Pot" and
+   the button on one line. Flex rather than the grid every media query
+   redefines, so there is a single layout to reason about. Capped, because
+   stretched over a wide monitor the button ran the full 1640px of dock and
+   read as a banner rather than something to press. On a narrow screen the two
+   no longer fit abreast and wrap, each taking the width. */
+.dock.is-watching {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: 10px 14px;
+}
+.dock.is-watching .dock-status { flex: 0 1 300px; min-width: 0; }
+.dock.is-watching .dock-actions { flex: 0 1 auto; display: flex; justify-self: auto; }
+/* Matches the pot pill it stands next to: same height, same baseline, one
+   line of label. What it does when pressed is in its title. */
+.dock.is-watching .act-join {
+  width: auto; min-width: 190px; height: 34px; flex-direction: row; gap: 7px; padding: 0 14px;
+}
 .dock.not-turn .dock-sizing { opacity: 0.4; pointer-events: none; }
 
 .turn-badge {
