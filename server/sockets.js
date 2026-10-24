@@ -182,6 +182,17 @@ function attachSockets(io, sessionMiddleware) {
         participants: [...room.members()],
       };
       manager.endGame(room);
+      // A line in the chat so the result survives the table being torn down:
+      // the felt and its banner are about to be replaced by the waiting room,
+      // but the chat carries on and anybody scrolling back still finds it.
+      if (room.gameOver.winner) {
+        const w = room.gameOver.winner;
+        const hands = room.gameOver.hands;
+        sendSystemChat(
+          room,
+          `${w.username} wins the game with ${w.chips.toLocaleString('en-US')} chips, after ${hands} hand${hands === 1 ? '' : 's'}.`
+        );
+      }
       // Everyone who busted out is back in the waiting room for the next game.
       room.spectators.clear();
       const { smallBlind, bigBlind } = room.table;
@@ -258,6 +269,28 @@ function attachSockets(io, sessionMiddleware) {
       for (const s of socketsByUser.get(id) || []) {
         s.emit('chatHistory', { code: room.code, messages: room.chat });
       }
+    }
+  }
+
+  // The room talking rather than a player: it sits in the log with everything
+  // else, so it's there when somebody reads back, but it answers to nobody
+  // and can't be replied to, edited or deleted.
+  function sendSystemChat(room, text) {
+    const entry = {
+      id: ++chatSeq,
+      userId: 0,
+      name: '',
+      text,
+      at: Date.now(),
+      replyTo: null,
+      editedAt: null,
+      deleted: false,
+      spectator: false,
+      system: true,
+    };
+    room.addChat(entry);
+    for (const id of room.members()) {
+      for (const sock of socketsByUser.get(id) || []) sock.emit('chat', entry);
     }
   }
 

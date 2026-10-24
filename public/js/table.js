@@ -171,6 +171,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let chatReplyTo = null; // id of the message being replied to
   let chatEditing = null; // id of my message being edited
   let chatMenuFor = null; // id whose actions menu is open
+  let chatMissed = []; // messages that landed while reading back, newest last
   let openVotes = []; // vote-kicks currently running at this table
   let seatMenuFor = null; // userId whose seat menu is open
   let dismissedGameOver = null; // key of a result the player has closed
@@ -277,7 +278,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // own message never is.
     if (!chatShowing() && entry.userId !== user.id) chatUnread += 1;
     if (entry.userId !== user.id) play('click');
+    // Reading back when it landed: hold on to it for the jump button, so the
+    // way down also says what is waiting at the bottom.
+    const mine = entry.userId === user.id;
+    if (!mine && chatShowing() && !chatAtBottom()) {
+      chatMissed.push({ name: entry.system ? 'Table' : entry.name, text: entry.text });
+      if (chatMissed.length > 99) chatMissed.shift();
+    }
     drawChat({ keepUnread: true });
+    if (mine) scrollChatToEnd(); // your own message always brings you down
   }
 
   // An edit or a delete: swap the stored copy, keep its place in the log.
@@ -289,6 +298,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawChat({ keepUnread: true });
   }
 
+  // Near enough the foot of the log to count as reading the newest message.
+  const CHAT_FOOT = 40;
+  const chatAtBottom = () => {
+    const log = els?.chatLog;
+    return !log || log.scrollHeight - log.scrollTop - log.clientHeight < CHAT_FOOT;
+  };
+
   function drawChat({ keepUnread = false } = {}) {
     if (!els?.chatLog) return;
     if (!keepUnread) chatUnread = 0;
@@ -296,17 +312,61 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawComposer();
     if (!chatLog.length) {
       setHTML(els.chatLog, '<li class="chat-empty">Nobody has said anything yet.</li>');
+      drawJump();
       return;
     }
     // Stick to the newest message unless the reader has scrolled up to read
     // back, in which case leave their place alone.
     const log = els.chatLog;
-    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    const atBottom = chatAtBottom();
     setHTML(log, chatLog.map(bubbleHTML).join(''));
-    if (atBottom) log.scrollTop = log.scrollHeight;
+    if (atBottom) scrollChatToEnd();
+    drawJump();
+  }
+
+  // Lands at the foot of the log once the browser has laid the messages out:
+  // straight after writing them the heights aren't known yet, so a scroll set
+  // there stops short of the newest one.
+  function scrollChatToEnd() {
+    const log = els?.chatLog;
+    if (!log) return;
+    log.scrollTop = log.scrollHeight;
+    requestAnimationFrame(() => {
+      const live = els?.chatLog;
+      if (live) live.scrollTop = live.scrollHeight;
+    });
+    chatMissed = [];
+    drawJump();
+  }
+
+  // The way back down, with whoever spoke while you were reading back. It
+  // only appears once you've actually left the foot of the log.
+  function drawJump() {
+    const btn = els?.chatJump;
+    if (!btn) return;
+    const away = !chatAtBottom() && chatLog.length > 0;
+    btn.hidden = !away;
+    if (!away) return;
+    const last = chatMissed[chatMissed.length - 1];
+    const n = chatMissed.length;
+    if (!last) {
+      setHTML(btn, `<span class="jump-arrow">${icons.chevron}</span><span class="jump-text">Jump to newest</span>`);
+      btn.classList.remove('has-news');
+      return;
+    }
+    btn.classList.add('has-news');
+    setHTML(
+      btn,
+      `<span class="jump-face">${avatarSVG(last.name)}</span>
+       <span class="jump-text"><b>${esc(last.name)}</b>${esc(last.text)}</span>
+       ${n > 1 ? `<span class="jump-count">${n > 99 ? '99+' : n}</span>` : ''}
+       <span class="jump-arrow">${icons.chevron}</span>`
+    );
   }
 
   function bubbleHTML(m, i) {
+    // The room talking: centred, plain, and nobody's to reply to.
+    if (m.system) return `<li class="chat-system">${esc(m.text)}</li>`;
     const mine = m.userId === user.id;
     // Messages from one person in a row are grouped: only the first shows a
     // name and face, and the corner radii round off the outside of the run
@@ -440,7 +500,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (chatOpen) {
       chatUnread = 0;
       drawUnread();
-      if (els?.chatLog) els.chatLog.scrollTop = els.chatLog.scrollHeight;
+      scrollChatToEnd();
     }
   }
 
@@ -476,7 +536,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <div class="chat-head"><span>Table chat</span>
         ${waiting ? '' : `<button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>`}
       </div>
-      <ol class="chat-log" id="chat-log"></ol>
+      <div class="chat-scroll">
+        <ol class="chat-log" id="chat-log"></ol>
+        <button class="chat-jump" id="chat-jump" type="button" hidden></button>
+      </div>
       <div class="chat-context" id="chat-context" hidden></div>
       <form class="chat-form" id="chat-form">
         <textarea class="input" id="chat-input" rows="1" maxlength="240" autocomplete="off"
@@ -492,6 +555,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els = els || {};
     els.chat = $('chat');
     els.chatLog = $('chat-log');
+    els.chatJump = $('chat-jump');
     els.chatForm = $('chat-form');
     els.chatInput = $('chat-input');
   }
@@ -559,6 +623,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (chatEditing == null && chatReplyTo == null) return;
       e.stopPropagation();
       cancelComposer();
+    });
+
+    // Leaving the foot of the log raises the way back; returning clears it.
+    els.chatLog?.addEventListener('scroll', () => {
+      if (chatAtBottom()) chatMissed = [];
+      drawJump();
+    });
+    els.chatJump?.addEventListener('click', () => {
+      scrollChatToEnd();
+      play('click');
     });
 
     els.chat?.addEventListener('click', onChatClick);
@@ -1307,15 +1381,19 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </main>
     </div>`;
 
-    els = keptChat ? { chat: keptChat, chatLog: els.chatLog, chatForm: els.chatForm, chatInput: els.chatInput } : null;
+    // Everything on `els` belonged to the table and has just been thrown away;
+    // the chat's elements are read back off whichever panel ends up in place.
+    els = null;
     const slot = root.querySelector('#chat-slot');
     if (keptChat) {
       slot.replaceWith(keptChat); // listeners and draft come with it
+      captureChatEls();
     } else {
       slot.outerHTML = chatAsideHTML(true);
       captureChatEls();
       wireChat();
       drawChat();
+      scrollChatToEnd(); // a game ending rebuilds this panel; don't reopen at the top
       autoSizeInput();
     }
 
@@ -1448,6 +1526,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
       chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
+      chatJump: $('chat-jump'),
     };
     buildDock();
     wireTopbar();
@@ -1455,6 +1534,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawHistory();
     applyChatOpen();
     drawChat();
+    scrollChatToEnd();
     wireChat();
     // Tapping anywhere off the panel closes it. On a phone it covers the
     // felt, so dismissing it has to be as easy as opening it; pointerdown
