@@ -15,6 +15,9 @@ const DEFAULTS = {
   showHistory: false,
   // Table chat sidebar, also remembered between visits.
   showChat: false,
+  // Every hand's winner, announced in the chat. On by default: it's the only
+  // place to catch up on a hand you looked away from.
+  showResults: true,
   peekZoom: true,
   zoomLevel: ZOOM.level.def,
   zoomSpeed: ZOOM.speed.def,
@@ -39,6 +42,7 @@ export function getSettings() {
     autoReveal: stored.autoReveal === true,
     showHistory: stored.showHistory === true,
     showChat: stored.showChat === true,
+    showResults: stored.showResults !== false,
     peekZoom: stored.peekZoom !== false,
     zoomLevel: clamp(Number(stored.zoomLevel) || DEFAULTS.zoomLevel, ZOOM.level.min, ZOOM.level.max),
     zoomSpeed: clamp(Number(stored.zoomSpeed) || DEFAULTS.zoomSpeed, ZOOM.speed.min, ZOOM.speed.max),

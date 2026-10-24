@@ -157,6 +157,7 @@ function attachSockets(io, sessionMiddleware) {
   function scheduleNextHand(room) {
     manager.recordHandResult(room);
     announceHandResult(room);
+    room.recordHand(room.table.lastHandSummary);
     clearTimeout(room.handTimer);
     room.handTimer = setTimeout(() => startNextHand(room), NEXT_HAND_DELAY_MS);
   }
@@ -181,7 +182,7 @@ function attachSockets(io, sessionMiddleware) {
       const made = sum.winners[0].hand?.description || sum.winners[0].hand?.name;
       line = `Hand #${sum.handNumber}: ${who} wins ${money(pot)} chips${made ? ` with ${made}` : ''}.`;
     }
-    sendSystemChat(room, line);
+    sendSystemChat(room, line, 'result');
   }
 
   // Deals the next hand, or ends the game if there's no longer one to play.
@@ -222,6 +223,7 @@ function attachSockets(io, sessionMiddleware) {
       }
       // Everyone who busted out is back in the waiting room for the next game.
       room.spectators.clear();
+      room.handLog = []; // a new game starts its history over, as the sidebar does
       const { smallBlind, bigBlind } = room.table;
       room.table = new Table({ smallBlind, bigBlind });
       attachTableEvents(room);
@@ -302,7 +304,10 @@ function attachSockets(io, sessionMiddleware) {
   // The room talking rather than a player: it sits in the log with everything
   // else, so it's there when somebody reads back, but it answers to nobody
   // and can't be replied to, edited or deleted.
-  function sendSystemChat(room, text) {
+  // `kind` marks a line the reader may not want: 'result' is a hand's
+  // winner, which some would rather read off the felt than have scroll the
+  // table's talk away. Everything else is unmarked and always shown.
+  function sendSystemChat(room, text, kind = null) {
     const entry = {
       id: ++chatSeq,
       userId: 0,
@@ -314,6 +319,7 @@ function attachSockets(io, sessionMiddleware) {
       deleted: false,
       spectator: false,
       system: true,
+      kind,
     };
     room.addChat(entry);
     for (const id of room.members()) {
@@ -609,12 +615,17 @@ function attachSockets(io, sessionMiddleware) {
     });
 
     const sendChatHistory = (room) => socket.emit('chatHistory', { code: room.code, messages: room.chat });
+    // The hands this game has already played. Sent on arrival rather than
+    // with every table update: it's a backlog, and it only grows by one at
+    // the end of a hand, which the client sees for itself.
+    const sendHandHistory = (room) => socket.emit('handHistory', { code: room.code, hands: room.handLog });
 
     socket.on('resync', (_payload, ack) => {
       const room = roomFor(userId);
       ack?.({ ok: true, code: room ? room.code : null });
       if (room) {
         sendChatHistory(room);
+        sendHandHistory(room);
         voteState(room);
         broadcastRoom(room);
       }

@@ -743,13 +743,19 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 /* Closing from inside the panel, where the floating toggle used to sit on
    top of this heading. */
-.chat-x {ext-3
+.chat-x {
   flex: none; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer;
   border: 1px solid var(--line-2); border-radius: var(--r-s);
   background: transparent; color: var(--text-3);
 }
 .chat-x:hover { color: var(--red); }
 .chat-x .icon { width: 13px; height: 13px; }
+/* Whether each hand's winner is announced in the log. Sits beside the close
+   button because it's the same kind of thing: what this panel shows you. */
+.chat-results { margin-left: auto; }
+.chat-results:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); }
+.chat-results.is-on { color: var(--gold); border-color: rgba(230, 180, 80, 0.45); background: rgba(230, 180, 80, 0.08); }
+.chat-results .icon { width: 14px; height: 14px; }
 /* With a close button in the heading the floating one would only overlap it. */
 .show-chat .chat-toggle { opacity: 0; pointer-events: none; }
 /* `scroll`, not `auto`: the track is there from the first message, so the

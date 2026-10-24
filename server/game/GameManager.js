@@ -34,6 +34,11 @@ class Room {
     // The host owns this number, not the joiner, so nobody can walk into a
     // running game and award themselves a stack. null = match the host's own.
     this.joinChips = null;
+    // Every hand this game has finished, oldest first, so somebody who
+    // arrives part-way through - a watcher, or a player dealt in late - can
+    // read back the hands they missed instead of starting from an empty
+    // sidebar. Cleared when the next game begins.
+    this.handLog = [];
     // Recent table talk, kept so somebody refreshing or arriving part-way
     // through doesn't land in a silent room. Oldest first.
     this.chat = [];
@@ -130,6 +135,14 @@ class Room {
   // three is enough but one out of two is not.
   votesNeeded(targetUserId) {
     return Math.floor(this.voters(targetUserId).size / 2) + 1;
+  }
+
+  recordHand(summary) {
+    if (!summary?.winners?.length) return;
+    const at = this.handLog.findIndex((h) => h.handNumber === summary.handNumber);
+    if (at >= 0) this.handLog[at] = summary;
+    else this.handLog.push(summary);
+    if (this.handLog.length > Room.HANDS_MAX) this.handLog.splice(0, this.handLog.length - Room.HANDS_MAX);
   }
 
   addChat(entry) {
@@ -265,5 +278,7 @@ class GameManager {
 }
 
 Room.CHAT_MAX = 80;
+// Matching the sidebar's own ceiling on the client.
+Room.HANDS_MAX = 60;
 
 module.exports = { GameManager, Room };

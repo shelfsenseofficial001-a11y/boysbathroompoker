@@ -167,6 +167,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let bustAnswered = false; // chose to watch on after running out of chips
   const chatLog = []; // table talk, oldest first
   let chatOpen = getSettings().showChat;
+  // Whether each hand's winner is announced in the log. A reader's own
+  // preference, not the room's: the line is sent either way.
+  let showResults = getSettings().showResults;
   let chatUnread = 0; // messages that arrived while the panel was shut
   let chatReplyTo = null; // id of the message being replied to
   let chatEditing = null; // id of my message being edited
@@ -218,6 +221,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('chatUpdate', onChatUpdate);
   socket.on('votes', onVotes);
   socket.on('chatHistory', onChatHistory);
+  socket.on('handHistory', onHandHistory);
   socket.on('connect', resync);
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
@@ -244,6 +248,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('chatUpdate', onChatUpdate);
     socket.off('votes', onVotes);
     socket.off('chatHistory', onChatHistory);
+    socket.off('handHistory', onHandHistory);
     socket.off('connect', resync);
     clearInterval(clock);
     timers.forEach(clearTimeout);
@@ -274,6 +279,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (chatLog.some((m) => m.id === entry.id)) return; // already have it
     chatLog.push(entry);
     if (chatLog.length > 80) chatLog.shift();
+    // A line this reader has turned off is no news at all: no dot, no sound
+    // and nothing waiting on the jump button.
+    const hidden = entry.kind === 'result' && !showResults;
+    if (hidden) return drawChat({ keepUnread: true });
     // Somebody else talking while the panel is shut is worth a nudge; your
     // own message never is.
     if (!chatShowing() && entry.userId !== user.id) chatUnread += 1;
@@ -305,12 +314,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return !log || log.scrollHeight - log.scrollTop - log.clientHeight < CHAT_FOOT;
   };
 
+  // What this reader has asked to see. Hand results are dropped rather than
+  // never stored, so turning them back on brings the ones already sent with
+  // it instead of starting from the next hand.
+  const visibleChat = () => (showResults ? chatLog : chatLog.filter((m) => m.kind !== 'result'));
+
   function drawChat({ keepUnread = false } = {}) {
     if (!els?.chatLog) return;
     if (!keepUnread) chatUnread = 0;
     drawUnread();
     drawComposer();
-    if (!chatLog.length) {
+    const visible = visibleChat();
+    if (!visible.length) {
       setHTML(els.chatLog, '<li class="chat-empty">Nobody has said anything yet.</li>');
       drawJump();
       return;
@@ -319,7 +334,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // back, in which case leave their place alone.
     const log = els.chatLog;
     const atBottom = chatAtBottom();
-    setHTML(log, chatLog.map(bubbleHTML).join(''));
+    setHTML(log, visible.map(bubbleHTML).join(''));
     if (atBottom) scrollChatToEnd();
     drawJump();
   }
@@ -508,6 +523,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // at a time whichever way round they're opened.
   const narrow = () => window.matchMedia('(max-width: 1024px)').matches;
 
+  // Remembered on this browser, like the panel's own open state.
+  function setShowResults(on) {
+    showResults = on;
+    setSetting('showResults', on);
+    const btn = root.querySelector('[data-chat-results]');
+    if (btn) {
+      const label = on ? 'Hide each hand’s winner' : 'Show each hand’s winner';
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+    }
+    play('click');
+    drawChat({ keepUnread: true });
+  }
+
   function setChatOpen(on) {
     chatOpen = on;
     setSetting('showChat', on);
@@ -534,6 +565,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function chatAsideHTML(waiting = false) {
     return `<aside class="${waiting ? 'waiting-chat' : 'chat'}" id="chat" aria-label="Table chat">
       <div class="chat-head"><span>Table chat</span>
+        <button class="chat-x chat-results${showResults ? ' is-on' : ''}" data-chat-results
+          aria-pressed="${showResults}"
+          title="${showResults ? 'Hide each hand’s winner' : 'Show each hand’s winner'}"
+          aria-label="${showResults ? 'Hide each hand’s winner' : 'Show each hand’s winner'}">${icons.trophy}</button>
         ${waiting ? '' : `<button class="chat-x" data-chat-close aria-label="Close chat">${icons.fold}</button>`}
       </div>
       <div class="chat-scroll">
@@ -653,6 +688,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const del = e.target.closest('[data-msg-delete]');
     const cancel = e.target.closest('[data-msg-cancel]');
 
+    if (e.target.closest('[data-chat-results]')) return setShowResults(!showResults);
     if (e.target.closest('[data-chat-close]')) return setChatOpen(false);
     if (cancel) return cancelComposer();
     if (menu) {
@@ -1991,6 +2027,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // Called when a hand's showdown is first drawn, and again whenever its
   // summary changes — somebody can turn their cards over after the fact, and
   // the entry already in the list has to pick that up.
+  // The hands this game played before we got here. Somebody who sat down
+  // late, or pulled up a chair to watch, starts with an empty sidebar
+  // otherwise - the history is built from showdowns as they happen, and
+  // theirs began mid-game. Oldest first, because each one goes on the front.
+  function onHandHistory({ code, hands } = {}) {
+    if (code !== roomCode || !Array.isArray(hands)) return;
+    for (const summary of hands) recordHand(summary);
+  }
+
   function recordHand(summary) {
     if (!summary || !summary.winners?.length) return;
     const shownHands = new Map((summary.showdownHands || []).map((h) => [h.userId, h]));
