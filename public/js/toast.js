@@ -46,8 +46,20 @@ function scheduleRemoval(el) {
   setTimeout(() => {
     const left = el._expires - Date.now();
     if (left > 20) return scheduleRemoval(el); // said again since
-    el.remove();
+    leave(el);
   }, Math.max(0, el._expires - Date.now()));
+}
+
+// Fades the toast out before taking it away, rather than blinking it off.
+// Under reduced motion there's nothing to wait for. A fallback timer covers
+// a tab in the background, where animationend may never be delivered.
+function leave(el) {
+  if (!el.isConnected) return;
+  if (document.documentElement.classList.contains('reduce-motion')) return el.remove();
+  el.classList.add('is-leaving');
+  const done = () => el.remove();
+  el.addEventListener('animationend', done, { once: true });
+  setTimeout(done, 400);
 }
 
 export function showToast(msg, { info = false, atPage = false, ms = null } = {}) {
@@ -63,7 +75,8 @@ export function showToast(msg, { info = false, atPage = false, ms = null } = {})
   if (Date.now() < quietUntil) return;
 
   const last = box.lastElementChild;
-  if (last && last.dataset.msg === msg && last.dataset.kind === kind) {
+  // Never into one already fading out: the count would bump and then vanish.
+  if (last && !last.classList.contains('is-leaving') && last.dataset.msg === msg && last.dataset.kind === kind) {
     last._n = (last._n || 1) + 1;
     // Past the cap the count stops being worth reading. The pile is replaced
     // by one line asking them to stop, and nothing else lands until it ends.

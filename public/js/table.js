@@ -4,10 +4,10 @@
 import { getSocket, emitAck } from './socket.js';
 import { cardFaceSVG, cardBackSVG } from './svg/cards.js';
 import { chipSVG, chipStackSVG, breakdown, CHIP_DENOMINATIONS } from './svg/chips.js';
-import { tableFeltSVG, dealerButtonSVG, turnRingSVG } from './svg/table.js';
+import { tableFeltSVG, feltLogoSVG, dealerButtonSVG, turnRingSVG } from './svg/table.js';
 import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
-import { motionReduced, toggleMotion } from './motion.js';
+import { motionReduced, toggleMotion, resumeEntrance, ENTRANCE_MS } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
 import { userPillHTML, wireNameEditor } from './name.js';
 import { getSettings, setSetting, ZOOM } from './settings.js';
@@ -179,6 +179,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let seatMenuFor = null; // userId whose seat menu is open
   let dismissedGameOver = null; // key of a result the player has closed
   let askingLeave = false; // the leave confirmation is up
+  let enteredAt = 0; // when the current screen's entrance began (motion.js)
   let showAskDone = 0; // hand whose "show your cards?" prompt has been answered
   // Seat number -> the spot its cards were last nudged to, so a redraw during
   // a peek can restore it without measuring anything. Declared up here with
@@ -295,7 +296,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (chatMissed.length > 99) chatMissed.shift();
     }
     drawChat({ keepUnread: true });
+    markArriving();
     if (mine) scrollChatToEnd(); // your own message always brings you down
+  }
+
+  // The message that just landed rises into place. The rest of the log is
+  // redrawn without any motion, so this is the only line that moves.
+  function markArriving() {
+    const last = els?.chatLog?.lastElementChild;
+    if (last && !last.classList.contains('chat-empty')) last.classList.add('is-arriving');
   }
 
   // An edit or a delete: swap the stored copy, keep its place in the log.
@@ -1193,10 +1202,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const prev = shown === latest ? null : shown; // null = redraw, not a step forward
     shown = latest;
     if (shown.table.phase === 'waiting') {
+      if (mode !== 'waiting') enteredAt = performance.now(); // arriving
       mode = 'waiting';
       drawWaiting(shown); // keeps the chat panel, drops the table's elements
+      resumeEntrance(root.querySelector('.screen'), enteredAt);
     } else if (mode !== 'table') {
+      enteredAt = performance.now();
       buildTable();
+      resumeEntrance(root.querySelector('.table-screen'), enteredAt);
       mode = 'table';
       renderedHand = 0; // fresh table: let the first hand deal in
       drawTable(null, shown);
@@ -1412,24 +1425,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       ${topbarHTML(t)}
       <main class="page waiting-page">
         <section class="panel waiting-panel">
-          <div class="eyebrow">Waiting room</div>
-          <h1 class="display">Gather your players</h1>
+          <div class="eyebrow" data-enter>Waiting room</div>
+          <h1 class="display" data-enter>Gather your players</h1>
           <p class="lead">${isHost ? 'Share the code, set everyone’s starting chips, then deal the first hand.' : 'The host sets everyone’s starting chips and deals the first hand.'}</p>
-          <div class="code-block">
+          <div class="code-block" data-enter>
             <div><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
             <span class="code-acts">
               <button class="btn btn-ghost btn-sm" data-copy="link" title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
               <button class="btn btn-ghost btn-sm" data-copy="code" title="Copy just the five-letter code">${icons.copy}<span>Copy code</span></button>
             </span>
           </div>
-          <div class="meta-row">
+          <div class="meta-row" data-enter>
             <span class="seat-count"><b>${n}</b>/${t.maxSeats || 9} seats</span>
             ${isHost ? `<span class="add-bot">
               ${levelSelectHTML(botLevel, n >= (t.maxSeats || 9))}
               <button class="btn btn-ghost btn-sm" data-add-bot ${n >= (t.maxSeats || 9) ? 'disabled' : ''}>${icons.robot}Add bot</button>
             </span>` : ''}
           </div>
-          <ul class="player-list">
+          <ul class="player-list" data-enter>
             ${state.lobby.map((p) => `
               <li class="player-row${p.isBot ? ' is-bot' : ''}">
                 <span class="avatar-sm">${p.isBot ? icons.robot : avatarSVG(p.username)}</span>
@@ -1606,6 +1619,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <main class="stage" id="stage">
         <div class="camera" id="camera">
           <div class="felt">${tableFeltSVG()}</div>
+          <div class="felt-logo" aria-hidden="true">${feltLogoSVG()}</div>
           <div class="anchor" style="left:${BOARD.x}%;top:${BOARD.y}%"><div class="board" id="board"></div><div class="phase-label" id="phase"></div></div>
           <div class="anchor pot" id="pot" style="left:${POT.x}%;top:${POT.y}%"></div>
           <div class="anchor muck" id="muck" style="left:${MUCK.x}%;top:${MUCK.y}%"></div>
@@ -1630,6 +1644,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       stage: $('stage'), camera: $('camera'), board: $('board'), phase: $('phase'), pot: $('pot'),
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
       handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
+      feltLogo: root.querySelector('.felt-logo'),
       history: $('history'), historyList: $('history-list'),
       hhQ: $('hh-q'), hhWinner: $('hh-winner'), hhType: $('hh-type'), hhNo: $('hh-no'),
       hhClear: $('hh-clear'), hhX: $('hh-x'),
@@ -1838,6 +1853,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     place(els.pot, POT);
     place(els.muck, MUCK);
     place(els.foldZone, BOARD);
+    // Printed where the cards are played, the way a real table's mark sits
+    // under the board - not at the geometric middle, where the pot readout
+    // landed on top of it.
+    if (els.feltLogo) place(els.feltLogo, BOARD);
     // Someone who has left (or been voted out) mid-hand still holds a seat on
     // the server until the hand ends — their chips are in the pot — but
     // they're gone from the table, so the remaining seats close up around
@@ -1987,6 +2006,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const mineHTML = !keptHand && mine && !newHand ? mine.outerHTML : null;
     if (gesture && newHand) endPeek();
 
+    // Seats are rebuilt on every update; one landing mid-entrance carries on
+    // from the same point rather than starting its rise over.
+    const sinceEntry = performance.now() - enteredAt;
+    if (sinceEntry < ENTRANCE_MS) {
+      root.querySelector('.table-screen')?.style.setProperty('--seat-elapsed', `${Math.round(sinceEntry)}ms`);
+    }
     els.seats.innerHTML = t.seats
       .filter((p) => p && !p.left)
       .map((p) => seatHTML(p, layout.map.get(p.seat), ctx))
@@ -2227,6 +2252,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const before = list.scrollHeight;
     const top = list.scrollTop;
     list.insertAdjacentHTML('afterbegin', entryHTML(h));
+    list.firstElementChild?.classList.add('is-new'); // slides into the top
     list.querySelectorAll('.hh').forEach((li, i) => i >= HISTORY_MAX && li.remove());
     list._html = null; // the cached markup no longer matches the DOM
     if (top > 0) list.scrollTop = top + (list.scrollHeight - before);
@@ -2361,7 +2387,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
     const stack = p.chips > 0 ? `<div class="stack">${chipStackSVG(p.chips, { maxCols: 3, maxPerCol: 6 })}</div>` : '';
 
-    let html = `<div class="${cls}" style="left:${L.pod.x}%;top:${L.pod.y}%" data-seat="${p.seat}">
+    let html = `<div class="${cls}" style="left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}" data-seat="${p.seat}">
       <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
       <div class="who"><span class="name-row"><span class="name">${esc(p.username)}</span>${marksHTML(p, ctx)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}

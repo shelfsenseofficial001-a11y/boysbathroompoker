@@ -28,6 +28,43 @@ export function tableFeltSVG() {
 </svg>`;
 }
 
+// The house mark printed in the middle of the felt, in the manner of a team
+// crest: a heavy slanted wordmark with a varsity double outline, stars over
+// it and a banner under. It's its own SVG with its own proportions - the felt
+// above stretches to fit the table, and this would stretch with it.
+export function feltLogoSVG() {
+  // Paint order puts each stroke behind its own fill, which is what gives
+  // lettering the cut-out, stitched-on look of a jersey.
+  const word = (dy, fill, stroke, width) =>
+    `<text x="200" y="${108 + dy}" text-anchor="middle" font-family="Inter, system-ui, sans-serif"
+      font-weight="800" font-size="62" letter-spacing="3" fill="${fill}" stroke="${stroke}"
+      stroke-width="${width}" stroke-linejoin="round" paint-order="stroke">CCPOKER</text>`;
+  const star = (x, y, r) => {
+    const pts = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI / 5) * i - Math.PI / 2;
+      const rr = i % 2 ? r * 0.45 : r;
+      pts.push(`${(x + rr * Math.cos(a)).toFixed(2)},${(y + rr * Math.sin(a)).toFixed(2)}`);
+    }
+    return `<polygon points="${pts.join(' ')}" fill="#f7d58a"/>`;
+  };
+  return `<svg viewBox="0 0 400 190" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  ${star(150, 30, 9)}${star(200, 22, 12)}${star(250, 30, 9)}
+  <g transform="skewX(-11) translate(19 0)">
+    ${word(0, 'none', '#05140d', 15)}
+    ${word(0, '#fbf3dc', '#e6b450', 6)}
+  </g>
+  <path d="M84 120 L316 120" stroke="#e6b450" stroke-width="3" stroke-linecap="round"/>
+  <path d="M100 130 L300 130" stroke="#e6b450" stroke-width="1.5" stroke-linecap="round" opacity=".7"/>
+  <g>
+    <path d="M118 140 H282 L292 154 L282 168 H118 L108 154 Z" fill="#e6b450"/>
+    <path d="M108 154 L96 146 V162 Z M292 154 L304 146 V162 Z" fill="#9c7424"/>
+    <text x="200" y="159" text-anchor="middle" font-family="Inter, system-ui, sans-serif"
+      font-weight="800" font-size="13" letter-spacing="4.5" fill="#05140d">TEXAS HOLD'EM</text>
+  </g>
+</svg>`;
+}
+
 export function dealerButtonSVG() {
   return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-label="Dealer button" role="img">
   <circle cx="20" cy="21.5" r="18" fill="rgba(0,0,0,.35)"/>

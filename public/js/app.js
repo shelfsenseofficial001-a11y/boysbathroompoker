@@ -4,12 +4,13 @@ import { renderAuth } from './auth.js';
 import { renderLobby } from './lobby.js';
 import { renderTable } from './table.js';
 import { getSocket, setGuestName, emitAck } from './socket.js';
-import { applyMotionClass } from './motion.js';
+import { applyMotionClass, applyLiteClass, playEntrance } from './motion.js';
 import { showToast } from './toast.js';
 import { icons } from './svg/icons.js';
 import { userPillHTML, wireNameEditor } from './name.js';
 
 applyMotionClass();
+applyLiteClass();
 
 // Belt-and-braces with the CSS user-select rules: block text selection (and
 // double-click word selection) everywhere except inputs, error messages and
@@ -118,22 +119,23 @@ function showRoomGone(code) {
       <div class="topbar-user">${state.user ? userPillHTML(state.user) : ''}</div>
     </header>
     <main class="page gone-page">
-      <div class="eyebrow">Room not found</div>
-      <h1 class="display">That table has packed up.</h1>
-      <p class="lead">
+      <div class="eyebrow" data-enter>Room not found</div>
+      <h1 class="display" data-enter>That table has packed up.</h1>
+      <p class="lead" data-enter>
         There's no room with the code <b class="gone-code"></b> any more. A room lasts
         only as long as someone is sitting at it: once the host leaves and the
         last player walks away, it closes and its code is gone for good. The
         same happens if the server restarts.
       </p>
-      <p class="help-text">Ask whoever sent you for a fresh link, or host a table yourself.</p>
-      <div class="gone-actions">
+      <p class="help-text" data-enter>Ask whoever sent you for a fresh link, or host a table yourself.</p>
+      <div class="gone-actions" data-enter>
         <button class="btn btn-primary btn-lg" data-home>Go to the homepage</button>
       </div>
     </main>
   </div>`;
   root.querySelector('.gone-code').textContent = code;
   if (state.user) wireNameEditor(root, state.user);
+  playEntrance(root.querySelector('.screen'));
   root.querySelectorAll('[data-home]').forEach((b) => b.addEventListener('click', () => showLobby()));
 }
 

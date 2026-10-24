@@ -7,6 +7,7 @@ import { userPillHTML, wireNameEditor } from './name.js';
 import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
 import { showToast } from './toast.js';
+import { playEntrance } from './motion.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -23,13 +24,13 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
       </div>
     </header>
     <main class="page">
-      <section class="hero">
+      <section class="hero" data-enter>
         <div class="eyebrow">Play-money Texas Hold’em</div>
         <h1 class="display">Pull up a chair.</h1>
         <p class="lead">Host a private table or join friends with a room code. Chips are fake — strictly for bragging rights.</p>
       </section>
       <div class="lobby-grid">
-        <section class="panel">
+        <section class="panel" data-enter>
           <h2 class="h2">Host a game</h2>
           <p class="help-text">You’ll set every player’s starting chips in the waiting room.</p>
           <div class="field-row">
@@ -45,7 +46,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           </label>
           <button class="btn btn-primary btn-lg" id="create-room">Create room</button>
         </section>
-        <section class="panel">
+        <section class="panel" data-enter>
           <h2 class="h2">Join a game</h2>
           <p class="help-text">Enter the 5-letter code your host shared. They set everyone's chips.</p>
           <div class="field-row">
@@ -58,7 +59,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           </div>
         </section>
       </div>
-      <section class="panel" id="room-list" style="margin-top:20px">
+      <section class="panel" id="room-list" style="margin-top:20px" data-enter>
         <h2 class="h2">Open tables</h2>
         <p class="help-text">Every public game running right now — the stakes, the stack you'd sit down with, and how far along they are.</p>
         <div class="rooms-wrap">
@@ -85,7 +86,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           <button class="btn btn-sm btn-ghost" id="rooms-next">Next</button>
         </div>
       </section>
-      <section class="panel" style="margin-top:20px">
+      <section class="panel" style="margin-top:20px" data-enter>
         <h2 class="h2">Table settings</h2>
         <p class="help-text">How your own cards behave at the table.</p>
         <label class="switch-row">
@@ -140,6 +141,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
 
   $('#logout').addEventListener('click', onLogout);
   wireNameEditor(root, user);
+  playEntrance(root.querySelector('.screen'));
   wireSteppers(root);
 
   // --- Table settings ---

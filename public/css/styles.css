@@ -28,6 +28,18 @@
   --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.5);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-spring: cubic-bezier(0.3, 1.3, 0.5, 1);
+  /* The motion system. A long, soft deceleration is most of what makes
+     movement read as expensive: it arrives quickly and then settles, rather
+     than coasting in at one speed. Durations are tokens so the lite tier can
+     shorten every one of them at once. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-quick: cubic-bezier(0.4, 0, 1, 1);
+  --dur-quick: 180ms;
+  --dur-base: 320ms;
+  --dur-slow: 620ms;
+  --dur-grand: 900ms;
+  --stagger: 55ms;
+  --rise: 16px;
 
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
@@ -987,6 +999,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .felt { position: absolute; inset: 0; z-index: 0; }
 .felt svg { width: 100%; height: 100%; display: block; }
+/* The house mark printed in the felt. Directly after the felt in the markup
+   and with no z-index of its own, so it sits on the cloth and every card,
+   chip and seat lands on top of it the way they would on a real table. Sized
+   off the camera's shorter side, so it keeps its proportions in landscape and
+   portrait alike, and it never takes a click. */
+/* Placed on the board's spot by the layout code, which knows where that is in
+   each orientation; 50%/50% only covers the moment before it runs. Sized so
+   its foot clears the pot readout below the board. */
+.felt-logo {
+  position: absolute; left: 50%; top: 50%;
+  width: clamp(130px, 35cqmin, 300px); translate: -50% -50%;
+  opacity: 0.4; pointer-events: none;
+}
+.felt-logo svg { display: block; width: 100%; height: auto; }
 
 /* Peek cut-scene vignette */
 .stage::after {
@@ -2167,6 +2193,87 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .set-field label { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); text-transform: none; letter-spacing: 0; }
 .set-field label b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
 .set-field .range { width: 100%; }
+
+/* ---------- Motion ----------
+   Everything here plays once, on something actually happening: a screen
+   arriving, a sheet opening, a message landing. Nothing loops or pulses, and
+   every animation touches only opacity and transforms, which the GPU
+   composites without laying anything out or repainting it.
+
+   Anchored elements (seats, the felt) are positioned with `transform`, so
+   they animate through the separate `translate` and `scale` properties: those
+   compose with the positioning instead of overwriting it, which is what made
+   seats jump to the corner when animated the older way. Scaling is always
+   uniform, so no pill or rounded shape is ever stretched out of shape. */
+@keyframes enterRise { from { opacity: 0; translate: 0 var(--rise); } }
+@keyframes enterFade { from { opacity: 0; } }
+@keyframes enterSettle { from { opacity: 0; scale: 0.965; } }
+@keyframes enterDrop { from { opacity: 0; translate: 0 calc(var(--rise) * -0.6); } }
+@keyframes seatIn { from { opacity: 0; scale: 0.86; } }
+@keyframes dockIn { from { opacity: 0; translate: 0 calc(var(--rise) * 1.6); } }
+
+/* A screen arriving: the bar settles from above, then the content rises in
+   turn, each block a beat after the last. */
+/* --enter-elapsed is how far in a rebuilt screen already was (motion.js). */
+.is-entering .topbar {
+  animation: enterDrop var(--dur-slow) var(--ease-out-expo) both;
+  animation-delay: calc(0ms - var(--enter-elapsed, 0ms));
+}
+.is-entering [data-enter] {
+  animation: enterRise var(--dur-slow) var(--ease-out-expo) both;
+  animation-delay: calc(80ms + var(--i, 0) * var(--stagger) - var(--enter-elapsed, 0ms));
+}
+
+/* The table is the grand entrance: the felt settles into place, the seats
+   come up around it one after another, and the dock rises last. */
+.table-screen.is-entering .camera { animation: enterSettle var(--dur-grand) var(--ease-out-expo) both; }
+/* --i is the seat's place around the table, so they come up in order of play. */
+/* Seats are rebuilt on every update, so they carry their own elapsed time:
+   the felt and the dock persist and must not have theirs moved mid-flight. */
+.table-screen.is-entering .pod {
+  animation: seatIn var(--dur-slow) var(--ease-out-expo) both;
+  animation-delay: calc(260ms + var(--i, 0) * var(--stagger) - var(--seat-elapsed, 0ms));
+}
+.table-screen.is-entering .felt-logo { animation: enterFade var(--dur-grand) var(--ease-out-expo) 120ms both; }
+.table-screen.is-entering .dock { animation: dockIn var(--dur-slow) var(--ease-out-expo) 340ms both; }
+
+/* Sheets open with the same long settle, the dimming arriving with them. */
+.overlay { animation: fadeIn var(--dur-base) var(--ease-out-expo); }
+.sheet { animation: sheetIn var(--dur-slow) var(--ease-out-expo) both; }
+
+/* Toasts leave as deliberately as they arrive, rather than blinking out. */
+@keyframes toastOut { to { opacity: 0; translate: 0 10px; scale: 0.98; } }
+.toast.is-leaving { animation: toastOut var(--dur-base) var(--ease-in-quick) forwards; pointer-events: none; }
+
+/* A message lands: it rises into place at the foot of the log. Only the one
+   that just arrived - the rest of the log is redrawn without motion. */
+@keyframes bubbleIn { from { opacity: 0; translate: 0 10px; } }
+.chat-row.is-arriving { animation: bubbleIn var(--dur-base) var(--ease-out-expo) both; }
+.chat-system.is-arriving { animation: enterFade var(--dur-slow) var(--ease-out-expo) both; }
+
+/* A new hand in the history slides down into the top of the list. */
+@keyframes historyIn { from { opacity: 0; translate: 0 -8px; } }
+.hh.is-new { animation: historyIn var(--dur-base) var(--ease-out-expo) both; }
+
+/* ---------- Lite tier ----------
+   For devices that can't keep up (see motion.js). The same moments still
+   move, but shorter and as plain fades: no distance travelled, no stagger
+   holding later blocks back, and no scaling, which costs a layer each. */
+.lite {
+  --dur-quick: 110ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+  --dur-grand: 260ms;
+  --stagger: 0ms;
+  --rise: 0px;
+}
+.lite .table-screen.is-entering .camera,
+.lite .table-screen.is-entering .pod { animation-name: enterFade; }
+.lite .table-screen.is-entering .pod,
+.lite .table-screen.is-entering .dock { animation-delay: 0ms; }
+/* Big soft shadows are among the costliest things to composite on a weak
+   GPU; flatter ones read nearly the same. */
+.lite .sheet, .lite .toast, .lite .chat-jump, .lite .spec-panel { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); }
 
 /* Reduced motion (OS setting or the in-game toggle, see motion.js). The
    turn ring keeps unwinding since it carries information, not decoration. */
