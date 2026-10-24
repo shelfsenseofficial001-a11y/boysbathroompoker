@@ -776,9 +776,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* Sender's name and “Replied to …” share one line above the bubble. The
    parts are different sizes, so they centre on a common line box rather
    than sitting on their own baselines. */
-.chat-meta { display: flex; align-items: center; gap: 6px; line-height: 1; margin-top: 4px; }
+/* One line, whatever the names are. Two long ones used to wrap inside a row
+   set to line-height 1, which stacked them into each other; they share the
+   width and trim themselves instead. */
+.chat-meta {
+  display: flex; align-items: baseline; gap: 6px; line-height: 1.3; margin-top: 4px;
+  min-width: 0; max-width: 100%;
+}
+.chat-who, .reply-note { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-row.is-mine .chat-meta { flex-direction: row-reverse; }
-.chat-who { font: 500 10.5px/1 var(--font-ui); color: var(--text-2); font-weight: bold;}
+.chat-who { font: 500 10.5px/1.3 var(--font-ui); color: var(--text-2); font-weight: bold; }
 .bubble-line { position: relative; display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
 .bubble-line > .bubble { flex: 0 1 auto; min-width: 0; }
 .chat-row.is-mine .bubble-line { flex-direction: row-reverse; }
@@ -805,8 +812,8 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .bubble-edited { margin-left: 6px; font-size: 10px; opacity: 0.65; }
 /* A reply is announced above the bubble, with the message it answers shown
    outside it — the bubble itself stays a bubble. */
-.reply-note { font: 500 10.5px/1 var(--font-ui); color: var(--text-3); }
-.reply-arrow { display: flex; align-items: center; color: var(--text-3); }
+.reply-note { font: 500 10.5px/1.3 var(--font-ui); color: var(--text-3); }
+.reply-arrow { flex: none; display: flex; align-items: center; align-self: center; color: var(--text-3); }
 .reply-arrow .icon { display: block; width: 11px; height: 11px; transform: scaleX(-1); }
 .chat-row.is-mine .reply-arrow .icon { transform: none; }
 /* On someone else's message the bubble sits past their face, so the reply
