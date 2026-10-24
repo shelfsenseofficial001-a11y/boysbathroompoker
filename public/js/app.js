@@ -6,6 +6,8 @@ import { renderTable } from './table.js';
 import { getSocket, setGuestName, emitAck } from './socket.js';
 import { applyMotionClass } from './motion.js';
 import { showToast } from './toast.js';
+import { icons } from './svg/icons.js';
+import { userPillHTML, wireNameEditor } from './name.js';
 
 applyMotionClass();
 
@@ -112,7 +114,8 @@ function showAuth() {
 function showRoomGone(code) {
   root.innerHTML = `<div class="screen">
     <header class="topbar">
-      <button class="btn btn-primary btn-sm" data-home>Back to the homepage</button>
+      <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
+      <div class="topbar-user">${state.user ? userPillHTML(state.user) : ''}</div>
     </header>
     <main class="page gone-page">
       <div class="eyebrow">Room not found</div>
@@ -130,6 +133,7 @@ function showRoomGone(code) {
     </main>
   </div>`;
   root.querySelector('.gone-code').textContent = code;
+  if (state.user) wireNameEditor(root, state.user);
   root.querySelectorAll('[data-home]').forEach((b) => b.addEventListener('click', () => showLobby()));
 }
 
