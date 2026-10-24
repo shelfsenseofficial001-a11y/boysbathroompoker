@@ -2049,7 +2049,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       uncontested: !!summary.uncontested,
       yourCards: shownHands.get(user.id)?.holeCards || mySeat?.holeCards || [],
       split: summary.winners.length > 1,
-      board: summary.uncontested ? [] : summary.board || [],
+      // Kept even when everyone folded: the community cards were turned over
+      // in front of the table, so they're no secret - only the hole cards
+      // nobody ever saw stay hidden.
+      board: summary.board || [],
       winners: summary.winners.map((w) => ({
         // The name as it was, plus who it belongs to. Players can rename
         // themselves, and the history should follow them rather than keep
@@ -2240,9 +2243,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function entryHTML(h, extra = '') {
-    // Only hands that were actually shown down have cards to look at — plus
-    // my own, which I can always look back at.
-    const cards = h.winners.some((w) => w.cards?.length) || !!h.yourCards?.length || !!h.showed?.length;
+    // Anything worth opening the hand for: cards somebody turned over, my own
+    // which I can always look back at, or just the board a folded hand left
+    // on the table.
+    const cards =
+      h.winners.some((w) => w.cards?.length) ||
+      !!h.yourCards?.length ||
+      !!h.showed?.length ||
+      !!h.board?.length;
     const open = expanded.has(h.hand);
     const note = h.uncontested ? 'Everyone else folded' : h.split ? 'Split pot' : '';
     // The eye rides on the first winner's row, beside what they won. On a
