@@ -38,9 +38,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           </div>
           <div class="field-row">
             <div class="field"><label for="buyin-host">Your starting chips</label>${numberFieldHTML({ id: 'buyin-host', value: 1000, min: 1, step: 100, label: 'your starting chips' })}</div>
-            <div class="field"><label for="max-specs">Spectators allowed</label>${numberFieldHTML({ id: 'max-specs', value: 10, min: 0, max: 200, step: 1, label: 'spectators allowed' })}</div>
           </div>
-          <p class="help-text">Watchers take no seat and stake no chips — they just see the hands play out and can talk. Set it to 0 to keep the table to the players.</p>
           <label class="switch-row">
             <input type="checkbox" id="room-private">
             <span>Private room — hidden from open tables, and you let each player in</span>
@@ -250,7 +248,6 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         bigBlind: Number($('#bb').value),
         buyIn: Number($('#buyin-host').value),
         isPrivate: $('#room-private').checked,
-        maxSpectators: Number($('#max-specs').value),
       });
       onEnterRoom(res.code);
     } catch (err) {
@@ -356,19 +353,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
               <td class="num">${fmt(r.smallBlind)}<span class="of">/</span>${fmt(r.bigBlind)}</td>
               <td class="num">${r.full ? '<span class="of">—</span>' : fmt(r.chips)}</td>
               <td>${r.inPlay ? `<span class="room-live">Hand #${r.hand}</span>` : '<span class="of">Waiting to start</span>'}</td>
-              <td class="num">${
-                r.maxSpectators === 0
-                  ? '<span class="of">None allowed</span>'
-                  : `<b>${r.watching}</b><span class="of">/${r.maxSpectators}</span>`
-              }</td>
+              <td class="num">${r.allowSpectators ? `<b>${r.watching}</b>` : '<span class="of">Not allowed</span>'}</td>
               <td class="room-acts">
-                ${
-                  r.inPlay
-                    ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}" ${
-                        r.watching >= r.maxSpectators ? 'disabled title="No room left to watch"' : ''
-                      }>Spectate</button>`
-                    : ''
-                }
+                ${r.inPlay && r.allowSpectators ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}">Spectate</button>` : ''}
                 ${r.full ? '' : `<button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>`}
               </td>
             </tr>`

@@ -14,7 +14,7 @@ function makeRoomCode() {
 }
 
 class Room {
-  constructor(hostUserId, hostUsername, { smallBlind, bigBlind, isPrivate = false, maxSpectators = 10 } = {}) {
+  constructor(hostUserId, hostUsername, { smallBlind, bigBlind, isPrivate = false, allowSpectators = true } = {}) {
     this.code = makeRoomCode();
     // Carried in the shareable link. The code alone still only gets you to
     // the door of a private room; this is what makes a link an invitation,
@@ -54,10 +54,10 @@ class Room {
     // Watchers the host has turned away. They can't come back, as a player
     // or a watcher, until the room is gone.
     this.blocked = new Set();
-    // How many people may pull up a chair behind the table. The host's call
-    // when they open the room: a crowd is fun, an audience of fifty is a
-    // chat box nobody can follow. 0 turns watching off altogether.
-    this.maxSpectators = maxSpectators;
+    // Whether anyone may pull up a chair behind the table and watch. The
+    // host's call when they open the room; some games would rather not have
+    // an audience reading the chat.
+    this.allowSpectators = allowSpectators;
   }
 
   // Lobby members who hold or are owed a seat. Watchers are in the lobby so
@@ -91,8 +91,8 @@ class Room {
   }
 
   // People who chose to watch. Players who busted out are watching too, but
-  // they're the room's own and are never counted against the host's limit:
-  // losing your chips must not cost you the end of the game.
+  // they're the room's own, counted separately: turning spectators away was
+  // never meant to throw a player out of the game they just lost.
   watcherCount() {
     let n = 0;
     for (const [id, why] of this.spectators) if (why === 'watching' && this.lobby.has(id)) n += 1;
@@ -222,7 +222,7 @@ class GameManager {
         full: r.isFull(),
         hand: r.table.handNumber,
         watching: r.watcherCount(),
-        maxSpectators: r.maxSpectators,
+        allowSpectators: r.allowSpectators,
       }));
   }
 

@@ -307,22 +307,24 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; font-size: 14px; color: var(--text-2); margin: 4px 0 14px; }
 .set-group .switch-row { align-items: flex-start; }
 .set-group .switch-row input[type='checkbox'] { margin-top: 1px; }
-.switch-row input[type='checkbox'] {
+.switch-row input[type='checkbox'], .rs-switch input[type='checkbox'] {
   appearance: none; -webkit-appearance: none; flex: none; margin: 0; cursor: pointer;
   position: relative; width: 42px; height: 24px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line-2);
   transition: background-color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
 }
-.switch-row input[type='checkbox']::after {
+.switch-row input[type='checkbox']::after, .rs-switch input[type='checkbox']::after {
   content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
   border-radius: 50%; background: var(--text-3);
   transition: transform 0.18s var(--ease-out), background-color 0.18s var(--ease-out);
 }
-.switch-row input[type='checkbox']:checked {
+.switch-row input[type='checkbox']:checked, .rs-switch input[type='checkbox']:checked {
   background: var(--gold); border-color: var(--gold);
 }
-.switch-row input[type='checkbox']:checked::after { transform: translateX(18px); background: #2a1c05; }
-.switch-row input[type='checkbox']:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
+.switch-row input[type='checkbox']:checked::after,
+.rs-switch input[type='checkbox']:checked::after { transform: translateX(18px); background: #2a1c05; }
+.switch-row input[type='checkbox']:focus-visible,
+.rs-switch input[type='checkbox']:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 2px; }
 .switch-row input[type='checkbox']:disabled { opacity: 0.45; cursor: not-allowed; }
 .switch-row:has(input:disabled) { opacity: 0.6; cursor: not-allowed; }
 .switch-row:hover { color: var(--text-1); }
@@ -1835,6 +1837,8 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .rs-row:last-child { border-bottom: 0; }
 .rs-label { display: flex; flex-direction: column; gap: 1px; font-size: 13.5px; font-weight: 600; color: var(--text-1); }
 .rs-label small { font-size: 11.5px; font-weight: 400; color: var(--text-3); }
+.rs-switch { cursor: pointer; }
+.rs-switch:hover .rs-label { color: var(--gold-hi); }
 .blind-edit { display: inline-flex; align-items: center; gap: 6px; }
 .blind-edit input { width: 62px; height: 34px; padding: 0 6px; text-align: center; font-weight: 700; }
 .blind-edit i { font-style: normal; color: var(--text-3); }

@@ -138,6 +138,7 @@ function attachSockets(io, sessionMiddleware) {
         // Members get the room's invite token so they can share a link.
         invite: room.inviteToken,
         spectators: room.spectatorList(),
+        allowSpectators: room.allowSpectators,
         // Whether this viewer is watching, and whether there's a chair for
         // them to take if they are.
         watching: room.spectators.has(userId),
@@ -479,18 +480,12 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true, name: clean });
     });
 
-    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind, isPrivate, maxSpectators } = {}, ack) => {
+    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind, isPrivate } = {}, ack) => {
       try {
         if (roomFor(userId)) throw new Error('Leave your current room first.');
         const sb = Math.max(1, Math.floor(Number(smallBlind)) || 5);
         const bb = Math.max(sb * 2, Math.floor(Number(bigBlind)) || 10);
-        // 0 is a real answer here - no audience at all - so an empty or
-        // nonsense figure falls back to the default rather than to zero.
-        const asked = Math.floor(Number(maxSpectators));
-        const specs = Number.isFinite(asked) ? Math.min(200, Math.max(0, asked)) : 10;
-        const room = manager.createRoom(userId, nameOf(), {
-          smallBlind: sb, bigBlind: bb, isPrivate: !!isPrivate, maxSpectators: specs,
-        });
+        const room = manager.createRoom(userId, nameOf(), { smallBlind: sb, bigBlind: bb, isPrivate: !!isPrivate });
         room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
         attachTableEvents(room);
         ack?.({ ok: true, code: room.code });
@@ -559,13 +554,8 @@ function attachSockets(io, sessionMiddleware) {
       }
       // No seat check: a watcher takes no chair, so a full table is still
       // worth watching — but the host says how big the crowd may get.
-      if (room.watcherCount() >= room.maxSpectators) {
-        return ack?.({
-          ok: false,
-          error: room.maxSpectators === 0
-            ? 'That host isn’t allowing spectators.'
-            : 'That table has as many people watching as the host allows.',
-        });
+      if (!room.allowSpectators) {
+        return ack?.({ ok: false, error: 'That host isn’t allowing spectators.' });
       }
       if (room.blocked.has(userId)) {
         return ack?.({ ok: false, error: 'The host has blocked you from this room.' });
@@ -710,6 +700,20 @@ function attachSockets(io, sessionMiddleware) {
       room.joinChips = n;
       ack?.({ ok: true, chips: n });
       broadcastRoom(room);
+    });
+
+    // Whether this table has an audience. Turning it off doesn't clear the
+    // people already watching - they were let in under the old answer, and
+    // the host has Remove for anyone they'd rather not have there - it just
+    // shuts the door behind them.
+    socket.on('setAllowSpectators', ({ allow } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can set that.' });
+      room.allowSpectators = allow !== false;
+      ack?.({ ok: true, allow: room.allowSpectators });
+      broadcastRoom(room);
+      roomsChanged();
     });
 
     // Only the author may change their own message, and only the text: the

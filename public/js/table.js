@@ -1410,6 +1410,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
                     <span class="rs-label">Late joiners<small>Dealt in from the next hand</small></span>
                     ${numberFieldHTML({ id: 'join-chips', value: state.joinChips ?? 1000, min: 1, step: 100, label: 'chips for late joiners', attrs: 'data-join-chips', wide: false })}
                   </div>
+                  <label class="rs-row rs-switch">
+                    <span class="rs-label">Spectators<small>Watch without a seat, and talk</small></span>
+                    <input type="checkbox" data-allow-specs ${state.allowSpectators === false ? '' : 'checked'}>
+                  </label>
                 </section>`
               : `<div class="room-summary">
                   <span>Blinds <b>${fmt(t.smallBlind)} / ${fmt(t.bigBlind)}</b></span>
@@ -1485,6 +1489,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       try {
         await emitAck('setJoinChips', { chips: Number(e.target.value) });
       } catch (err) {
+        showError(err.message);
+      }
+    });
+    root.querySelector('[data-allow-specs]')?.addEventListener('change', async (e) => {
+      try {
+        await emitAck('setAllowSpectators', { allow: e.target.checked });
+      } catch (err) {
+        e.target.checked = !e.target.checked; // put the switch back before saying why
         showError(err.message);
       }
     });
