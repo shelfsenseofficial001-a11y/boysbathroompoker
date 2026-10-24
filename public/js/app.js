@@ -53,21 +53,84 @@ async function boot() {
   }
 }
 
+// An invite link: ?room=CODE&k=TOKEN. Read once and taken off the address
+// bar, so a refresh doesn't try to walk back into a room you've since left.
+function takeInvite() {
+  const params = new URLSearchParams(location.search);
+  const code = (params.get('room') || '').trim().toUpperCase();
+  if (!code) return null;
+  const invite = params.get('k') || '';
+  params.delete('room');
+  params.delete('k');
+  const rest = params.toString();
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : ''));
+  return { code, invite };
+}
+
 // Once identified, go straight back to your table if you were in one
-// (e.g. after a page refresh), otherwise to the lobby.
+// (e.g. after a page refresh), otherwise follow the link that brought them
+// here, otherwise the lobby.
 async function enter() {
   const res = await emitAck('whoami');
   state.user = res.user;
+  const invite = takeInvite();
   if (res.currentRoom) {
     state.roomCode = res.currentRoom;
-    showTable();
-  } else {
-    showLobby();
+    return showTable();
+  }
+  if (invite) return followInvite(invite);
+  showLobby();
+}
+
+// A link does the whole job: a seat if the game hasn't started, a seat from
+// the next hand if it has, and past the door of a private room, because the
+// host handing out the link is the invitation.
+async function followInvite({ code, invite }) {
+  try {
+    const res = await emitAck('joinRoom', { code, invite });
+    state.roomCode = res.code;
+    showTable(
+      res.waiting
+        ? `Joining with ${Number(res.chips).toLocaleString('en-US')} chips — you'll be dealt in next hand.`
+        : null
+    );
+  } catch (err) {
+    if (err.reason === 'no-room') return showRoomGone(code);
+    // Refused for a reason of its own (name taken, table full, blocked):
+    // the lobby is where they can do something about it.
+    showLobby(err.message);
   }
 }
 
 function showAuth() {
   renderAuth(root, { onAuthed: () => enter() });
+}
+
+// The link outlived the room. Rooms are held in memory for as long as
+// someone is in them, so this is the ordinary end of every link rather than
+// a fault, and it says so instead of showing a bare error.
+function showRoomGone(code) {
+  root.innerHTML = `<div class="screen">
+    <header class="topbar">
+      <button class="btn btn-primary btn-sm" data-home>Back to the homepage</button>
+    </header>
+    <main class="page gone-page">
+      <div class="eyebrow">Room not found</div>
+      <h1 class="display">That table has packed up.</h1>
+      <p class="lead">
+        There's no room with the code <b class="gone-code"></b> any more. A room lasts
+        only as long as someone is sitting at it: once the host leaves and the
+        last player walks away, it closes and its code is gone for good. The
+        same happens if the server restarts.
+      </p>
+      <p class="help-text">Ask whoever sent you for a fresh link, or host a table yourself.</p>
+      <div class="gone-actions">
+        <button class="btn btn-primary btn-lg" data-home>Go to the homepage</button>
+      </div>
+    </main>
+  </div>`;
+  root.querySelector('.gone-code').textContent = code;
+  root.querySelectorAll('[data-home]').forEach((b) => b.addEventListener('click', () => showLobby()));
 }
 
 function showLobby(notice) {

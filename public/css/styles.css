@@ -387,6 +387,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .room-terms b { color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
 .empty { color: var(--text-3); font-size: var(--fs-small); padding: 14px; text-align: center; border: 1px dashed var(--line-2); border-radius: var(--r-m); }
 
+/* A link whose room has since closed. */
+.gone-page { max-width: 620px; }
+.gone-code { color: var(--gold); letter-spacing: 0.14em; }
+.gone-actions { margin-top: 28px; display: flex; }
+.gone-actions .btn { width: auto; }
+
 /* Auth */
 .auth-wrap { flex: 1; display: grid; place-items: center; padding: 24px; }
 .auth-card { width: 100%; max-width: 400px; }

@@ -16,6 +16,10 @@ function makeRoomCode() {
 class Room {
   constructor(hostUserId, hostUsername, { smallBlind, bigBlind, isPrivate = false } = {}) {
     this.code = makeRoomCode();
+    // Carried in the shareable link. The code alone still only gets you to
+    // the door of a private room; this is what makes a link an invitation,
+    // so passing the code around by word of mouth doesn't become one.
+    this.inviteToken = crypto.randomBytes(9).toString('base64url');
     this.hostUserId = hostUserId;
     this.hostUsername = hostUsername;
     this.table = new Table({ smallBlind: smallBlind || 5, bigBlind: bigBlind || 10 });

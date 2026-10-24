@@ -135,6 +135,8 @@ function attachSockets(io, sessionMiddleware) {
         gameOver: room.gameOver?.participants.includes(userId) ? room.gameOver : null,
         joinChips: room.lateJoinChips(),
         isPrivate: room.isPrivate,
+        // Members get the room's invite token so they can share a link.
+        invite: room.inviteToken,
         spectators: room.spectatorList(),
         // Whether this viewer is watching, and whether there's a chair for
         // them to take if they are.
@@ -469,9 +471,9 @@ function attachSockets(io, sessionMiddleware) {
       }
     });
 
-    socket.on('joinRoom', ({ code, buyIn, fromList } = {}, ack) => {
+    socket.on('joinRoom', ({ code, buyIn, fromList, invite } = {}, ack) => {
       const room = manager.getRoom(code);
-      if (!room) return ack?.({ ok: false, error: 'Room not found.' });
+      if (!room) return ack?.({ ok: false, error: 'Room not found.', reason: 'no-room' });
       if (room.blocked.has(userId)) {
         return ack?.({ ok: false, error: 'The host has blocked you from this room.' });
       }
@@ -493,8 +495,10 @@ function attachSockets(io, sessionMiddleware) {
         return ack?.({ ok: false, error: 'Someone in that room already uses your name — change yours and try again.' });
       }
       // The code only gets you as far as the door of a private room: the host
-      // decides who actually comes in.
-      if (room.isPrivate && userId !== room.hostUserId) {
+      // decides who actually comes in. A link the host shared is that
+      // decision already made, so it goes straight through.
+      const invited = !!invite && invite === room.inviteToken;
+      if (room.isPrivate && userId !== room.hostUserId && !invited) {
         room.knocks.set(userId, nameOf());
         ack?.({ ok: true, code: room.code, knocking: true });
         return broadcastRoom(room);
@@ -511,7 +515,7 @@ function attachSockets(io, sessionMiddleware) {
     // next game deals you in like anyone else waiting in the room.
     socket.on('spectateRoom', ({ code } = {}, ack) => {
       const room = manager.getRoom(code);
-      if (!room) return ack?.({ ok: false, error: 'Room not found.' });
+      if (!room) return ack?.({ ok: false, error: 'Room not found.', reason: 'no-room' });
       const current = roomFor(userId);
       if (current === room) return ack?.({ ok: true, code: room.code });
       if (current) return ack?.({ ok: false, error: 'Leave your current room first.' });

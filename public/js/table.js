@@ -1174,14 +1174,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // ---------------------------------------------------------------------------
   function topbarHTML(t) {
     return `<header class="topbar">
-      <div class="brand">${icons.logo}<span>Boysbathroom <em>Poker</em></span></div>
+      <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
       <div class="topbar-meta">
+      <span class="room-kind hide-sm${shown?.isPrivate ? ' is-private' : ''}" title="${
+        shown?.isPrivate ? 'Hidden from open tables — the host lets each player in' : 'Listed in open tables for anyone to join'
+      }">${shown?.isPrivate ? icons.key : icons.eye}${shown?.isPrivate ? 'Private' : 'Public'}</span>
         <span class="meta-chip">Room <b class="code selectable">${esc(roomCode)}</b>
-          <button class="code-copy" data-copy-code title="Copy room code" aria-label="Copy room code">${icons.copy}</button>
+          <button class="code-copy" data-copy-code title="Copy invite link" aria-label="Copy invite link">${icons.copy}</button>
         </span>
-        <span class="room-kind hide-sm${shown?.isPrivate ? ' is-private' : ''}" title="${
-          shown?.isPrivate ? 'Hidden from open tables — the host lets each player in' : 'Listed in open tables for anyone to join'
-        }">${shown?.isPrivate ? icons.key : icons.eye}${shown?.isPrivate ? 'Private' : 'Public'}</span>
         <span class="meta-chip hide-sm">Blinds <b>${fmt(t.smallBlind)}/${fmt(t.bigBlind)}</b></span>
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
@@ -1205,7 +1205,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const copyCode = root.querySelector('[data-copy-code]');
     copyCode?.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(roomCode);
+        await navigator.clipboard.writeText(inviteLink());
         copyCode.classList.add('is-done');
         copyCode.innerHTML = icons.check;
         later(() => {
@@ -1326,7 +1326,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <p class="lead">${isHost ? 'Share the code, set everyone’s starting chips, then deal the first hand.' : 'The host sets everyone’s starting chips and deals the first hand.'}</p>
           <div class="code-block">
             <div><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
-            <button class="btn btn-ghost btn-sm" data-copy>${icons.copy}<span>Copy</span></button>
+            <button class="btn btn-ghost btn-sm" data-copy title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
           </div>
           <div class="meta-row">
             <span class="seat-count"><b>${n}</b>/${t.maxSeats || 9} seats</span>
@@ -1402,10 +1402,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const copyBtn = root.querySelector('[data-copy]');
     copyBtn.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(roomCode);
-        copyBtn.querySelector('span').textContent = 'Copied';
+        await navigator.clipboard.writeText(inviteLink());
+        copyBtn.querySelector('span').textContent = 'Copied link';
       } catch {
-        showError('Copy failed — select the code instead.');
+        showError('Copy failed — read the code out instead.');
       }
     });
     root.querySelector('[data-start]')?.addEventListener('click', async (e) => {
@@ -2735,6 +2735,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const me = t.seats.find((s) => s && s.userId === user.id && !s.left);
     if (!me || me.folded || !me.hasCards) return false;
     return !(t.lastHandSummary.showdownHands || []).some((h) => h.userId === user.id);
+  }
+
+  // The link that gets somebody straight to this table. The token is what
+  // carries the host's invitation past a private room's door, so a link is
+  // worth more than the code it contains — hand it out accordingly.
+  function inviteLink() {
+    const url = new URL(location.origin + location.pathname);
+    url.searchParams.set('room', roomCode);
+    if (shown?.invite) url.searchParams.set('k', shown.invite);
+    return url.toString();
   }
 
   // Leaving the rail for a chair. Offered from the dock while watching.

@@ -16,7 +16,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   const s = getSettings();
   root.innerHTML = `<div class="screen">
     <header class="topbar">
-      <div class="brand">${icons.logo}<span>Boysbathroom <em>Poker</em></span></div>
+      <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
       <div class="topbar-user">
         ${userPillHTML(user)}
         <button class="btn btn-ghost btn-sm" id="logout">${guest ? 'New guest' : 'Log out'}</button>

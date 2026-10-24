@@ -33,7 +33,13 @@ export function emitAck(event, payload = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (res && res.ok === false) reject(new Error(res.error || 'Action failed.'));
+      if (res && res.ok === false) {
+        const err = new Error(res.error || 'Action failed.');
+        // Why it was refused, where the server said so in a word a caller
+        // can branch on rather than matching the message text.
+        if (res.reason) err.reason = res.reason;
+        return reject(err);
+      }
       else resolve(res);
     });
   });
