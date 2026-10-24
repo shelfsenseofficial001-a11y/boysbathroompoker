@@ -1733,6 +1733,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawSpectators(shown);
     });
 
+    // It sits on the felt rather than in the dock or the spectator panel, so
+    // neither of their delegated handlers reaches it.
+    els.tableJoin?.addEventListener('click', () => takeSeat());
     els.dock.addEventListener('click', onDockClick);
     els.dock.addEventListener('input', onDockInput);
     els.dock.addEventListener('pointerdown', onTrayPointerDown);
