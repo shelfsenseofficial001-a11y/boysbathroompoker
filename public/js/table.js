@@ -1204,17 +1204,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // itself rather than only in the waiting room.
     const copyCode = root.querySelector('[data-copy-code]');
     copyCode?.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(inviteLink());
-        copyCode.classList.add('is-done');
-        copyCode.innerHTML = icons.check;
-        later(() => {
-          copyCode.classList.remove('is-done');
-          copyCode.innerHTML = icons.copy;
-        }, 1400);
-      } catch {
-        showError('Copy failed — select the code instead.');
+      if (!(await copyText(inviteLink()))) {
+        return showError('Couldn’t reach the clipboard — the room code is in the bar beside this.');
       }
+      copyCode.classList.add('is-done');
+      copyCode.innerHTML = icons.check;
+      later(() => {
+        copyCode.classList.remove('is-done');
+        copyCode.innerHTML = icons.copy;
+      }, 1400);
     });
     wireNameEditor(root, user);
     const hist = root.querySelector('[data-history]');
@@ -1401,12 +1399,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     wireSteppers(root);
     const copyBtn = root.querySelector('[data-copy]');
     copyBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(inviteLink());
-        copyBtn.querySelector('span').textContent = 'Copied link';
-      } catch {
-        showError('Copy failed — read the code out instead.');
-      }
+      const ok = await copyText(inviteLink());
+      copyBtn.querySelector('span').textContent = ok ? 'Copied link' : 'Copy failed';
+      if (!ok) showError('Couldn’t reach the clipboard — read the room code out instead.');
     });
     root.querySelector('[data-start]')?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
@@ -2735,6 +2730,33 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const me = t.seats.find((s) => s && s.userId === user.id && !s.left);
     if (!me || me.folded || !me.hasCards) return false;
     return !(t.lastHandSummary.showdownHands || []).some((h) => h.userId === user.id);
+  }
+
+  // The async clipboard refuses more often than you'd think — it wants a
+  // focused document and a permission the browser may simply withhold, and
+  // it throws NotAllowedError either way. The old selection-and-copy route
+  // only needs the click that got us here, so it stands behind it.
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Denied, or the document isn't focused. Fall through.
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    try {
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      ta.remove();
+    }
   }
 
   // The link that gets somebody straight to this table. The token is what
