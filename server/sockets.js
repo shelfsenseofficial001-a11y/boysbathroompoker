@@ -328,6 +328,22 @@ function attachSockets(io, sessionMiddleware) {
     return { ok: true, code: room.code };
   }
 
+  // A seat taken but not yet dealt in is only a place in the queue, so going
+  // offline gives it back: nobody wants a hand dealt to a chair that emptied
+  // while the last one was still being played. Anyone already in the hand
+  // keeps their seat - their chips are in the pot, and a refresh must not
+  // cost them that. Giving the seat up puts them back to watching, which is
+  // where taking it found them.
+  function releaseQueuedSeat(room, uid) {
+    const p = room.table.seats.find((s) => s && s.userId === uid && !s.left);
+    if (!p || !p.sittingOut || p.committed > 0 || p.holeCards.length) return false;
+    room.table.removePlayer(uid);
+    if (room.lobby.has(uid)) room.spectators.set(uid, 'watching');
+    announce(room, `${p.username} is no longer taking a seat.`, uid);
+    roomsChanged(); // a seat has come free again
+    return true;
+  }
+
   // Drops anyone who is waiting at a door they've walked away from.
   function clearKnock(uid) {
     for (const room of manager.rooms.values()) {
@@ -949,7 +965,10 @@ function attachSockets(io, sessionMiddleware) {
           socketsByUser.delete(userId);
           clearKnock(userId);
           const room = roomFor(userId);
-          if (room?.table.setPeeking(userId, false)) broadcastRoom(room);
+          if (!room) return;
+          const gaveUpSeat = releaseQueuedSeat(room, userId);
+          const peekOff = room.table.setPeeking(userId, false);
+          if (gaveUpSeat || peekOff) broadcastRoom(room);
         }
       }
     });
