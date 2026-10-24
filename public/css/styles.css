@@ -639,7 +639,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   flex: 1 1 auto; margin: 0; padding: 8px; list-style: none;
   overflow-y: auto; overscroll-behavior: contain; min-width: 252px;
 }
-.history-empty { padding: 14px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+.history-empty { display: flex; align-items: center; flex-direction: column; padding: 14px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
 .hh {
   padding: 9px 10px; border-radius: var(--r-s); margin-bottom: 6px;
   background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2);
