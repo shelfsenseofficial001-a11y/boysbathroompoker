@@ -479,12 +479,18 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true, name: clean });
     });
 
-    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind, isPrivate } = {}, ack) => {
+    socket.on('createRoom', ({ buyIn, smallBlind, bigBlind, isPrivate, maxSpectators } = {}, ack) => {
       try {
         if (roomFor(userId)) throw new Error('Leave your current room first.');
         const sb = Math.max(1, Math.floor(Number(smallBlind)) || 5);
         const bb = Math.max(sb * 2, Math.floor(Number(bigBlind)) || 10);
-        const room = manager.createRoom(userId, nameOf(), { smallBlind: sb, bigBlind: bb, isPrivate: !!isPrivate });
+        // 0 is a real answer here - no audience at all - so an empty or
+        // nonsense figure falls back to the default rather than to zero.
+        const asked = Math.floor(Number(maxSpectators));
+        const specs = Number.isFinite(asked) ? Math.min(200, Math.max(0, asked)) : 10;
+        const room = manager.createRoom(userId, nameOf(), {
+          smallBlind: sb, bigBlind: bb, isPrivate: !!isPrivate, maxSpectators: specs,
+        });
         room.addToLobby(userId, nameOf(), Math.max(1, Math.floor(Number(buyIn)) || 1000));
         attachTableEvents(room);
         ack?.({ ok: true, code: room.code });
@@ -552,7 +558,15 @@ function attachSockets(io, sessionMiddleware) {
         return ack?.({ ok: false, error: 'That room is private — ask the host for the code.' });
       }
       // No seat check: a watcher takes no chair, so a full table is still
-      // worth watching.
+      // worth watching — but the host says how big the crowd may get.
+      if (room.watcherCount() >= room.maxSpectators) {
+        return ack?.({
+          ok: false,
+          error: room.maxSpectators === 0
+            ? 'That host isn’t allowing spectators.'
+            : 'That table has as many people watching as the host allows.',
+        });
+      }
       if (room.blocked.has(userId)) {
         return ack?.({ ok: false, error: 'The host has blocked you from this room.' });
       }

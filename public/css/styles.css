@@ -357,15 +357,37 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-hi)); transform-origin: left center; transform: scaleX(0); }
 .pv-timing .micro { letter-spacing: 0.04em; text-transform: none; white-space: nowrap; }
 
-/* No reserved scrollbar gutter here, unlike the scrolling panels elsewhere:
-   it was taken out of the rows' own width, so every table card sat a
-   scrollbar's width shy of the Join button above it. The cards lining up
-   with the rest of the column matters more than holding their position on
-   the rare occasion a fourth table pushes the list into scrolling. */
-.room-list {
-  display: flex; flex-direction: column; gap: 8px; max-height: 240px;
-  overflow-y: auto; margin-top: 10px;
+/* Open tables, as a table: the codes, stakes and stacks line up down the
+   page so two games can be compared at a glance. Narrow screens scroll it
+   sideways rather than crushing the columns into each other. */
+.rooms-wrap { margin-top: 14px; overflow-x: auto; }
+.rooms {
+  width: 100%; border-collapse: collapse; font-size: var(--fs-small);
 }
+.rooms th {
+  text-align: left; padding: 0 12px 8px; white-space: nowrap;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3); border-bottom: 1px solid var(--line-2);
+}
+.rooms td {
+  padding: 11px 12px; border-bottom: 1px solid var(--line); color: var(--text-2);
+  vertical-align: middle; white-space: nowrap;
+}
+.rooms tr:last-child td { border-bottom: 0; }
+.rooms tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
+.rooms .num { text-align: right; font-variant-numeric: tabular-nums; }
+.rooms .of { color: var(--text-3); font-weight: 600; }
+.rooms .code { font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
+.rooms .sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
+.rooms-empty td {
+  padding: 22px 12px; text-align: center; color: var(--text-3);
+}
+/* Only shown once there's more than one page of tables to turn. */
+.rooms-pager {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.rooms-pager .btn:disabled { opacity: 0.4; cursor: default; }
 /* Knocking on a private room: the host decides, so this is a real wait. */
 .knock-wait {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -373,16 +395,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border: 1px solid rgba(230, 180, 80, 0.35); background: rgba(230, 180, 80, 0.07);
   font-size: 12.5px; color: var(--text-2);
 }
-.room-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-m); padding: 10px 12px;
-}
-.room-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-/* Sit down, or just watch. Both stay on one line until the row runs out of
-   room, where they wrap rather than squeezing the table's details. */
-.room-acts { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.room-row .code { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
-.room-row .sub { font-size: var(--fs-small); color: var(--text-3); }
+/* Sit down, or just watch. Both stay on one line, pushed to the right-hand
+   end of the row where the eye ends up after reading it. */
+.room-acts { display: flex; justify-content: flex-end; gap: 6px; }
 /* Every chair taken. Still listed, because it can still be watched. */
 .room-full {
   padding: 1px 7px; border-radius: 999px; letter-spacing: 0.04em;
@@ -395,10 +410,6 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   font-size: 10px; font-weight: 800; text-transform: uppercase;
   color: var(--green); background: rgba(60, 194, 127, 0.12); border: 1px solid rgba(60, 194, 127, 0.4);
 }
-/* What you're agreeing to by sitting down: the stakes and the stack. */
-.room-terms { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; font-size: 11.5px; color: var(--text-3); }
-.room-terms b { color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
-.empty { color: var(--text-3); font-size: var(--fs-small); padding: 14px; text-align: center; border: 1px dashed var(--line-2); border-radius: var(--r-m); }
 
 /* A link whose room has since closed. */
 .gone-page { max-width: 620px; }

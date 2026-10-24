@@ -38,7 +38,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           </div>
           <div class="field-row">
             <div class="field"><label for="buyin-host">Your starting chips</label>${numberFieldHTML({ id: 'buyin-host', value: 1000, min: 1, step: 100, label: 'your starting chips' })}</div>
+            <div class="field"><label for="max-specs">Spectators allowed</label>${numberFieldHTML({ id: 'max-specs', value: 10, min: 0, max: 200, step: 1, label: 'spectators allowed' })}</div>
           </div>
+          <p class="help-text">Watchers take no seat and stake no chips — they just see the hands play out and can talk. Set it to 0 to keep the table to the players.</p>
           <label class="switch-row">
             <input type="checkbox" id="room-private">
             <span>Private room — hidden from open tables, and you let each player in</span>
@@ -56,10 +58,35 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
             <span>Waiting for the host to let you in<span class="dots"></span></span>
             <button class="btn btn-ghost btn-sm" id="knock-cancel">Cancel</button>
           </div>
-          <div class="micro" style="margin-top:22px">Open tables</div>
-          <div class="room-list" id="room-list"><div class="empty">Looking for tables…</div></div>
         </section>
       </div>
+      <section class="panel" id="room-list" style="margin-top:20px">
+        <h2 class="h2">Open tables</h2>
+        <p class="help-text">Every public game running right now — the stakes, the stack you'd sit down with, and how far along they are.</p>
+        <div class="rooms-wrap">
+          <table class="rooms">
+            <thead>
+              <tr>
+                <th scope="col">Room</th>
+                <th scope="col" class="num">Players</th>
+                <th scope="col" class="num">Blinds</th>
+                <th scope="col" class="num">Sit-in chips</th>
+                <th scope="col">Hand</th>
+                <th scope="col" class="num">Watching</th>
+                <th scope="col" aria-label="Join or watch"></th>
+              </tr>
+            </thead>
+            <tbody id="room-rows">
+              <tr class="rooms-empty"><td colspan="7">Looking for tables…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="rooms-pager" id="rooms-pager" hidden>
+          <button class="btn btn-sm btn-ghost" id="rooms-prev">Previous</button>
+          <span class="micro" id="rooms-page"></span>
+          <button class="btn btn-sm btn-ghost" id="rooms-next">Next</button>
+        </div>
+      </section>
       <section class="panel" style="margin-top:20px">
         <h2 class="h2">Table settings</h2>
         <p class="help-text">How your own cards behave at the table.</p>
@@ -223,6 +250,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         bigBlind: Number($('#bb').value),
         buyIn: Number($('#buyin-host').value),
         isPrivate: $('#room-private').checked,
+        maxSpectators: Number($('#max-specs').value),
       });
       onEnterRoom(res.code);
     } catch (err) {
@@ -292,41 +320,61 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // The open-tables list refreshes itself, so somebody waiting for a friend
   // to host doesn't have to keep reloading the page to see it appear.
   let lastRoomsJSON = null;
+  // Ten to a page: enough to scan without the lobby turning into a list that
+  // has to be scrolled past to reach the settings below it.
+  const PER_PAGE = 10;
+  let roomsPage = 0;
   function refreshRooms() {
     emitAck('listRooms')
       .then(({ rooms }) => {
-        const list = $('#room-list');
+        const list = $('#room-rows');
         if (!list) return;
-        const json = JSON.stringify(rooms);
+        // Tables close while you're looking at them, so the page you were on
+        // may no longer exist; fall back to the last one that does.
+        const pages = Math.max(1, Math.ceil(rooms.length / PER_PAGE));
+        roomsPage = Math.min(roomsPage, pages - 1);
+        const json = JSON.stringify([roomsPage, rooms]);
         if (json === lastRoomsJSON) return; // nothing moved; leave the DOM alone
         lastRoomsJSON = json;
+        const pager = $('#rooms-pager');
+        pager.hidden = rooms.length <= PER_PAGE;
+        $('#rooms-page').textContent = `Page ${roomsPage + 1} of ${pages} · ${rooms.length} ${rooms.length === 1 ? 'table' : 'tables'}`;
+        $('#rooms-prev').disabled = roomsPage === 0;
+        $('#rooms-next').disabled = roomsPage >= pages - 1;
         list.innerHTML = rooms.length
           ? rooms
+              .slice(roomsPage * PER_PAGE, roomsPage * PER_PAGE + PER_PAGE)
               .map(
                 (r) => `
-            <div class="room-row">
-              <div class="room-main">
-                <div class="code">${esc(r.code)}${
-                  r.inPlay ? `<span class="room-live">Hand #${r.hand}</span>` : ''
-                }${r.full ? '<span class="room-full">Full</span>' : ''}</div>
-                <div class="sub">${esc(r.host)} · ${r.players}/${r.seats} ${r.inPlay ? 'playing' : 'waiting'}</div>
-                <div class="room-terms">
-                  <span>Blinds <b>${fmt(r.smallBlind)}/${fmt(r.bigBlind)}</b></span>
-                  ${
-                    r.full
-                      ? '<span>Watch now, seat when one frees up</span>'
-                      : `<span>${r.inPlay ? 'Sit in with' : 'Start with'} <b>${fmt(r.chips)}</b> chips</span>`
-                  }
-                </div>
-              </div>
-              <span class="room-acts">
-                ${r.inPlay ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}">Spectate</button>` : ''}
+            <tr>
+              <td>
+                <span class="code">${esc(r.code)}</span>
+                ${r.full ? '<span class="room-full">Full</span>' : ''}
+                <span class="sub">${esc(r.host)}</span>
+              </td>
+              <td class="num"><b>${r.players}</b><span class="of">/${r.seats}</span></td>
+              <td class="num">${fmt(r.smallBlind)}<span class="of">/</span>${fmt(r.bigBlind)}</td>
+              <td class="num">${r.full ? '<span class="of">—</span>' : fmt(r.chips)}</td>
+              <td>${r.inPlay ? `<span class="room-live">Hand #${r.hand}</span>` : '<span class="of">Waiting to start</span>'}</td>
+              <td class="num">${
+                r.maxSpectators === 0
+                  ? '<span class="of">None allowed</span>'
+                  : `<b>${r.watching}</b><span class="of">/${r.maxSpectators}</span>`
+              }</td>
+              <td class="room-acts">
+                ${
+                  r.inPlay
+                    ? `<button class="btn btn-sm btn-ghost" data-watch="${esc(r.code)}" ${
+                        r.watching >= r.maxSpectators ? 'disabled title="No room left to watch"' : ''
+                      }>Spectate</button>`
+                    : ''
+                }
                 ${r.full ? '' : `<button class="btn btn-sm btn-ghost" data-code="${esc(r.code)}">Join</button>`}
-              </span>
-            </div>`
+              </td>
+            </tr>`
               )
               .join('')
-          : '<div class="empty">No open tables right now — host one!</div>';
+          : '<tr class="rooms-empty"><td colspan="7">No open tables right now — host one!</td></tr>';
         list.querySelectorAll('[data-code]').forEach((b) =>
           b.addEventListener('click', () => {
             join(b.dataset.code, true);
@@ -342,6 +390,16 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
       })
       .catch(() => {});
   }
+
+  // Turning a page is only ever a redraw of the list we already have, so it
+  // goes through the same path as a refresh.
+  const turnPage = (by) => {
+    roomsPage = Math.max(0, roomsPage + by);
+    lastRoomsJSON = null; // the rooms haven't changed, but the page has
+    refreshRooms();
+  };
+  $('#rooms-prev').addEventListener('click', () => turnPage(-1));
+  $('#rooms-next').addEventListener('click', () => turnPage(1));
 
   refreshRooms();
   // The server says when the list has actually changed, so a room going
