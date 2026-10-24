@@ -1429,10 +1429,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chip-ghost svg { width: 100%; height: 100%; }
 
 /* Presets, slider and amount share one line, which keeps the dock short. */
-.sizer { width: 100%; max-width: 620px; min-width: 160px; display: flex; align-items: center; gap: 10px; }
-.sizer .quick { flex: 0 0 auto; }
-.sizer .amount-row { flex: 1 1 auto; min-width: 140px; gap: 10px; }
-.sizer .range { flex: 1 1 auto; max-width: 240px; }
+/* Nothing in here may insist on more width than the column it sits in, or
+   it slides out from under its own box and lands on the action buttons.
+   Every part gives way, and the row wraps as a whole when there's no more
+   to give. The slider is the only part that grows, so it takes whatever is
+   spare and ends up wider than the amount box beside it. */
+.sizer {
+  width: 100%; max-width: 620px; min-width: 0;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; row-gap: 8px;
+}
+.sizer .quick { flex: 1 1 auto; min-width: 0; }
+.sizer .quick-btn { flex: 1 1 0; min-width: 44px; padding: 0 6px; }
+.sizer .amount-row { flex: 1 1 220px; min-width: 0; flex-wrap: nowrap; gap: 10px; }
+.sizer .range { flex: 1 1 auto; min-width: 50px; max-width: none; }
+.sizer .stepper { flex: 0 0 auto; }
 .quick { display: flex; gap: 6px; }
 .quick-btn {
   flex: 0 0 auto; min-width: 52px; height: 30px; padding: 0 10px; white-space: nowrap;
@@ -1588,18 +1598,8 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .dock-sizing > .sizer {
     grid-area: sizer; width: 100%; max-width: none; min-width: 0; flex-wrap: wrap; row-gap: 8px;
   }
-  /* Each line fills the width it's given. The slider and the stepper stay
-     together on one line — wrapping between them left the stepper short and
-     a band of empty felt beside it. */
-  .dock-sizing > .sizer .quick { flex: 1 1 auto; }
-  .dock-sizing > .sizer .quick-btn { flex: 1 1 0; min-width: 44px; padding: 0 6px; }
-  /* Nothing here may demand more room than the column has, or it slides out
-     under the buttons instead of wrapping. Everything can shrink; the slider
-     is the part that grows, so wherever there's room it ends up wider than
-     the typed amount, which only has four digits to hold. */
-  .dock-sizing > .sizer .amount-row { flex: 1 1 220px; min-width: 0; flex-wrap: nowrap; align-items: center; }
-  .dock-sizing > .sizer .range { flex: 1 1 auto; min-width: 50px; max-width: none; }
-  .dock-sizing > .sizer .stepper { flex: 0 0 auto; }
+  /* A narrower amount box here: the column is sharing its width with the
+     buttons beside it, and four digits still fit. */
   .dock-sizing > .sizer .stepper .input { width: 56px; }
   .dock-actions { grid-area: actions; justify-self: end; }
 }
