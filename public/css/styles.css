@@ -1189,11 +1189,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    rather than under it. */
 .hand.revealed { z-index: 6; }
 .hand.revealed .card { --cw: var(--card-show); }
-.hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.08); }
-.hand.revealed .card:first-child { transform: rotate(-3deg); }
-.hand.revealed .card:last-child { transform: rotate(3deg); }
+/* They overlap, and the fan is slight. A hand reads as one thing to look at;
+   spread apart it became two, and the eye had to travel. The right card lies
+   over the left one's outer edge, which leaves every index corner showing. */
+.hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.16); }
+.hand.revealed .card:first-child { transform: rotate(-2deg); }
+.hand.revealed .card:last-child { transform: rotate(2deg); }
 .camera.is-portrait .hand.revealed .card { --cw: clamp(44px, 13cqmin, 64px); }
-.camera.is-portrait .hand.revealed .card + .card { margin-left: 2px; }
+.camera.is-portrait .hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.16); }
 
 .card.is-win { filter: drop-shadow(0 0 6px rgba(247, 213, 138, 0.9)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); transform: translateY(-4px); }
 .card.is-dim { opacity: 0.45; }
