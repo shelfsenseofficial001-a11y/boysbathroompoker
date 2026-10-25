@@ -9,120 +9,30 @@
 // <pattern> definitions.
 
 // Deterministic, so a pattern is identical every time it's drawn. Math.random
-// would reshuffle the stars on every redraw of the felt.
+// would reshuffle the stars on every redraw of a card back.
 function rng(seed) {
   let s = seed >>> 0;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
 // --- Felts -----------------------------------------------------------------
-// `logo` says which way the house mark in the middle has to be inked: a pale
-// mark disappears into a white or gold cloth, a dark one into a black felt.
+// Plain cloth, ten colours - the rail, the baize and the dashed betting line,
+// and nothing printed on top. `logo` says which way the house mark in the
+// middle has to be inked: a pale mark disappears into a white or gold cloth, a
+// dark one into a black felt. The ids outlive the names, since they are what
+// sits in a player's saved settings.
 export const FELTS = [
   { id: 'green', name: 'Emerald', logo: 'light', rail: ['#3a2219', '#150b07'], railLine: '#5b3a28', felt: ['#1c7f5b', '#0f5c42', '#073624'], line: '#e6b450' },
   { id: 'red', name: 'Crimson', logo: 'light', rail: ['#3a1a19', '#160807'], railLine: '#5e3028', felt: ['#a8302e', '#7d1f20', '#44100f'], line: '#e6b450' },
   { id: 'blue', name: 'Sapphire', logo: 'light', rail: ['#1b2838', '#080d14'], railLine: '#2f4860', felt: ['#1f6aa8', '#154a7a', '#0a2742'], line: '#cfe0f5' },
   { id: 'gray', name: 'Slate', logo: 'light', rail: ['#2b2e34', '#101214'], railLine: '#484d56', felt: ['#71787f', '#4e545b', '#2b2f34'], line: '#dbe0e6' },
-  { id: 'polka', name: 'Polka', logo: 'light', rail: ['#232323', '#0a0a0a'], railLine: '#3d3d3d', felt: ['#1a1a1a', '#101010', '#050505'], line: '#ffffff' },
+  { id: 'polka', name: 'Onyx', logo: 'light', rail: ['#232323', '#0a0a0a'], railLine: '#3d3d3d', felt: ['#1a1a1a', '#101010', '#050505'], line: '#ffffff' },
   { id: 'midnight', name: 'Midnight', logo: 'light', rail: ['#1b2141', '#07090f'], railLine: '#333d68', felt: ['#1c2a5e', '#121a3d', '#070a18'], line: '#9db4ff' },
   { id: 'sakura', name: 'Sakura', logo: 'dark', rail: ['#4a2630', '#1d0e13'], railLine: '#71414e', felt: ['#efa8bd', '#dd8098', '#b05570'], line: '#fff0f4' },
   { id: 'gold', name: 'Bullion', logo: 'dark', rail: ['#3d2c0c', '#160f03'], railLine: '#6b501a', felt: ['#e3c56a', '#b58f2a', '#6d4f12'], line: '#ffeab0' },
-  { id: 'lines', name: 'Atelier', logo: 'dark', rail: ['#2a2a2a', '#0d0d0d'], railLine: '#4a4a4a', felt: ['#f4efe6', '#e5ded0', '#c9c0ae'], line: '#2a2a2a' },
+  { id: 'lines', name: 'Ivory', logo: 'dark', rail: ['#2a2a2a', '#0d0d0d'], railLine: '#4a4a4a', felt: ['#f4efe6', '#e5ded0', '#c9c0ae'], line: '#2a2a2a' },
   { id: 'carbon', name: 'Carbon', logo: 'light', rail: ['#232427', '#0a0a0b'], railLine: '#3e4044', felt: ['#1f2023', '#151618', '#0b0b0c'], line: '#9aa0a8' },
 ];
-
-// The art laid over the cloth, clipped to the oval. Each returns SVG drawn in
-// the felt's own 0-100 box.
-function feltPattern(id) {
-  if (id === 'polka') {
-    let d = '';
-    for (let row = 0; row < 11; row++) {
-      for (let col = 0; col < 15; col++) {
-        const cx = 3 + col * 7 + (row % 2 ? 3.5 : 0);
-        const cy = 5 + row * 9;
-        d += `M${cx} ${cy}a1.5 1.5 0 1 0 .01 0z`;
-      }
-    }
-    return `<path d="${d}" fill="#fff" fill-opacity=".5"/>`;
-  }
-
-  if (id === 'midnight') {
-    const r = rng(7);
-    let stars = '';
-    let glow = '';
-    for (let i = 0; i < 90; i++) {
-      const x = (r() * 100).toFixed(1);
-      const y = (r() * 100).toFixed(1);
-      const s = (0.25 + r() * 0.55).toFixed(2);
-      stars += `M${x} ${y}a${s} ${s} 0 1 0 .01 0z`;
-      if (r() > 0.88) glow += `<circle cx="${x}" cy="${y}" r="${(Number(s) * 2.6).toFixed(2)}" fill="#cdd9ff" opacity=".28"/>`;
-    }
-    return `${glow}<path d="${stars}" fill="#eaf0ff" fill-opacity=".85"/>`;
-  }
-
-  if (id === 'sakura') {
-    const r = rng(21);
-    let petals = '';
-    for (let i = 0; i < 46; i++) {
-      const x = (r() * 100).toFixed(1);
-      const y = (r() * 100).toFixed(1);
-      const a = (r() * 360).toFixed(0);
-      const s = (0.7 + r() * 0.6).toFixed(2);
-      // One petal: a leaf shape with the little notch cherry blossom has.
-      petals += `<path d="M0 -3.1c1.9 1 2.6 2.6 1.9 4.1-.5 1-1.1 1.5-1.9 2-.8-.5-1.4-1-1.9-2-.7-1.5 0-3.1 1.9-4.1z"
-        transform="translate(${x} ${y}) rotate(${a}) scale(${s})" fill="#fff" fill-opacity=".62"/>`;
-    }
-    return petals;
-  }
-
-  if (id === 'gold') {
-    const r = rng(33);
-    let sparks = '';
-    for (let i = 0; i < 70; i++) {
-      const x = (r() * 100).toFixed(1);
-      const y = (r() * 100).toFixed(1);
-      const s = (0.6 + r() * 1.5).toFixed(2);
-      // A four-point glint rather than a dot: it reads as a flake catching
-      // the light instead of a speck of dust.
-      sparks += `<path d="M0 -1 .28 -.28 1 0 .28 .28 0 1 -.28 .28 -1 0 -.28 -.28z"
-        transform="translate(${x} ${y}) scale(${s})" fill="#fff6d8" fill-opacity="${(0.35 + r() * 0.5).toFixed(2)}"/>`;
-    }
-    return sparks;
-  }
-
-  if (id === 'lines') {
-    const r = rng(5);
-    let lines = '';
-    for (let i = 0; i < 14; i++) {
-      const y = 6 + i * 6.6;
-      const amp = (3 + r() * 7).toFixed(1);
-      const w = (0.3 + r() * 0.5).toFixed(2);
-      lines += `<path d="M-4 ${y.toFixed(1)}Q25 ${(y - amp).toFixed(1)} 50 ${y.toFixed(1)}T104 ${(y + amp / 2).toFixed(1)}"
-        fill="none" stroke="#14110c" stroke-opacity=".5" stroke-width="${w}"/>`;
-    }
-    return lines;
-  }
-
-  if (id === 'carbon') {
-    // Twill: two interleaved runs of short diagonal strokes, one lit from the
-    // top-left and one from the bottom-right, which is what gives woven
-    // carbon its shifting chequerboard.
-    let a = '';
-    let b = '';
-    for (let row = 0; row < 26; row++) {
-      for (let col = 0; col < 26; col++) {
-        const x = col * 4;
-        const y = row * 4;
-        if ((row + col) % 2) a += `M${x} ${y + 3.4}l3.4 -3.4`;
-        else b += `M${x} ${y}l3.4 3.4`;
-      }
-    }
-    return `<path d="${a}" stroke="#fff" stroke-opacity=".07" stroke-width="1.5"/>
-      <path d="${b}" stroke="#000" stroke-opacity=".3" stroke-width="1.5"/>`;
-  }
-
-  return ''; // the plain cloths
-}
 
 // Every call gets its own id prefix. The table's cloth and the swatch for the
 // same cloth are on screen together in the settings sheet, and two elements
@@ -133,7 +43,6 @@ let feltSeq = 0;
 export function feltSVG(id = 'green') {
   const t = FELTS.find((f) => f.id === id) || FELTS[0];
   const u = `ft${t.id}${(feltSeq = (feltSeq + 1) % 1e6)}`;
-  const art = feltPattern(t.id);
   return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <radialGradient id="${u}Rail" cx="50%" cy="40%" r="60%">
@@ -149,14 +58,12 @@ export function feltSVG(id = 'green') {
       <stop offset="0%" stop-color="#fff" stop-opacity=".09"/>
       <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
-    <clipPath id="${u}Clip"><ellipse cx="50" cy="50" rx="45" ry="41.8"/></clipPath>
   </defs>
   <ellipse cx="50" cy="50.8" rx="49.6" ry="49" fill="#000" opacity=".45"/>
   <ellipse cx="50" cy="50" rx="49.2" ry="48.4" fill="url(#${u}Rail)"/>
   <ellipse cx="50" cy="50" rx="48.4" ry="47.4" fill="none" stroke="${t.railLine}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
   <ellipse cx="50" cy="50" rx="45.6" ry="42.6" fill="#03130d"/>
   <ellipse cx="50" cy="50" rx="45" ry="41.8" fill="url(#${u}Felt)"/>
-  ${art ? `<g clip-path="url(#${u}Clip)">${art}</g>` : ''}
   <ellipse cx="50" cy="50" rx="45" ry="41.8" fill="url(#${u}Light)"/>
   <ellipse cx="50" cy="50" rx="41" ry="37.6" fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"/>
 </svg>`;
