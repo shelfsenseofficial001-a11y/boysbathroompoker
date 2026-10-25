@@ -10,7 +10,7 @@ import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { motionReduced, toggleMotion, resumeEntrance, ENTRANCE_MS } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
-import { userPillHTML, wireNameEditor } from './name.js';
+import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, ZOOM } from './settings.js';
 import { themePickerHTML, wireThemePicker } from './themepicker.js';
 import { showToast } from './toast.js';
@@ -991,6 +991,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
+  // What sits under the avatar in the bar at the top of the table.
+  const TOPBAR_MENU = [
+    [{ id: 'settings', icon: icons.gear, label: 'Table settings' }],
+    [{ id: 'leave', icon: icons.leave, label: 'Leave room', danger: true }],
+  ];
+
   // Which section of the settings sheet is showing. Kept out here so it
   // survives a rebuild of the sheet and you come back to where you were.
   const SET_TABS = ['cards', 'look', 'feel'];
@@ -1336,8 +1342,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // ---------------------------------------------------------------------------
   // Shared top bar
   // ---------------------------------------------------------------------------
-  function topbarHTML(t) {
-    return `<header class="topbar">
+  // `page` lines the bar's contents up with the column of content beneath it.
+  // The table itself is full-bleed, so its bar stays full width too.
+  function topbarHTML(t, { page = false } = {}) {
+    return `<header class="topbar${page ? ' topbar-page' : ''}">
       <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
       <div class="topbar-meta">
       <span class="room-kind hide-sm${shown?.isPrivate ? ' is-private' : ''}" title="${
@@ -1350,21 +1358,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <span class="meta-chip hide-sm">Blinds <b>${fmt(t.smallBlind)}/${fmt(t.bigBlind)}</b></span>
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
-      <div class="topbar-user">
-        ${userPillHTML(user)}
-        <!-- Sounds, face-up cards and animations all live in the settings
-             sheet now: one button on the bar, one place to look. -->
-        <button class="btn btn-ghost btn-sm btn-icon" data-settings title="Table settings" aria-label="Table settings">${icons.gear}</button>
-        <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
-      </div>
+      <!-- Settings and the way out are both under the avatar, the same as in
+           the lobby: one thing on the right of the bar, not three. -->
+      <div class="topbar-user">${userMenuHTML(user, TOPBAR_MENU)}</div>
     </header>`;
   }
 
   function wireTopbar() {
-    root.querySelector('[data-leave]').addEventListener('click', () => {
-      askingLeave = true;
-      drawOverlay(shown);
-    });
     // Copying the code is how anyone else gets in, so it sits on the code
     // itself rather than only in the waiting room.
     root.querySelectorAll('[data-copy-code]').forEach((btn) => {
@@ -1382,7 +1382,19 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         }, 1400);
       });
     });
-    wireNameEditor(root, user);
+    wireUserMenu(root, user, {
+      groups: TOPBAR_MENU,
+      onPick: (id) => {
+        if (id === 'settings') {
+          askingSettings = true;
+          return drawOverlay(shown);
+        }
+        if (id === 'leave') {
+          askingLeave = true;
+          return drawOverlay(shown);
+        }
+      },
+    });
     const hist = root.querySelector('[data-history]');
     hist?.addEventListener('click', () => {
       setHistoryOpen(!historyOpen);
@@ -1394,10 +1406,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
 
     wireHistoryFilters();
-    root.querySelector('[data-settings]')?.addEventListener('click', () => {
-      askingSettings = true;
-      drawOverlay(shown);
-    });
   }
 
   // --- Difficulty picker ---------------------------------------------------
@@ -1484,7 +1492,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // markup, so only the parts that actually changed are rebuilt.
     const keptChat = els?.chat?.classList.contains('waiting-chat') && root.contains(els.chat) ? els.chat : null;
     root.innerHTML = `<div class="screen">
-      ${topbarHTML(t)}
+      ${topbarHTML(t, { page: true })}
       <main class="page waiting-page">
         <section class="panel waiting-panel">
           <div class="eyebrow" data-enter>Waiting room</div>

@@ -31,6 +31,11 @@ export const icons = {
   sliders: svg('<path d="M5 20v-6M5 10V4M12 20v-9M12 7V4M19 20v-4M19 12V4"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="9" r="2"/><circle cx="19" cy="14" r="2"/>'),
   clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   chevron: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 9z" fill="currentColor"/></svg>',
+  // A thin one that points down, for anything that opens a menu beneath it.
+  chevronDown:
+    '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5 12 15.5 18 9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  arrowLeft:
+    '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m0 0 6-6m-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   logo: `<svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
     <rect x="3" y="3" width="26" height="26" rx="7" fill="#0f5c42" stroke="#e6b450" stroke-width="1.5"/>
     <path d="M16 8s-6 4.4-6 7.3c0 1.8 1.4 3 3 3 1.1 0 1.9-.6 2.4-1.3-.1 1.4-.6 2.3-1.6 3h4.4c-1-.7-1.5-1.6-1.6-3 .5.7 1.3 1.3 2.4 1.3 1.6 0 3-1.2 3-3C22 12.4 16 8 16 8z" fill="#e6b450"/>

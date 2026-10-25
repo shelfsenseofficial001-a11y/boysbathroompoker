@@ -3,7 +3,7 @@
 import { emitAck, getSocket } from './socket.js';
 import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
-import { userPillHTML, wireNameEditor } from './name.js';
+import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
 import { showToast } from './toast.js';
@@ -16,15 +16,18 @@ const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 
 export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }) {
   const s = getSettings();
+  // Everything that isn't "change my name" lives in the menu under the
+  // avatar, so the bar carries a brand and a name and nothing else.
+  const menuGroups = [
+    [{ id: 'settings', icon: icons.gear, label: 'Settings' }],
+    [{ id: 'logout', icon: icons.leave, label: guest ? 'New guest' : 'Log out', danger: true }],
+  ];
   root.innerHTML = `<div class="screen">
-    <header class="topbar">
+    <header class="topbar topbar-page">
       <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
-      <div class="topbar-user">
-        ${userPillHTML(user)}
-        <button class="btn btn-ghost btn-sm" id="logout">${guest ? 'New guest' : 'Log out'}</button>
-      </div>
+      <div class="topbar-user">${userMenuHTML(user, menuGroups)}</div>
     </header>
-    <main class="page">
+    <main class="page" data-page="main">
       <section class="hero" data-enter>
         <div class="eyebrow">Play-money Texas Hold’em</div>
         <h1 class="display">Pull up a chair.</h1>
@@ -87,11 +90,29 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           <button class="btn btn-sm btn-ghost" id="rooms-next">Next</button>
         </div>
       </section>
-      <section class="panel" style="margin-top:20px" data-enter>
-        <h2 class="h2">Table settings</h2>
-        <p class="help-text">How the table looks to you, and how your own cards behave.</p>
-        <div class="set-dress">${themePickerHTML(s)}</div>
-        <p class="help-text">Yours alone — everyone at a table can sit at a different-looking felt.</p>
+      <p class="error-text" id="lobby-error" role="alert"></p>
+    </main>
+    <main class="page page-settings" data-page="settings" hidden>
+      <div class="settings-head">
+        <button class="btn btn-ghost btn-sm" id="settings-back">${icons.arrowLeft}<span>Back</span></button>
+        <h1 class="h1">Settings</h1>
+      </div>
+      <div class="panel">
+        <div class="set-split">
+          <nav class="set-nav" role="tablist" aria-label="Settings sections">
+            <span class="set-nav-head">Table</span>
+            <button type="button" class="set-tab is-on" role="tab" aria-selected="true" data-lobby-tab="look" title="Appearance">${icons.sparkle}<span>Appearance</span></button>
+            <button type="button" class="set-tab" role="tab" aria-selected="false" data-lobby-tab="cards" title="Your cards">${icons.eye}<span>Your cards</span></button>
+          </nav>
+          <div class="set-pane">
+            <section class="set-panel" role="tabpanel" data-lobby-panel="look">
+              <h3 class="set-lede">How the table looks to you</h3>
+              <p class="set-note">Yours alone — everyone at a table can sit at a different-looking felt.</p>
+              <div class="set-dress">${themePickerHTML(s)}</div>
+            </section>
+            <section class="set-panel" role="tabpanel" data-lobby-panel="cards" hidden>
+              <h3 class="set-lede">How your own cards behave</h3>
+              <p class="set-note">Only you see this. Nobody at the table is told how you look at your hand.</p>
         <label class="switch-row">
           <input type="checkbox" id="auto-reveal" ${s.autoReveal ? 'checked' : ''}>
           <span>Turn my cards face up as soon as they're dealt</span>
@@ -128,8 +149,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
             <span class="micro" id="pv-caption"></span>
           </div>
         </div>
-      </section>
-      <p class="error-text" id="lobby-error" role="alert"></p>
+            </section>
+          </div>
+        </div>
+      </div>
     </main>
   </div>`;
 
@@ -142,8 +165,35 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // in a toast, where it can't be missed.
   const fail = (err) => showToast(err.message, { atPage: true });
 
-  $('#logout').addEventListener('click', onLogout);
-  wireNameEditor(root, user);
+  // Settings is a page of its own rather than one more panel at the foot of
+  // the lobby: it has nothing to do with hosting or joining a game.
+  const showPage = (name) => {
+    root.querySelectorAll('[data-page]').forEach((p) => (p.hidden = p.dataset.page !== name));
+    window.scrollTo({ top: 0 });
+    if (name === 'settings') playPreview();
+  };
+  $('#settings-back').addEventListener('click', () => showPage('main'));
+
+  wireUserMenu(root, user, {
+    groups: menuGroups,
+    onPick: (id) => {
+      if (id === 'logout') return onLogout();
+      if (id === 'settings') showPage('settings');
+    },
+  });
+
+  root.querySelector('[data-page="settings"] .set-nav').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-lobby-tab]');
+    if (!tab || tab.classList.contains('is-on')) return;
+    const id = tab.dataset.lobbyTab;
+    root.querySelectorAll('[data-lobby-tab]').forEach((b) => {
+      const on = b === tab;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    root.querySelectorAll('[data-lobby-panel]').forEach((p) => (p.hidden = p.dataset.lobbyPanel !== id));
+  });
+
   // Nothing of the table is on screen here, so the swatches are the preview:
   // the ring moves and that's the whole of it.
   wireThemePicker(root);
