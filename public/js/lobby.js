@@ -13,7 +13,21 @@ import { syncThemeArrows, themePickerHTML, wireThemePicker } from './themepicker
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
-const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+// Read the same way as the table's figures - see fmt in table.js.
+const MONEY_UNITS = [
+  [1e12, 't'],
+  [1e9, 'b'],
+  [1e6, 'm'],
+  [1e3, 'k'],
+];
+const fmt = (n) => {
+  const v = Math.trunc(Number(n) || 0);
+  const abs = Math.abs(v);
+  const unit = MONEY_UNITS.find(([size]) => abs >= size);
+  if (!unit) return v.toLocaleString('en-US');
+  const [size, suffix] = unit;
+  return `${v < 0 ? '-' : ''}${Math.floor(abs / (size / 100)) / 100}${suffix}`;
+};
 
 export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }) {
   const s = getSettings();

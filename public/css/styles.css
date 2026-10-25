@@ -1392,15 +1392,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ---------- Pot, bets, muck, dealer ---------- */
-/* Anchored by its bottom edge, not its middle: the block is a chip row, a
+/* Anchored by its top edge, not its middle: the block is a chip row, a
    label, the figure and sometimes a "current bet" line, so how tall it is
    depends on what's in it. Centred on a percentage, a taller pot pushed its
-   own bottom further from the board and read as floating high above the
-   community cards. Pinning the bottom keeps the same small gap under it
-   whatever it is holding, and it grows upward into empty felt. */
+   own top up into the community cards it sits under. Pinning the top keeps
+   the same small gap under the board whatever the pot is holding, and it
+   grows downward into empty felt. */
 .pot {
   z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, 0);
 }
 .pot .pot-chips svg { height: clamp(18px, 6cqmin, 40px); width: auto; display: block; }
 .pot-label { font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); margin-top: 2px; }
@@ -1411,8 +1411,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pot-sub { font-size: var(--fs-micro); color: rgba(255, 255, 255, 0.55); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .bet { z-index: 2; display: flex; align-items: center; gap: 4px; pointer-events: none; }
+/* Beside a nameplate on a wide table, chips are pinned by the edge nearest
+   the plate and grow outward from it, so however tall the stack turns out to
+   be it can never reach back over the plate. Centring them meant guessing
+   their width, and the guess was a single sample shared by every seat. */
+.bet.grow-right { transform: translate(0, -50%); }
+.bet.grow-left { transform: translate(-100%, -50%); }
 .bet svg { height: clamp(14px, 4.2cqmin, 28px); width: auto; display: block; }
-.bet-amt, .pending-amt {
+.pending-amt {
   font-size: clamp(10px, 2.3cqmin, 13px); font-weight: 800; font-variant-numeric: tabular-nums;
   background: rgba(0, 0, 0, 0.6); color: var(--gold-hi); padding: 2px 7px; border-radius: 999px;
   border: 1px solid rgba(230, 180, 80, 0.35);
@@ -1505,8 +1511,53 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pod .amt { font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; font-size: 1.08em; }
 /* The chip stack lives inside the nameplate so it can never overlap cards,
    bets or neighbouring seats. */
-.pod .stack { pointer-events: none; align-self: flex-end; margin-left: 0.1em; }
+/* A fixed box, as wide as the tallest stack's three columns: the stack loses
+   a column as a player's chips run down, and a plate that narrowed with it
+   moved its bet, its dealer button and sometimes the whole centre column. */
+.pod .stack { pointer-events: none; align-self: flex-end; margin-left: 0.1em; width: 5.5em; display: flex; justify-content: flex-end; }
 .pod .stack svg { height: 2.6em; width: auto; display: block; }
+
+/* What this player has out this street, on a tray hung from the flat of the
+   plate's underside - square where it meets the plate, rounded at the foot,
+   and drawn in the plate's own colour and border so the two read as one
+   piece. It sits over the plate's bottom border, hiding it along its width,
+   which is what joins the two outlines into one. The chips themselves stay
+   on the felt: with the figure here a four-figure bet takes no more room
+   beside the seat than a two-figure one.
+
+   The tray spans the plate minus --tray-in at each end. That inset is what
+   lets the acting outline (below) be cut to fit: it's a fixed length, so the
+   plate's ring knows exactly where the tray's ring takes over. It has to
+   clear the rounded ends, or the tray would hang off the curve. */
+.pod { --tray-in: 2.4em; }
+.camera.is-portrait .pod { --tray-in: 1.9em; }
+.pod-bet {
+  position: absolute; z-index: 1; top: 100%; left: var(--tray-in); right: var(--tray-in);
+  height: 1.2em; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line-2); border-top: 0; border-radius: 0 0 0.6em 0.6em;
+  /* The bottom of the plate's gradient, solid, so the plate's border under
+     it is gone rather than showing through. */
+  background: #09100d;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  /* Nothing of the tray's shadow or outline is drawn above its top edge -
+     that's the plate. */
+  clip-path: inset(0 -40px -40px -40px);
+  pointer-events: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.pod-bet b {
+  font-size: 0.8em; font-weight: 800; line-height: 1; letter-spacing: 0.02em;
+  color: var(--gold-hi); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* The acting seat's outline runs round the tray as well as the plate: the
+   tray takes the plate's gold border and glow, and carries its own length of
+   the outer ring, which joins the plate's where the tray meets it. */
+.pod.is-acting .pod-bet { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 22px rgba(230, 180, 80, 0.45); }
+.pod.is-acting .pod-bet::before {
+  content: ''; position: absolute; top: 3px; left: -5px; right: -5px; bottom: -5px;
+  border: 2px solid var(--gold); border-top: 0; border-radius: 0 0 calc(0.6em + 4px) calc(0.6em + 4px);
+  opacity: 0.7; pointer-events: none;
+}
 
 /* Portrait: seats hug the rail and shed anything that makes them wide, so
    the middle of the table stays clear for the community cards. */
@@ -1524,13 +1575,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    positioning now. */
 .camera.is-portrait .seat-group.side-left { transform: translate(0, -50%); }
 .camera.is-portrait .seat-group.side-right { transform: translate(-100%, -50%); }
+/* A seat pinned to a rail has the rail right beside it, so a badge wider
+   than its plate - a long hand name - would run off the table. Rather than
+   lining up with the plate's outer edge, which left it off centre, it stays
+   centred and is never wider than the plate: a long name wraps instead. */
 .camera.is-portrait .pod.side-left .tag,
-.camera.is-portrait .pod.side-right .tag { max-width: 9em; }
-/* A seat pinned to a rail has the rail right beside it, so a badge centred on
-   the plate and wider than it - a long hand name - ran off the table. It
-   lines up with the plate's outer edge instead and grows inward. */
-.camera.is-portrait .pod.side-left .tag { left: 0; transform: none; }
-.camera.is-portrait .pod.side-right .tag { left: auto; right: 0; transform: none; }
+.camera.is-portrait .pod.side-right .tag { max-width: 100%; }
 
 .pod .tag {
   position: absolute; left: 50%; bottom: calc(100% + 0.35em + var(--pod-hand-rise, 0px)); transform: translateX(-50%);
@@ -1579,6 +1629,21 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .pod.is-acting::before {
   content: ''; position: absolute; inset: -5px; border-radius: inherit;
   border: 2px solid var(--gold); opacity: 0.7; pointer-events: none;
+}
+/* With a tray under the plate, the ring's bottom edge is cut out along the
+   tray's width - the tray's own length of ring goes round it instead. The
+   ring sits 5px out from the plate's padding box, so the tray's ring starts
+   --tray-in + 1px in from this one's edge. */
+.pod.is-acting.has-bet::before {
+  --keep: calc(var(--tray-in) + 1px);
+  -webkit-mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 4px) no-repeat,
+    linear-gradient(#000 0 0) left bottom / var(--keep) 4px no-repeat,
+    linear-gradient(#000 0 0) right bottom / var(--keep) 4px no-repeat;
+  mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 4px) no-repeat,
+    linear-gradient(#000 0 0) left bottom / var(--keep) 4px no-repeat,
+    linear-gradient(#000 0 0) right bottom / var(--keep) 4px no-repeat;
 }
 /* Countdown rim on the acting player's face: a full circle that unwinds to
    nothing over their turn. It sits inside the pod's padding, or the pill's
@@ -1641,8 +1706,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @keyframes knock { to { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
 
 /* Showdown banner */
+/* Takes the pot's place at showdown, so it hangs from the same point: top
+   edge on the anchor, under the board rather than across it. */
 .banner {
   z-index: 8; text-align: center; padding: 0.7em 1.3em; border-radius: var(--r-m);
+  transform: translate(-50%, 0); transform-origin: 50% 0;
   background: linear-gradient(180deg, rgba(14, 26, 21, 0.96), rgba(6, 12, 9, 0.96));
   border: 1px solid rgba(230, 180, 80, 0.55); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 30px rgba(230, 180, 80, 0.18);
   font-size: clamp(11px, 2.6cqmin, 15px);
@@ -1652,7 +1720,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .banner-line { font-weight: 600; color: var(--text-1); }
 .banner-line b { color: var(--gold-hi); font-weight: 800; font-variant-numeric: tabular-nums; }
 .banner-sub { font-size: 0.82em; color: var(--text-2); letter-spacing: 0.04em; }
-@keyframes popIn { from { opacity: 0; transform: translate(-50%, -50%) scale(0.75); } }
+@keyframes popIn { from { opacity: 0; transform: translate(-50%, 0) scale(0.75); } }
 
 /* ==========================================================================
    Betting dock
@@ -1768,6 +1836,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chip-btn:hover:not(:disabled) { transform: translateY(-3px); filter: brightness(1.12); }
 .chip-btn:active:not(:disabled) { transform: scale(0.94); cursor: grabbing; }
 .chip-btn:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(0.8); }
+/* A denomination that has just come into play slides into the tray behind the
+   biggest chip already there. One short move, once, and then it's over - it
+   marks a change in what you can bet with, not decoration. */
+@keyframes chipDealt { from { opacity: 0; transform: translateX(16px) scale(0.82); } }
+.chip-btn.is-dealt { animation: chipDealt 0.22s var(--ease-out) both; }
 .chip-ghost {
   position: fixed; width: 46px; height: 46px; z-index: 1000; pointer-events: none;
   transform: translate(-50%, -50%) scale(1.1); filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.6)); transition: transform 0.12s;
