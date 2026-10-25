@@ -39,6 +39,20 @@ export function themePickerHTML(s = getSettings()) {
     </div>`;
 }
 
+// Nudge a half-seen swatch fully into its row. Deliberately not
+// scrollIntoView: `block: 'nearest'` walks every scrolling ancestor, so in the
+// settings sheet - where the rows sit low in a tall panel - tapping a swatch
+// scrolled the whole sheet and the rows vanished from under the finger. This
+// moves the row sideways and nothing else.
+function keepInRow(btn) {
+  const row = btn.parentElement;
+  const pad = 8;
+  const left = btn.offsetLeft - pad;
+  const right = btn.offsetLeft + btn.offsetWidth + pad;
+  if (left < row.scrollLeft) row.scrollLeft = left;
+  else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth;
+}
+
 // Click anything in a row and it becomes the choice. `onPick` is told which
 // key changed so the caller can redress whatever it has on screen.
 export function wireThemePicker(root, onPick) {
@@ -56,7 +70,7 @@ export function wireThemePicker(root, onPick) {
       b.classList.toggle('is-on', on);
       b.setAttribute('aria-checked', String(on));
     });
-    btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    keepInRow(btn);
     onPick?.(kind, id);
   });
 }

@@ -124,9 +124,15 @@ function feltPattern(id) {
   return ''; // the plain cloths
 }
 
+// Every call gets its own id prefix. The table's cloth and the swatch for the
+// same cloth are on screen together in the settings sheet, and two elements
+// sharing an id means url(#...) resolves to whichever came first - one of the
+// two then borrows the other's gradients and clip.
+let feltSeq = 0;
+
 export function feltSVG(id = 'green') {
   const t = FELTS.find((f) => f.id === id) || FELTS[0];
-  const u = `ft${t.id}`;
+  const u = `ft${t.id}${(feltSeq = (feltSeq + 1) % 1e6)}`;
   const art = feltPattern(t.id);
   return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
