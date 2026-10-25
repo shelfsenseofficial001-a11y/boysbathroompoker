@@ -2449,6 +2449,163 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   animation: sheetIn 0.35s var(--ease-spring) both;
 }
 @keyframes sheetIn { from { transform: translateY(18px) scale(0.96); opacity: 0; } }
+/* ...and back out again. A sheet that blinked away left the table looking
+   like it had been interrupted; this is short enough that it never delays
+   the hand waiting behind it. Both beat the plain `.sheet` rule on
+   specificity, so they win wherever they sit in the file. */
+@keyframes sheetOut { to { transform: translateY(10px) scale(0.97); opacity: 0; } }
+@keyframes fadeOut { to { opacity: 0; } }
+.sheet.is-closing { animation: sheetOut 0.24s var(--ease-out) both; }
+.overlay.is-closing { animation: fadeOut 0.24s var(--ease-out) both; }
+
+/* ---------- The gesture tutorial ---------- */
+/* Wider than a question sheet: each step carries a picture of the table
+   doing the thing, and a picture of a table has to look like one. */
+.sheet-tutorial { width: min(540px, 100%); text-align: left; padding: 26px 26px 0; }
+/* The way out of the sheet never scrolls away: on a phone the three pictures
+   are taller than the screen, and the button that dismisses them was below
+   the fold. The lesson scrolls; the preference and the button stay put. */
+/* The lesson assembles rather than landing all at once: each step arrives
+   just after the one above it, which is the order they are meant to be read
+   in. `.reduce-motion` flattens all of it. */
+@keyframes tutIn { from { opacity: 0; transform: translateY(12px); } }
+@keyframes tutFade { from { opacity: 0; } }
+.tut-step { animation: tutIn var(--dur-base) var(--ease-out-expo) both; }
+.tut-step:nth-child(1) { animation-delay: 110ms; }
+.tut-step:nth-child(2) { animation-delay: 180ms; }
+.tut-step:nth-child(3) { animation-delay: 250ms; }
+/* Opacity only: this one is sticky, and a transform on a sticky element
+   makes it a containing block and stops it sticking. */
+.tut-foot { animation: tutFade var(--dur-base) var(--ease-out-expo) 320ms both; }
+.tut-foot {
+  position: sticky; bottom: 0; z-index: 1; padding-bottom: 24px;
+  background: linear-gradient(180deg, rgba(10, 18, 14, 0) 0, #0a120e 16px, #090f0c 100%);
+}
+/* Short screens: the pictures give up height before the words do, so the
+   checkbox and the button stay in view without scrolling for them. */
+@media (max-height: 740px) {
+  .tut-stage { height: 84px; }
+  .tut-steps { margin: 14px 0; gap: 10px; }
+  .sheet-tutorial { padding: 22px 24px 0; }
+  .sheet-tutorial .sheet-sub { display: none; }
+}
+.sheet-tutorial .sheet-title, .sheet-tutorial .sheet-sub { text-align: center; }
+.tut-steps { list-style: none; margin: 16px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+/* One row per step: the picture on the left, what it means on the right,
+   both on the same patch of cloth. */
+.tut-step { display: flex; align-items: stretch; }
+.tut-scene { position: relative; flex: 1 1 54%; min-width: 0; }
+/* A patch of the player's own cloth, with the betting line across it. Every
+   piece inside is positioned against this box, so the scene holds its shape
+   at any width. */
+.tut-stage {
+  position: relative; height: 96px; border-radius: 13px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 42%, var(--felt-a), var(--felt-b) 62%, var(--felt-c));
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.32);
+}
+.tut-scene::before {
+  content: ''; position: absolute; left: 7%; right: 0; top: 50%;
+  border-top: 1.5px dashed rgba(255, 255, 255, 0.22);
+}
+.tut-stage .tut-card {
+  width: 34px; aspect-ratio: 60 / 84; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+.tut-stage .tut-card svg { width: 100%; height: 100%; display: block; }
+.tut-card.is-board { width: 30px; background: #fff; }
+.tut-board { position: absolute; left: 52%; top: 12px; transform: translateX(-50%); display: flex; gap: 4px; }
+/* The pair sits as one hand, the back card turned behind the front one. */
+.tut-hand { position: absolute; left: 52%; bottom: 7px; transform: translateX(-50%); display: flex; }
+.tut-hand .tut-card:first-child { transform: rotate(-7deg); }
+.tut-hand .tut-card:last-child { transform: rotate(7deg); margin-left: -12px; }
+
+/* Fold: the hand thrown up the table, with the line it has to cross. */
+.tut-fold .tut-hand.is-thrown { bottom: 3px; }
+.tut-banner {
+  position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+  padding: 5px 12px; border-radius: 999px; white-space: nowrap;
+  background: rgba(6, 12, 9, 0.88); border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-1);
+}
+
+/* Bet: a chip lifted off the tray, and what it turns into once it lands. */
+.tut-bet .tut-hand { left: 24%; }
+.tut-chip { position: absolute; left: 46%; bottom: 34px; width: 26px; height: 26px; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)); }
+.tut-chip svg { width: 100%; height: 100%; display: block; }
+/* The track the chip has been dragged along, so it reads as a move and not
+   as a chip that happens to be lying there. */
+.tut-chip::before {
+  content: ''; position: absolute; right: 100%; top: 60%; width: 42px; height: 26px;
+  border-left: 2px dotted rgba(255, 255, 255, 0.45);
+  border-bottom: 2px dotted rgba(255, 255, 255, 0.45);
+  border-bottom-left-radius: 22px;
+}
+.tut-pending { position: absolute; right: 14px; top: 11px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.tut-pending-chips { display: flex; align-items: center; gap: 4px; }
+.tut-pending-chips svg { height: 17px; width: auto; display: block; }
+.tut-pending .pending-amt { background: rgba(230, 180, 80, 0.2); border-style: dashed; font-size: 10px; }
+.tut-pending-actions { display: flex; gap: 4px; font-size: 10px; }
+/* The real buttons, standing still: these are spans, so nothing here can be
+   pressed by mistake. */
+.tut-pending-actions .pending-btn { height: 2em; padding: 0 0.7em; cursor: default; animation: none; }
+.tut-pending-actions .pending-btn.is-raise { background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05; }
+.tut-pending-actions .pending-btn.is-clear { width: 2.1em; padding: 0; }
+.tut-pending-actions .pending-btn .icon { width: 1.1em; height: 1.1em; }
+
+/* Check: two taps on the cloth. A single ring, drawn where the taps land. */
+.tut-check .tut-hand { bottom: 14px; }
+.tut-tap {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.1);
+}
+.tut-check-label, .tut-check .tut-check {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.tut-text {
+  position: relative; flex: 1 1 46%; min-width: 0;
+  display: flex; gap: 8px; align-items: center; padding: 0 13px 0 4px;
+}
+/* The cloth is bright, and every felt is a different brightness again, so
+   the words sit on a scrim that fades in from the picture. */
+.tut-text::before {
+  content: ''; position: absolute; inset: 0 0 0 -24px;
+  background: linear-gradient(90deg, rgba(4, 9, 7, 0) 0, rgba(4, 9, 7, 0.74) 42%, rgba(4, 9, 7, 0.9) 100%);
+}
+.tut-text > * { position: relative; }
+.tut-no {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(230, 180, 80, 0.18); border: 1px solid rgba(230, 180, 80, 0.5);
+  color: var(--gold-hi); font-size: 10.5px; font-weight: 800;
+}
+.tut-text > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tut-text b { font-size: 13px; color: #fff; font-weight: 700; line-height: 1.25; }
+.tut-text span { font-size: 11.5px; color: rgba(255, 255, 255, 0.72); line-height: 1.35; }
+/* The preference and the button are not part of the lesson, so a rule
+   separates them from it and each gets room to stand on its own. */
+.tut-again { margin: 0; padding-top: 16px; border-top: 1px solid var(--line-2); justify-content: center; }
+.sheet-tutorial .sheet-actions { margin-top: 14px; }
+/* Narrow screens: a display title at 30px takes three lines of a phone and
+   pushes everything it is introducing off the bottom. */
+@media (max-width: 440px) {
+  .sheet-tutorial { padding: 22px 16px 0; }
+  .sheet-tutorial .sheet-title { font-size: 23px; }
+  .sheet-tutorial .sheet-sub { display: none; }
+  .tut-foot { padding-bottom: 20px; }
+  /* Too narrow to stand side by side: the words go under the picture, where
+     they have the whole width to themselves. */
+  .tut-step { flex-direction: column; height: auto; }
+  .tut-scene { flex: none; height: 88px; }
+  .tut-text { flex: none; padding: 8px 11px 10px; align-items: flex-start; }
+  .tut-text::before { inset: -26px 0 0 0; background: linear-gradient(180deg, rgba(4, 9, 7, 0) 0, rgba(4, 9, 7, 0.82) 34%, rgba(4, 9, 7, 0.92) 100%); }
+  .tut-scene::before { left: 7%; right: 7%; }
+}
 /* The corner cross every sheet carries. Sheets scroll their own content, so
    this is pinned to the top of the sheet rather than to the top of what's in
    it, and sits above the content it overlaps. */

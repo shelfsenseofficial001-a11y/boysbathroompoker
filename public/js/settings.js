@@ -26,6 +26,11 @@ const DEFAULTS = {
   peekZoom: true,
   zoomLevel: ZOOM.level.def,
   zoomSpeed: ZOOM.speed.def,
+  // The three gestures the table is played with, shown as a game starts.
+  // Turned off from the tutorial itself, by the player who already knows
+  // them; kept on by default, since nothing on the table says the cards and
+  // chips can be dragged.
+  showTutorial: true,
   // Set once the "hold to peek" hint has been read, so it's never shown
   // again on this browser.
   peekHintSeen: false,
@@ -58,6 +63,7 @@ export function getSettings() {
     peekZoom: stored.peekZoom !== false,
     zoomLevel: clamp(Number(stored.zoomLevel) || DEFAULTS.zoomLevel, ZOOM.level.min, ZOOM.level.max),
     zoomSpeed: clamp(Number(stored.zoomSpeed) || DEFAULTS.zoomSpeed, ZOOM.speed.min, ZOOM.speed.max),
+    showTutorial: stored.showTutorial !== false,
     peekHintSeen: stored.peekHintSeen === true,
     felt: oneOf(FELTS, stored.felt, DEFAULTS.felt),
     cardBack: oneOf(BACKS, stored.cardBack, DEFAULTS.cardBack),

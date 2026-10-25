@@ -157,6 +157,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let settingsTab = 'cards'; // which section of the settings sheet is showing
   let pendingTotal = null; // chosen bet/raise-to total, null = use minimum
   let trayDenoms = []; // denominations the chip tray is holding (see syncTray)
+  let askingTutorial = false; // the gesture tutorial, shown as a game starts
+  let tutorialClosing = false; // ...and playing its way back out
   let holding = false; // a pointer is down on my cards (peek or drag in progress)
   let dragging = false; // my cards are being dragged (toss-to-fold)
   let selfTossedHand = null; // hand number in which I threw my cards in myself
@@ -969,6 +971,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // replaces the node under the switch being pressed, which replays its
     // entrance animation — every toggle made the panel blink out and back.
     if (askingSettings && el.querySelector('.sheet-settings')) return syncSettingsSheet();
+    // Same reasoning, for the sheet on its way out: an update arriving in
+    // those few frames would replace the node mid-animation and the sheet
+    // would vanish instead of leaving.
+    if (tutorialClosing) return;
     const html = overlayHTML(cur);
     el.classList.toggle('is-empty', !html);
     setHTML(el, html);
@@ -979,6 +985,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function overlayHTML(cur) {
     if (askingLeave) return leaveConfirmHTML(cur);
+    if (askingTutorial) return tutorialHTML();
     if (askingTransfer != null) return transferConfirmHTML(cur);
     if (askingSettings) return settingsHTML();
     const over = cur.gameOver;
@@ -999,6 +1006,90 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // people look first. `dismiss` is read by onOverlayClick, which knows which
   // sheet is open and what backing out of it means.
   const sheetX = `<button type="button" class="sheet-x" data-ov="dismiss" aria-label="Close" title="Close">${icons.close}</button>`;
+
+  // The three gestures the table is played with. Each one is shown rather
+  // than described, and shown with the table's own pieces - the real cards,
+  // the real chips, the real buttons, on the cloth the player has chosen -
+  // so that what they read here is exactly what they will see in front of
+  // them a moment later.
+  function tutorialHTML() {
+    const s = getSettings();
+    const felt = feltTheme(s.felt);
+    const back = cardBackSVG(s.cardBack);
+    const hole = `<div class="tut-card">${back}</div><div class="tut-card">${back}</div>`;
+    const board = ['5c', '4s', 'Td']
+      .map((c) => `<div class="tut-card is-board">${cardFaceSVG(c)}</div>`)
+      .join('');
+    // The scene and the words share one panel, the picture on the left and
+    // what it means on the right, so a step costs one row instead of two.
+    const stage = (cls, inner) => `<div class="tut-scene ${cls}" aria-hidden="true">${inner}</div>`;
+
+    const steps = [
+      {
+        stage: stage(
+          'tut-fold',
+          `<div class="tut-board">${board}</div>
+           <div class="tut-hand is-thrown">${hole}</div>
+           <span class="tut-banner">Release to fold</span>`
+        ),
+        title: 'Throw your cards in to fold',
+        body: 'Drag your hand out onto the table and let go.',
+      },
+      {
+        stage: stage(
+          'tut-bet',
+          `<div class="tut-hand">${hole}</div>
+           <div class="tut-chip">${chipSVG(1000)}</div>
+           <div class="tut-pending">
+             <div class="tut-pending-chips">${chipStackSVG(13000, { maxCols: 2, maxPerCol: 5 })}<span class="pending-amt">+13k</span></div>
+             <div class="tut-pending-actions">
+               <span class="pending-btn is-raise">Bet <b>13k</b></span>
+               <span class="pending-btn is-clear">${icons.fold}</span>
+             </div>
+           </div>`
+        ),
+        title: 'Drag chips out to bet or raise',
+        body: 'Take a chip from the tray onto the felt, then press the button that appears.',
+      },
+      {
+        stage: stage(
+          'tut-check',
+          `<div class="tut-hand">${hole}</div>
+           <span class="tut-tap"></span>
+           <span class="tut-check">Check</span>`
+        ),
+        title: 'Double-tap the table to check',
+        body: 'Two taps anywhere on the felt, when there is nothing to call.',
+      },
+    ];
+
+    return `<div class="sheet sheet-tutorial" role="dialog" aria-modal="true" aria-label="How this table is played">
+      ${sheetX}
+      <h2 class="sheet-title">How this table is played</h2>
+      <p class="sheet-sub">Three gestures, and you know the whole game.</p>
+      <ol class="tut-steps">
+        ${steps
+          .map(
+            (st, i) => `<li class="tut-step tut-stage" style="--felt-a:${felt.felt[0]};--felt-b:${felt.felt[1]};--felt-c:${felt.felt[2]}">
+          ${st.stage}
+          <div class="tut-text"><span class="tut-no">${i + 1}</span>
+            <div><b>${st.title}</b><span>${st.body}</span></div>
+          </div>
+        </li>`
+          )
+          .join('')}
+      </ol>
+      <div class="tut-foot">
+        <label class="switch-row tut-again">
+          <input type="checkbox" data-set="showTutorial" ${s.showTutorial ? 'checked' : ''}>
+          <span>Show this at the start of every game</span>
+        </label>
+        <div class="sheet-actions">
+          <button class="btn btn-primary btn-lg" data-ov="tutorial-ok">${icons.check}Yes, I understand</button>
+        </div>
+      </div>
+    </div>`;
+  }
 
   function celebrationHTML(over) {
     const w = over.winner;
@@ -1240,7 +1331,31 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // Backs out of whichever sheet is up, if it's one you're allowed to
   // decline. The end of a game and busting out both need a real answer, so
   // they aren't listed here.
+  // The tutorial leaves the way it arrived rather than blinking out. The
+  // state is only flipped once the sheet has played its exit, because
+  // flipping it redraws the overlay and would take the sheet with it.
+  const TUTORIAL_OUT_MS = 240;
+  function closeTutorial() {
+    if (tutorialClosing) return;
+    const sheet = root.querySelector('.sheet-tutorial');
+    if (!sheet || reduceMotion) {
+      askingTutorial = false;
+      return drawOverlay(shown);
+    }
+    const host = root.querySelector('#overlay');
+    tutorialClosing = true;
+    sheet.classList.add('is-closing');
+    host?.classList.add('is-closing');
+    later(() => {
+      tutorialClosing = false;
+      askingTutorial = false;
+      host?.classList.remove('is-closing');
+      drawOverlay(shown);
+    }, TUTORIAL_OUT_MS);
+  }
+
   function closeSheet() {
+    if (askingTutorial) return closeTutorial(), true;
     if (askingSettings) askingSettings = false;
     else if (askingLeave) askingLeave = false;
     else if (askingTransfer !== null) askingTransfer = null;
@@ -1287,6 +1402,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       else bustAnswered = true; // staying on to watch, same as the button
       return drawOverlay(shown);
     }
+    if (kind === 'tutorial-ok') return closeTutorial();
     if (kind === 'leave') { askingLeave = true; return drawOverlay(shown); }
     if (kind === 'leave-yes') return leaveRoom();
     if (kind === 'leave-no') askingLeave = false;
@@ -1339,6 +1455,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       resumeEntrance(root.querySelector('.table-screen'), enteredAt);
       mode = 'table';
       renderedHand = 0; // fresh table: let the first hand deal in
+      // A match is starting, so the three gestures it is played with are
+      // worth a word. Only at the first hand: coming back to a table
+      // mid-match (a reload, a reconnect) is not the start of anything, and
+      // only for someone holding cards - a spectator has no use for them.
+      const seated = shown.table.seats.some((p) => p && p.userId === user.id && !p.left);
+      if (getSettings().showTutorial && seated && (shown.table.handNumber ?? 0) <= 1) askingTutorial = true;
       drawTable(null, shown);
     } else {
       drawTable(prev && prev.table.phase !== 'waiting' ? prev : null, shown);
