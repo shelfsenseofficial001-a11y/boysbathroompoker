@@ -1129,6 +1129,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 @container stage (max-aspect-ratio: 5/4) {
   .camera { aspect-ratio: 0.68; width: min(calc(100cqw - 12px), calc((100cqh - 12px) * 0.68)); }
+  /* A tall table's cloth is only so wide, and five cards across it left no
+     felt between the board and the rail - which is the only place a rail
+     seat's chips can go, so they ended up on the board. */
+  .camera { --card-board: clamp(26px, 8.2cqmin, 72px); }
 }
 .felt { position: absolute; inset: 0; z-index: 0; }
 .felt svg { width: 100%; height: 100%; display: block; }
