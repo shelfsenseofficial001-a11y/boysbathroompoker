@@ -312,9 +312,19 @@ const BACK_ART = {
 // and one is on screen a dozen times at once, so each design is built once
 // and the string reused.
 const backCache = new Map();
+let backSeq = 0;
 
+// Three of the backs carry ids - a gradient, a couple of clip paths - and a
+// back is on screen a dozen times at once and again in the picker. Duplicate
+// ids are invalid and url(#...) then resolves to whichever copy came first in
+// the document: pick Bullion and its gold gradient went looking at another
+// card's defs, leaving the swatch painted in the dark brown underneath. The
+// art is still built once; only the ids are renamed, per copy.
 export function cardBackSVG(id = 'classic') {
   const key = BACK_ART[id] ? id : 'classic';
   if (!backCache.has(key)) backCache.set(key, BACK_ART[key]());
-  return backCache.get(key);
+  const art = backCache.get(key);
+  if (!art.includes('id="bk')) return art; // nothing in it to clash
+  const n = (backSeq = (backSeq + 1) % 1e6);
+  return art.replace(/bk[A-Za-z]+/g, (m) => m + n);
 }
