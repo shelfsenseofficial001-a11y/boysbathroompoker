@@ -8,6 +8,7 @@ import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
 import { showToast } from './toast.js';
 import { playEntrance } from './motion.js';
+import { themePickerHTML, wireThemePicker } from './themepicker.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -88,7 +89,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
       </section>
       <section class="panel" style="margin-top:20px" data-enter>
         <h2 class="h2">Table settings</h2>
-        <p class="help-text">How your own cards behave at the table.</p>
+        <p class="help-text">How the table looks to you, and how your own cards behave.</p>
+        <div class="set-dress">${themePickerHTML(s)}</div>
+        <p class="help-text">Yours alone — everyone at a table can sit at a different-looking felt.</p>
         <label class="switch-row">
           <input type="checkbox" id="auto-reveal" ${s.autoReveal ? 'checked' : ''}>
           <span>Turn my cards face up as soon as they're dealt</span>
@@ -141,6 +144,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
 
   $('#logout').addEventListener('click', onLogout);
   wireNameEditor(root, user);
+  // Nothing of the table is on screen here, so the swatches are the preview:
+  // the ring moves and that's the whole of it.
+  wireThemePicker(root);
   playEntrance(root.querySelector('.screen'));
   wireSteppers(root);
 

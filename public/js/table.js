@@ -2,15 +2,17 @@
 // animations. The table skeleton is built once; each server update redraws
 // only the parts that change so inputs, hover states and animations survive.
 import { getSocket, emitAck } from './socket.js';
-import { cardFaceSVG, cardBackSVG } from './svg/cards.js';
+import { cardFaceSVG } from './svg/cards.js';
+import { cardBackSVG, feltSVG, feltTheme } from './svg/themes.js';
 import { chipSVG, chipStackSVG, breakdown, CHIP_DENOMINATIONS } from './svg/chips.js';
-import { tableFeltSVG, feltLogoSVG, dealerButtonSVG, turnRingSVG } from './svg/table.js';
+import { feltLogoSVG, dealerButtonSVG, turnRingSVG } from './svg/table.js';
 import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { motionReduced, toggleMotion, resumeEntrance, ENTRANCE_MS } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
 import { userPillHTML, wireNameEditor } from './name.js';
 import { getSettings, setSetting, ZOOM } from './settings.js';
+import { themePickerHTML, wireThemePicker } from './themepicker.js';
 import { showToast } from './toast.js';
 import { numberFieldHTML, wireSteppers } from './stepper.js';
 
@@ -932,6 +934,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       el.addEventListener('click', onOverlayClick);
       el.addEventListener('input', onSettingsChange);
       el.addEventListener('change', onSettingsChange);
+      // Swatches in the settings sheet: picked here, the felt changes under
+      // the sheet so the choice can be seen while it's being made.
+      wireThemePicker(el, redressTable);
       root.appendChild(el);
     } else if (el !== root.lastElementChild) {
       root.appendChild(el); // a screen rebuild put it out of order
@@ -1023,6 +1028,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
             <span>Sounds</span>
           </label>
+          ${themePickerHTML(s)}
         </section>
       </div>
       <div class="sheet-actions">
@@ -1127,6 +1133,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // The only parts of the settings sheet that answer to another control:
   // turning the cards face up takes the peek zoom out of play.
+  function redressTable() {
+    if (mode !== 'table' || !els?.camera) return;
+    const s = getSettings();
+    const felt = els.camera.querySelector('.felt');
+    if (felt) setHTML(felt, feltSVG(s.felt));
+    if (els.feltLogo) setHTML(els.feltLogo, feltLogoSVG(feltTheme(s.felt).logo));
+    draw(); // the card backs, wherever they are
+  }
+
   function syncSettingsSheet() {
     const sheet = root.querySelector('.sheet-settings');
     if (!sheet) return;
@@ -1618,8 +1633,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </aside>
       <main class="stage" id="stage">
         <div class="camera" id="camera">
-          <div class="felt">${tableFeltSVG()}</div>
-          <div class="felt-logo" aria-hidden="true">${feltLogoSVG()}</div>
+          <div class="felt">${feltSVG(getSettings().felt)}</div>
+          <div class="felt-logo" aria-hidden="true">${feltLogoSVG(feltTheme(getSettings().felt).logo)}</div>
           <div class="anchor" style="left:${BOARD.x}%;top:${BOARD.y}%"><div class="board" id="board"></div><div class="phase-label" id="phase"></div></div>
           <div class="anchor pot" id="pot" style="left:${POT.x}%;top:${POT.y}%"></div>
           <div class="anchor muck" id="muck" style="left:${MUCK.x}%;top:${MUCK.y}%"></div>
@@ -2553,12 +2568,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = false } = {}) {
     if (flip) {
       return `<div class="card ${cls}" style="${style}"><div class="flip">
-        <div class="back">${cardBackSVG()}</div>
+        <div class="back">${cardBackSVG(getSettings().cardBack)}</div>
         <div class="face">${cardFaceSVG(code, { simple })}</div>
       </div></div>`;
     }
     const faceLayer = face ? `<div class="face">${cardFaceSVG(code, { simple })}</div>` : '';
-    return `<div class="card ${cls}" style="${style}">${faceLayer}<div class="back">${cardBackSVG()}</div></div>`;
+    return `<div class="card ${cls}" style="${style}">${faceLayer}<div class="back">${cardBackSVG(getSettings().cardBack)}</div></div>`;
   }
 
   function handHTML(p, L, ctx) {
@@ -2659,7 +2674,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     for (let i = 0; i < Math.min(folded * 2, 8); i++) {
       const r = ((i * 47) % 50) - 25;
       const dx = ((i * 13) % 12) - 6;
-      html += `<div class="card" style="transform:translate(${dx}%, ${-i * 2}%) rotate(${r}deg)"><div class="back">${cardBackSVG()}</div></div>`;
+      html += `<div class="card" style="transform:translate(${dx}%, ${-i * 2}%) rotate(${r}deg)"><div class="back">${cardBackSVG(getSettings().cardBack)}</div></div>`;
     }
     els.muck.innerHTML = html;
   }
@@ -3622,7 +3637,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const el = document.createElement('div');
       el.className = 'fx-card';
       if (L.isMe) el.style.setProperty('--cw', 'var(--card-me)');
-      el.innerHTML = cardBackSVG();
+      el.innerHTML = cardBackSVG(getSettings().cardBack);
       el.style.left = `${L.cards.x + (i ? 1.5 : -1.5)}%`;
       el.style.top = `${L.cards.y}%`;
       el.style.transform = `translate(-50%, -50%) rotate(${i ? 5 : -5}deg)`;

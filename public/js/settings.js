@@ -1,5 +1,10 @@
 // Player preferences kept in this browser. Motion and sound live in their
-// own modules; this covers how the peek camera behaves.
+// own modules; this covers how the peek camera behaves and how the table is
+// dressed. The cloth and the card backs are each player's own: two people at
+// one table can sit at different-looking felts without disagreeing about the
+// game, since nothing here is sent to the server.
+import { FELTS, BACKS } from './svg/themes.js';
+
 const KEY = 'bbp-settings';
 
 export const ZOOM = {
@@ -24,7 +29,14 @@ const DEFAULTS = {
   // Set once the "hold to peek" hint has been read, so it's never shown
   // again on this browser.
   peekHintSeen: false,
+  // How the table is dressed. See svg/themes.js for what's on offer.
+  felt: 'green',
+  cardBack: 'classic',
 };
+
+// An id saved by an older build - or edited by hand - must not leave the
+// table with no cloth on it.
+const oneOf = (list, v, fallback) => (list.some((x) => x.id === v) ? v : fallback);
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -47,6 +59,8 @@ export function getSettings() {
     zoomLevel: clamp(Number(stored.zoomLevel) || DEFAULTS.zoomLevel, ZOOM.level.min, ZOOM.level.max),
     zoomSpeed: clamp(Number(stored.zoomSpeed) || DEFAULTS.zoomSpeed, ZOOM.speed.min, ZOOM.speed.max),
     peekHintSeen: stored.peekHintSeen === true,
+    felt: oneOf(FELTS, stored.felt, DEFAULTS.felt),
+    cardBack: oneOf(BACKS, stored.cardBack, DEFAULTS.cardBack),
   };
   return cache;
 }
