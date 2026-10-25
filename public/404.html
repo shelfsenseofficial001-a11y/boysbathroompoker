@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#060b09" />
+  <title>No such table · Boysbathroom Poker</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+  <!-- Served from this machine, like the rest of the game: a wrong turn
+       should not be the one page that needs the internet. -->
+  <link rel="stylesheet" href="/css/fonts.css" />
+  <style>
+    :root {
+      --bg-0: #060b09;
+      --text-1: #f2f4f1;
+      --text-2: #aeb6b0;
+      --text-3: #7c867f;
+      --gold: #e6b450;
+      --gold-hi: #f7d58a;
+      --line-2: rgba(255, 255, 255, 0.12);
+      --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-display: 'Bodoni Moda', 'Didot', Georgia, 'Times New Roman', serif;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+      /* One card, and the figure every placement below is measured in. The
+         glyph boxes are sized from it, so the whole 404 scales by changing
+         this one number. */
+      --cw: clamp(26px, 5.4vw, 44px);
+      --ch: calc(var(--cw) * 1.4);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font-ui);
+      color: var(--text-1);
+      background:
+        radial-gradient(ellipse 120% 80% at 50% 8%, #10241c 0%, transparent 62%),
+        radial-gradient(ellipse 90% 60% at 50% 100%, #0b1a14 0%, transparent 70%),
+        var(--bg-0);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: clamp(18px, 4vh, 34px);
+      padding: 28px 20px;
+      overflow: hidden;
+      text-align: center;
+    }
+
+    /* The dashed betting line the cards are lying on, drawn right across the
+       page so the 404 reads as a spread on a table rather than as a logo.
+       Tied to the cards rather than to the middle of the window: pinned to
+       the viewport it fell across the heading on a phone, where the spread
+       sits higher up. It is a child of the spread, so it paints behind the
+       cards and leans with them. */
+    .spread::before {
+      content: '';
+      position: absolute; left: -50vw; right: -50vw; top: 50%;
+      border-top: 1.5px dashed rgba(255, 255, 255, 0.07);
+      pointer-events: none;
+    }
+
+    /* ---------- The 404, dealt out of cards ---------- */
+    .spread {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      gap: clamp(6px, 1.6vw, 18px);
+      /* The tilt the pointer steers, applied to the whole spread so the three
+         glyphs stay one object. */
+      transform: perspective(1100px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+      transition: transform 0.45s var(--ease-out-expo);
+      transform-style: preserve-3d;
+    }
+    /* 3 cards across, 5 rows down, the rows overlapping the way a stack
+       does. The figures come from the script, which owns the grid. */
+    .glyph {
+      position: relative;
+      width: calc(var(--cw) * 2.84);
+      height: calc(var(--cw) * 4.65);
+      flex: none;
+    }
+    .pip {
+      position: absolute; left: 0; top: 0;
+      width: var(--cw); height: var(--ch);
+      margin-left: calc(var(--cw) / -2);
+      margin-top: calc(var(--ch) / -2);
+      border-radius: calc(var(--cw) * 0.1);
+      overflow: hidden;
+      background: #fbf8f1;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.25) inset;
+      transform: translate(var(--x), var(--y)) rotate(var(--r));
+      will-change: transform;
+    }
+    .pip svg { width: 100%; height: 100%; display: block; }
+
+    /* Dealt in: every card flies from where the deck would be, in the order
+       a dealer would put them down. One pass, then it is over. */
+    @keyframes dealIn {
+      from {
+        opacity: 0;
+        transform: translate(calc(50% - var(--cw) / 2), 46vh) rotate(-24deg) scale(0.85);
+      }
+    }
+    .spread .pip { animation: dealIn 0.62s var(--ease-out-expo) both; animation-delay: var(--d); }
+
+    /* ---------- The words ---------- */
+    .say { max-width: 34rem; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .kicker {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--gold); opacity: 0.85;
+    }
+    h1 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(28px, 6vw, 46px);
+      line-height: 1.1;
+      color: var(--text-1);
+    }
+    p { margin: 0; font-size: clamp(13.5px, 2.4vw, 15.5px); line-height: 1.55; color: var(--text-2); }
+    .home {
+      margin-top: 6px;
+      display: inline-flex; align-items: center; gap: 9px;
+      height: 46px; padding: 0 22px; border-radius: 999px;
+      border: 1px solid transparent; cursor: pointer; text-decoration: none;
+      background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+      color: #2a1c05; font: 800 14px/1 var(--font-ui); letter-spacing: 0.04em;
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+      transition: transform 0.14s var(--ease-out-expo), filter 0.16s;
+    }
+    .home:hover { transform: translateY(-2px); filter: brightness(1.06); }
+    .home:active { transform: scale(0.97); }
+    .home svg { width: 16px; height: 16px; }
+    .say, .home { animation: riseIn 0.7s var(--ease-out-expo) 0.5s both; }
+    @keyframes riseIn { from { opacity: 0; transform: translateY(14px); } }
+
+    /* Short screens: the spread gives up height before the words do. */
+    @media (max-height: 620px) { :root { --cw: clamp(20px, 4vw, 30px); } }
+
+    /* The reduce-motion rule the rest of the game keeps: nothing moves on its
+       own, and nothing is left half-dealt. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      .spread { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="spread" id="spread" aria-label="404" role="img"></div>
+
+  <div class="say">
+    <span class="kicker">404 &middot; Dead hand</span>
+    <h1>There's no table here.</h1>
+    <p>Whatever you were looking for has been mucked. The game is still running &mdash; the door back to it is right below.</p>
+    <a class="home" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5M11 18l-6-6 6-6" />
+      </svg>
+      Back to the lobby
+    </a>
+  </div>
+
+  <script type="module">
+    // The glyphs are built from the game's own cards - the same SVG the table
+    // deals - so a wrong turn still looks like this game and not a generic
+    // error page.
+    import { cardFaceSVG } from '/js/svg/cards.js';
+
+    // A digit is laid out as a little grid of cards, three across and five
+    // down, with every row overlapping the one above it - which is what a
+    // stack of cards actually looks like, and leaves each card showing its
+    // top corner, where the rank and suit are. Drawn as strokes of a
+    // seven-segment display first, with cards turned on their side for the
+    // bars, the strokes came out at different weights and the three figures
+    // ran together into a muddle.
+    const GRID = {
+      4: [
+        '# #',
+        '# #',
+        '###',
+        '  #',
+        '  #',
+      ],
+      0: [
+        '###',
+        '# #',
+        '# #',
+        '# #',
+        '###',
+      ],
+    };
+    // In card widths. A card is 1 wide and 1.4 tall, so a row step of 0.812
+    // leaves the top 58% of each card showing.
+    const COL_STEP = 0.92;
+    const ROW_STEP = 0.812;
+
+    // Which cards get dealt. The fours are built out of fours and the zero
+    // out of tens, because a hand that spells the number it makes is the
+    // kind of joke a card room would make.
+    const FACES = { 4: ['4s', '4h', '4d', '4c'], 0: ['Td', 'Ts', 'Th', 'Tc'] };
+
+    // Deterministic scatter: the same wrong turn always lands the same way,
+    // so the page never looks like it reshuffled itself on a reload.
+    const wobble = (n) => {
+      const x = Math.sin(n * 12.9898) * 43758.5453;
+      return x - Math.floor(x) - 0.5; // -0.5 .. 0.5
+    };
+
+    const spread = document.getElementById('spread');
+    let seq = 0;
+
+    for (const [digitIndex, digit] of [...'404'].entries()) {
+      const glyph = document.createElement('div');
+      glyph.className = 'glyph';
+      const faces = FACES[digit];
+      let faceIndex = 0;
+
+      // Top row first, left to right, the order a dealer would put them
+      // down - and the order that leaves each row overlapping the one above,
+      // since a later card paints over an earlier one.
+      GRID[digit].forEach((row, r) => {
+        [...row].forEach((cell, c) => {
+          if (cell !== '#') return;
+          const x = 0.5 + c * COL_STEP + wobble(seq) * 0.05;
+          const y = 0.7 + r * ROW_STEP + wobble(seq + 99) * 0.05;
+
+          const pip = document.createElement('div');
+          pip.className = 'pip';
+          pip.style.setProperty('--x', `calc(var(--cw) * ${x.toFixed(3)})`);
+          pip.style.setProperty('--y', `calc(var(--cw) * ${y.toFixed(3)})`);
+          // Cards in a stack are never perfectly square to each other.
+          pip.style.setProperty('--r', `${(wobble(seq + 7) * 7).toFixed(2)}deg`);
+          pip.style.setProperty('--d', `${60 + seq * 26}ms`);
+          pip.innerHTML = cardFaceSVG(faces[faceIndex++ % faces.length], { simple: true });
+          glyph.append(pip);
+          seq++;
+        });
+      });
+
+      spread.append(glyph);
+      // The middle figure sits a touch lower, the way a spread sags in the
+      // middle when it is pushed across a table.
+      if (digitIndex === 1) glyph.style.transform = 'translateY(3%)';
+    }
+
+    // The spread follows the pointer a little, so the cards read as lying on
+    // a surface with depth rather than printed on the page. Pointer only:
+    // there is nothing to steer it with on a touchscreen, and a page that
+    // lurches when scrolled is worse than a flat one.
+    if (window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
+      window.addEventListener('pointermove', (e) => {
+        const x = e.clientX / window.innerWidth - 0.5;
+        const y = e.clientY / window.innerHeight - 0.5;
+        spread.style.setProperty('--tilt-y', `${(x * 13).toFixed(2)}deg`);
+        spread.style.setProperty('--tilt-x', `${(-y * 9).toFixed(2)}deg`);
+      });
+    }
+  </script>
+</body>
+</html>

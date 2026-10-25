@@ -46,6 +46,15 @@ app.get('/api/config', (req, res) => res.json({ skipAuth: process.env.SKIP_AUTH 
 // Example of a protected REST endpoint (session-based auth, not client-trusted data).
 app.get('/api/health', requireAuth, (req, res) => res.json({ ok: true }));
 
+// Anything that matched neither a file nor a route above. An API caller
+// wants JSON and would choke on a page; a browser gets the card table's own
+// 404. Both carry the real status - a wrong turn that answers 200 is how a
+// broken link ends up indexed and never noticed.
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  res.status(404).sendFile(path.join(__dirname, '..', 'public', '404.html'));
+});
+
 attachSockets(io, sessionMiddleware);
 
 server.listen(PORT, () => {
