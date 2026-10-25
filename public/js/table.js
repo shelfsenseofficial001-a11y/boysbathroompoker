@@ -133,6 +133,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let layout = null; // seat anchors for the current draw
   let model = null; // derived betting info for the local player
   let peeking = false;
+  let zoomClearTimer = null; // clears the camera's inline transition after a peek
   let pendingTotal = null; // chosen bet/raise-to total, null = use minimum
   let holding = false; // a pointer is down on my cards (peek or drag in progress)
   let dragging = false; // my cards are being dragged (toss-to-fold)
@@ -2410,7 +2411,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
       <div class="who"><span class="name-row"><span class="name">${esc(p.username)}</span>${marksHTML(p, ctx)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}
-      ${p.isBot ? `<span class="bot-level ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}
       ${tag ? `<span class="tag ${tag.cls}">${tag.icon || ''}${esc(tag.text)}${tag.kicker ? `<span class="tag-kick">${esc(tag.kicker)}</span>` : ''}</span>` : ''}
       ${acting && !L.isMe ? `<span class="turn-marker">${icons.chevron}</span>` : ''}
       ${
@@ -3419,7 +3419,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const scale = clamp(H / Math.max(1, bottom - top), 1.02, maxScale);
       const ox = W / 2;
       const oy = (top + bottom) / 2;
-      cam.style.transitionDuration = `${prefs.zoomSpeed}ms`;
+      // The whole transition is written inline, property included, not just
+      // its duration. Below 1024px the stylesheet sets `transition: none` on
+      // the camera so an on-screen keyboard resizing the viewport can't slide
+      // the table — and with no transition-property to animate, a duration on
+      // its own did nothing. The zoom ignored the speed setting and snapped.
+      clearTimeout(zoomClearTimer);
+      cam.style.transition = `transform ${prefs.zoomSpeed}ms cubic-bezier(0.3, 0.7, 0.2, 1)`;
       cam.style.transformOrigin = `${ox}px ${oy}px`;
       cam.style.transform = `translate(0px, ${H / 2 - oy}px) scale(${scale})`;
       // The further in we zoom, the more the surroundings fall away.
@@ -3441,8 +3447,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (hand?.classList.contains('lifted')) play('flip');
     hand?.classList.remove('lifted');
     emitAck('peek', { on: false }).catch(() => {});
-    els.camera.style.transform = '';
+    const cam = els.camera;
+    cam.style.transform = '';
     els.stage.classList.remove('is-peeking');
+    // The inline transition stays until the camera has finished travelling
+    // back, so coming out is as unhurried as going in. Taking it away now
+    // would snap the table to its resting size.
+    clearTimeout(zoomClearTimer);
+    if (cam.style.transition) {
+      zoomClearTimer = setTimeout(() => {
+        cam.style.transition = '';
+      }, getSettings().zoomSpeed + 60);
+    }
   }
 
   // Keyboard (P) and the Peek button: a timed look, since there's nothing to hold.

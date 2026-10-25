@@ -1127,8 +1127,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    test — so the 4px hover nudge replayed on each one. Holding the same
    offset means losing and regaining hover changes nothing. */
 .hand.mine.lifted { z-index: 7; transform: translate(-50%, calc(-50% - 4px)); }
-.hand.mine.lifted .card:first-child { transform: rotate(-10deg) translate(-9%, -10%); }
-.hand.mine.lifted .card:last-child { transform: rotate(10deg) translate(9%, -10%); }
+/* The sideways spread is small on purpose: the cards start at -22% overlap,
+   so pushing each one 9% outwards all but cancelled it and left the pair
+   sitting apart with felt between them. They stay a hand; they just lift. */
+.hand.mine.lifted .card:first-child { transform: rotate(-6deg) translate(-2%, -10%); }
+.hand.mine.lifted .card:last-child { transform: rotate(6deg) translate(2%, -10%); }
 .hand.mine.lifted .card > .flip { transform: rotateY(180deg); }
 
 /* Another player checking their hand: their cards tilt up and settle back,
@@ -1328,8 +1331,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .camera.is-portrait .pod { font-size: clamp(9px, 2.6cqmin, 13px); padding: 0.25em 0.7em 0.25em 0.25em; gap: 0.4em; }
 .camera.is-portrait .pod .avatar { width: 2.4em; height: 2.4em; }
 .camera.is-portrait .pod .name { max-width: 5.5em; }
-.camera.is-portrait.is-crowded .pod .stack,
-.camera.is-portrait.is-crowded .pod .bot-level { display: none; }
+.camera.is-portrait.is-crowded .pod .stack { display: none; }
 /* Side seats grow inward from the rail instead of straddling their anchor. */
 .camera.is-portrait .pod.side-left { transform: translate(0, -50%); }
 .camera.is-portrait .pod.side-right { transform: translate(-100%, -50%); }
@@ -1672,13 +1674,9 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .add-bot { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .input-sm { height: 34px; padding: 0 8px; font-size: 13px; width: auto; }
 .meta-row .add-bot .btn { margin-left: 0; }
-.pod .bot-level {
-  position: absolute; left: 50%; top: calc(100% + 0.3em); transform: translateX(-50%);
-  font-size: 0.72em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--lvl, var(--green)); background: rgba(8, 16, 13, 0.9);
-  border: 1px solid color-mix(in srgb, var(--lvl, var(--green)) 45%, transparent);
-  padding: 0.1em 0.5em; border-radius: 999px; white-space: nowrap;
-}
+/* The difficulty is not written under a bot at the table - it is a setting
+   the host made, not something to read every hand. The robot mark still
+   carries its colour, so the level is there for anyone who knows it. */
 .pod .bot-mark { color: var(--lvl, var(--green)); border-color: color-mix(in srgb, var(--lvl, var(--green)) 50%, transparent); }
 /* Nothing to bet with and nothing to act on: the dock is just the status
    line while you're watching. */
