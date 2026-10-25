@@ -2364,52 +2364,54 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const slot = new Map();
     if (portrait) {
       const m = n - 1;
+      // One seat at the top when there is an odd one out, and the rest split
+      // evenly between the two rails - so the table is symmetric about its
+      // middle however many are playing.
       const top = m % 2 === 1;
       const perSide = (m - (top ? 1 : 0)) / 2;
-      const lower = Math.floor(perSide / 2);
-      const upper = perSide - lower;
-      // Seats one above another between two heights. The ones above the
-      // board sit as high as they can, with any room to spare left between
-      // them and the board - that's where the muck is. The ones below it
-      // share their room out evenly.
       // Centre to centre, two seats are never closer than a whole plate and a
       // clear gap on top of it, whatever else the arithmetic says. A rail
       // with less room than its seats want gives them the natural spacing
       // where it can, then tightens toward this floor - it never closes the
       // gap up altogether, which is what had plates touching at nine players.
       const minPitch = pct(podH, camH) + gapY;
-      const spread = (count, from, to, alignTop) => {
+      // Seats one above another, sharing out the room they are given evenly.
+      const spread = (count, from, to) => {
         if (!count) return [];
         const need = above + (count - 1) * step + below;
         const room = Math.max(0, to - from - need);
-        const gap = alignTop ? room / count : room / (count + 1);
-        // What the band can actually give each seat when it is short.
+        const gap = room / (count + 1);
+        // What the rail can actually give each seat when it is short.
         const squeezed = count > 1 ? (to - from - above - below) / (count - 1) : step;
         const pitch = room > 0 ? step + gap : clamp(squeezed, minPitch, step);
         const run = above + (count - 1) * pitch + below;
-        // Centred in the band when tight, so what overflows is shared top and
+        // Centred in the run when tight, so what overflows is shared top and
         // bottom rather than all falling off one end.
-        let first = room > 0 ? from + (alignTop ? 0 : gap) + above : (from + to) / 2 - run / 2 + above;
+        let first = room > 0 ? from + gap + above : (from + to) / 2 - run / 2 + above;
         // Then nudged back inside the table if that pushed it off either end.
         first += Math.max(0, 0.6 + above - first);
         first -= Math.max(0, first + (count - 1) * pitch + below - 99.4);
         return Array.from({ length: count }, (_, q) => first + q * pitch);
       };
-      // The full height of the table, not just the cloth: a seat sits ON the
-      // rail, which is the camera's own edge, and squeezing the rails into
-      // the felt cost them a sixth of their room - at nine players they ran
-      // out of it and started crowding each other. Only the chips have to be
-      // on the cloth, and onFelt sees to that where they land.
-      const upperYs = spread(upper, 0.6, boardBox.t - 0.8, true);
-      const lowerYs = spread(lower, boardBox.b + 0.8, 99.4, false);
+      // Each rail runs the whole height of the table, from the top down to my
+      // own seat - not the stretch above the board and the stretch below it
+      // taken separately. Split that way, a table of four put its one seat per
+      // rail in the upper stretch and the three opponents piled into the top
+      // third with the bottom half of the felt empty. A rail seat is pinned to
+      // the edge and my plate is in the middle of the bottom, so the two never
+      // meet and the rail has no business stopping short of it.
+      //
+      // The full height, too, not just the cloth: a seat sits ON the rail,
+      // which is the camera's own edge. Only the chips have to be on the
+      // cloth, and onFelt sees to that where they land.
+      const myPodY = 50 + ry + 2.5;
+      const railYs = spread(perSide, 0.6, myPodY - pct(podH, camH) - gapY);
       // Clockwise from me at the bottom: up the left rail, across the top,
       // down the right.
       const order = [
-        ...lowerYs.slice().reverse().map((y) => ({ side: 'left', y })),
-        ...upperYs.slice().reverse().map((y) => ({ side: 'left', y })),
-        ...(top ? [{ side: null, y: spread(1, 0.6, muckBox.t - 0.8, true)[0] }] : []),
-        ...upperYs.map((y) => ({ side: 'right', y })),
-        ...lowerYs.map((y) => ({ side: 'right', y })),
+        ...railYs.slice().reverse().map((y) => ({ side: 'left', y })),
+        ...(top ? [{ side: null, y: spread(1, 0.6, muckBox.t - 0.8)[0] }] : []),
+        ...railYs.map((y) => ({ side: 'right', y })),
       ];
       order.forEach((o, j) => slot.set(j + 1, o));
     }

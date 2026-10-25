@@ -45,7 +45,7 @@ let feltSeq = 0;
 // A real poker table is a stadium: a straight run down each side closed off by
 // a true semicircle at either end, not an ellipse. An ellipse has no straight
 // edge at all, so seats along the sides sat on a curve and the middle of the
-// cloth bulged. Portrait is the exception and stays an oval - see `oval`.
+// cloth bulged. Portrait is the same table stood on its end.
 //
 // Drawing one means the SVG has to know the shape of the box it's going into.
 // The old felt was ellipses on a square viewBox stretched to fit, which an
@@ -57,28 +57,48 @@ let feltSeq = 0;
 export function feltSVG(id = 'green', aspect = 1.9) {
   const t = FELTS.find((f) => f.id === id) || FELTS[0];
   const u = `ft${t.id}${(feltSeq = (feltSeq + 1) % 1e6)}`;
-  // Height is fixed at 100 and width follows the aspect, so every half-height
-  // below is still read straight off the old ellipses.
+  // Height is fixed at 100 and width follows the aspect, so the viewBox is cut
+  // to the same shape as the element it goes into and nothing is stretched.
   const a = Math.max(0.2, Math.min(5, Number(aspect) || 1.9));
   const W = 100 * a;
-  // A stadium only reads as a table while it's wider than it is tall. Stood on
-  // its end for the portrait layout it becomes a long tall pill with the
-  // players down its straight sides, which is not a table anyone plays on - so
-  // a portrait table keeps the oval it always had.
-  const oval = a < 1;
-  // One ring of the table: `w`/`h` are its half-width and half-height, as the
-  // ellipses' rx/ry were. The rounded version takes a corner radius of the
-  // half-height, which is what makes the ends semicircles rather than corners.
-  const ring = (w, h, attrs, cy = 50) =>
-    oval
-      ? `<ellipse cx="${(W / 2).toFixed(2)}" cy="${cy.toFixed(2)}" rx="${(w * a).toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`
-      : `<rect x="${(W / 2 - w * a).toFixed(2)}" y="${(cy - h).toFixed(2)}" width="${(w * a * 2).toFixed(2)}"
-          height="${(h * 2).toFixed(2)}" rx="${h.toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`;
+  // The table is a stadium in both orientations: a straight run down each long
+  // side closed off by a true semicircle at either end. Portrait is the same
+  // table stood on its end, so its straight runs are the two sides rather than
+  // the top and bottom.
+  //
+  // The outer edge of the cushion, and how thick the cushion is. Thickness is
+  // one figure for all four sides, in viewBox units, because the viewBox is
+  // now cut to the element's shape: stated per axis, as it used to be, a tall
+  // table came out with side rails less than half the depth of its top.
+  const RW = 49.2;
+  const RH = 48.4;
+  const T = 5.2;
+  // A ring of the table, inset from the cushion's outer edge by `t` units on
+  // every side. The corner radius is whichever half-dimension is smaller,
+  // which is what turns the short ends into semicircles rather than corners.
+  const ring = (t, attrs, dy = 0) => {
+    const hw = RW * a - t;
+    const hh = RH - t;
+    const r = Math.min(hw, hh);
+    return `<rect x="${(W / 2 - hw).toFixed(2)}" y="${(50 + dy - hh).toFixed(2)}"
+      width="${(hw * 2).toFixed(2)}" height="${(hh * 2).toFixed(2)}"
+      rx="${r.toFixed(2)}" ry="${r.toFixed(2)}" ${attrs}/>`;
+  };
+  // Where the straight run of the cushion is, and how long it is: the long
+  // side's length less the rounded cap at either end.
+  const tall = RH > RW * a;
+  // Less the clearance that leaves plain cushion beyond each bracket. A tall
+  // table's straight run is the shorter of the two - its ends are capped by a
+  // semicircle as wide as the whole table - so the clearance is trimmed to fit
+  // rather than swallowing the run whole.
+  const straight = Math.max(0, (tall ? RH : RW * a) - Math.min(RW * a, RH));
+  const run = straight - Math.min(6, straight * 0.3);
+
   // Light falls from above and a little in front, the way it does over a real
   // table: the near side of the cushion is lit, the far side is in its own
   // shadow, and the cloth sits below the rail rather than flush with it.
   //
-  // The shape is a stadium or an oval, not a circle, so none of this can be a
+  // The shape is a stadium, not a circle, so none of this can be a
   // radial gradient - a radial drawn on a long table pools in the middle and
   // leaves the ends flat. Everything that has to follow the edge is a stroke
   // on the edge itself: blurred to soften it and clipped to one side, so the
@@ -88,45 +108,40 @@ export function feltSVG(id = 'green', aspect = 1.9) {
   // a darker inlay with a bracket at each end and a few studs inside them. The
   // metalwork is the cloth's bright accent, the same colour its betting line
   // is drawn in: in the rail's own brown it was dark on dark and read as a
-  // smudge at any size. Only the
-  // straight part carries it - the length of rail between the two rounded ends
-  // - which is why a portrait table, drawn as an oval with no straight run at
-  // all, goes without.
+  // smudge at any size.
   //
-  // `cy` is the middle of the rail band it sits in, so the same call serves the
-  // near rail and the far one.
-  const railPanel = (cy) => {
-    if (oval) return '';
-    // The rail's straight run: its width less the rounded cap at either end.
-    const run = 49.2 * a - 48.4 - 11;
-    if (run < 10) return ''; // too short to inlay; it would read as a smudge
-    const x0 = W / 2 - run;
-    const x1 = W / 2 + run;
-    const half = 2.1; // the inlay's own half-height
-    // A bracket: two strokes meeting at a corner, the outer one doubled back,
-    // which is as much of a scroll as survives at this size.
+  // Built lying down and then turned to suit the table: on a wide one the
+  // straight runs are the top and bottom, on a tall one they are the sides.
+  const railPanel = () => {
+    if (run < 6) return ''; // too short to inlay; it would read as a smudge
+    // The studs need a stretch of inlay to sit in. On a short run the brackets
+    // alone carry it: squeezed in, the two clusters met in the middle.
+    const roomy = run >= 18;
+    const half = 1.9; // the inlay's own half-depth, inside a cushion T deep
     const bracket = (x, dir) => `
-      <path d="M${(x + dir * 5.2).toFixed(2)} ${(cy - half).toFixed(2)}
-               q${(-dir * 3.6).toFixed(2)} 0 ${(-dir * 4.4).toFixed(2)} ${half.toFixed(2)}
-               q${(dir * 0.8).toFixed(2)} ${half.toFixed(2)} ${(dir * 4.4).toFixed(2)} ${half.toFixed(2)}"
+      <path d="M${(x + dir * 5.2).toFixed(2)} ${-half}
+               q${(-dir * 3.6).toFixed(2)} 0 ${(-dir * 4.4).toFixed(2)} ${half}
+               q${(dir * 0.8).toFixed(2)} ${half} ${(dir * 4.4).toFixed(2)} ${half}"
             fill="none" stroke="${t.line}" stroke-opacity=".72" stroke-width="0.7"
             stroke-linecap="round"/>`;
-    // The studs: a diamond is three strokes of a pen at this scale, so it is
-    // drawn as one and repeated.
     const stud = (x, y, r) =>
       `<path d="M${x.toFixed(2)} ${(y - r * 1.25).toFixed(2)} L${(x + r).toFixed(2)} ${y.toFixed(2)} L${x.toFixed(2)} ${(y + r * 1.25).toFixed(2)} L${(x - r).toFixed(2)} ${y.toFixed(2)}Z" fill="${t.line}" fill-opacity=".62"/>`;
     // Clustered inside each bracket rather than marching the whole way along:
     // spread out they turned the rail into a ruler.
-    const studs = (x, dir) =>
-      stud(x + dir * 8.4, cy - 1.15, 0.8) + stud(x + dir * 8.4, cy + 1.15, 0.8) + stud(x + dir * 11, cy, 0.8);
-    return `
-    <g>
-      <rect x="${x0.toFixed(2)}" y="${(cy - half).toFixed(2)}" width="${(run * 2).toFixed(2)}" height="${(half * 2).toFixed(2)}"
-        rx="${(half * 0.5).toFixed(2)}" fill="url(#${u}Inlay)" stroke="${t.railLine}" stroke-opacity=".42"
+    const studs = (x, dir) => stud(x + dir * 8.4, -1.05, 0.8) + stud(x + dir * 8.4, 1.05, 0.8) + stud(x + dir * 11, 0, 0.8);
+    const inlay = `
+      <rect x="${(-run).toFixed(2)}" y="${-half}" width="${(run * 2).toFixed(2)}" height="${(half * 2).toFixed(2)}"
+        rx="${(half * 0.5).toFixed(2)}" fill="url(#${u}Inlay)" stroke="${t.line}" stroke-opacity=".22"
         stroke-width="1" vector-effect="non-scaling-stroke"/>
-      ${bracket(x0, 1)}${bracket(x1, -1)}
-      ${studs(x0, 1)}${studs(x1, -1)}
-    </g>`;
+      ${bracket(-run, 1)}${bracket(run, -1)}
+      ${roomy ? studs(-run, 1) + studs(run, -1) : ''}`;
+    // One for each long side, each sitting in the middle of its own cushion.
+    const mid = T / 2;
+    return tall
+      ? `<g transform="translate(${(W / 2 - RW * a + mid).toFixed(2)} 50) rotate(90)">${inlay}</g>
+         <g transform="translate(${(W / 2 + RW * a - mid).toFixed(2)} 50) rotate(90)">${inlay}</g>`
+      : `<g transform="translate(${(W / 2).toFixed(2)} ${(50 - RH + mid).toFixed(2)})">${inlay}</g>
+         <g transform="translate(${(W / 2).toFixed(2)} ${(50 + RH - mid).toFixed(2)})">${inlay}</g>`;
   };
 
   const soften = (id, px) =>
@@ -172,43 +187,43 @@ export function feltSVG(id = 'green', aspect = 1.9) {
     </linearGradient>
     ${soften(`${u}b1`, 1.7)}
     ${soften(`${u}b2`, 0.6)}
-    <clipPath id="${u}cFelt">${ring(45, 41.8, '')}</clipPath>
-    <clipPath id="${u}cRail">${ring(49.2, 48.4, '')}</clipPath>
+    <clipPath id="${u}cFelt">${ring(T, '')}</clipPath>
+    <clipPath id="${u}cRail">${ring(0, '')}</clipPath>
   </defs>
-  ${ring(49.6, 49, 'fill="#000" opacity=".45"', 50.8)}
-  ${ring(49.2, 48.4, `fill="url(#${u}Rail)"`)}
+  ${ring(-0.4, 'fill="#000" opacity=".45"', 0.8)}
+  ${ring(0, `fill="url(#${u}Rail)"`)}
   <!-- Rail, lit: the sheen clipped to the rail's own silhouette so it reads as
        a rounded cushion catching the light rather than an outline drawn on. -->
   <g clip-path="url(#${u}cRail)">
-    ${railPanel(4.5)}${railPanel(95.5)}
-    ${ring(49.2, 48.4, `fill="none" stroke="url(#${u}Sheen)" stroke-width="2.6"`)}
+    ${railPanel()}
+    ${ring(0, `fill="none" stroke="url(#${u}Sheen)" stroke-width="2.6"`)}
     <!-- The cloth's own colour bouncing up onto the inside of the cushion. The
          felt is painted over its inner half a few lines down, leaving the half
          that lands on the rail. -->
     <g filter="url(#${u}b2)">
-      ${ring(46.2, 43.2, `fill="none" stroke="${t.felt[0]}" stroke-opacity=".5" stroke-width="1.6"`)}
+      ${ring(T - 1.4, `fill="none" stroke="${t.felt[0]}" stroke-opacity=".5" stroke-width="1.6"`)}
     </g>
   </g>
   <!-- The trim worked into the cushion, a hint rather than an outline: at full
        strength it drew a wire round the whole table and flattened it again. -->
-  ${ring(48.4, 47.4, `fill="none" stroke="${t.railLine}" stroke-opacity=".45" stroke-width="1.2" vector-effect="non-scaling-stroke"`)}
-  ${ring(45.6, 42.6, `fill="${t.edge}"`)}
-  ${ring(45, 41.8, `fill="url(#${u}Felt)"`)}
+  ${ring(1, `fill="none" stroke="${t.railLine}" stroke-opacity=".45" stroke-width="1.2" vector-effect="non-scaling-stroke"`)}
+  ${ring(T - 0.7, `fill="${t.edge}"`)}
+  ${ring(T, `fill="url(#${u}Felt)"`)}
   <!-- Cloth, sunk: the shadow the rail casts onto it, hugging the edge all the
        way round and deepest under the overhang at the top. -->
   <g clip-path="url(#${u}cFelt)">
     <g filter="url(#${u}b1)">
-      ${ring(45, 41.8, `fill="none" stroke="url(#${u}Well)" stroke-width="4.2"`)}
+      ${ring(T, `fill="none" stroke="url(#${u}Well)" stroke-width="4.2"`)}
     </g>
     <g filter="url(#${u}b2)">
-      ${ring(45, 41.8, `fill="none" stroke="url(#${u}Well)" stroke-width="1.8"`)}
+      ${ring(T, `fill="none" stroke="url(#${u}Well)" stroke-width="1.8"`)}
     </g>
   </g>
-  ${ring(45, 41.8, `fill="url(#${u}Light)"`)}
+  ${ring(T, `fill="url(#${u}Light)"`)}
   <!-- The seam pressed into the cloth a little in from the rail, and the
        dashed line the bets are pushed over. -->
-  ${ring(43.2, 39.8, `fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1" vector-effect="non-scaling-stroke"`)}
-  ${ring(41, 37.6, `fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"`)}
+  ${ring(T + 2.4, `fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1" vector-effect="non-scaling-stroke"`)}
+  ${ring(T + 4.6, `fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"`)}
 </svg>`;
 }
 
