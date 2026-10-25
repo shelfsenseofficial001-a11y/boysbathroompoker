@@ -42,7 +42,9 @@
   --rise: 16px;
 
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  /* A Didone: hairline serifs against heavy stems. It is the cut good whisky
+     and watch advertising is set in, which is the look the table is after. */
+  --font-display: 'Bodoni Moda', 'Didot', Georgia, 'Times New Roman', serif;
 
   /* Type scale */
   --fs-display: clamp(30px, 4.6vw, 46px);
@@ -132,7 +134,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   font-size: var(--fs-display);
   font-weight: 700;
   line-height: 1.08;
-  letter-spacing: -0.01em;
+  /* A Didone wants air: crowding it closes up the hairlines and the whole
+     thing goes muddy. Playfair took a little negative tracking; this takes
+     none. */
+  letter-spacing: 0;
   margin: 0;
 }
 .h2 { font-size: var(--fs-h2); font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
@@ -223,7 +228,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    background and rule still span the full width. The table is full-bleed, so
    its bar is left alone. */
 .topbar-page { padding-inline: max(18px, calc((100% - var(--page-w, 980px)) / 2 + 20px)); }
-.brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 17px; white-space: nowrap; }
+/* The wordmark is small for a Didone, so it gets the heavier weight and a
+   little tracking to keep the thin strokes from disappearing. */
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: 0.015em; white-space: nowrap; }
 .brand em { font-style: normal; color: var(--gold); }
 .brand .logo { width: 30px; height: 30px; }
 .topbar-meta { display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center; min-width: 0; }
@@ -262,6 +269,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .code-copy .icon { width: 12px; height: 12px; }
 /* Leaving ends the room for the host and your seat for everyone else, so it
    doesn't look like the buttons beside it. */
+/* The way out of a room is the one thing on this bar anyone reaches for in a
+   hurry, so it stays a button of its own rather than going under the avatar. */
+.topbar [data-leave] {
+  border-color: rgba(224, 86, 79, 0.45); background: rgba(90, 24, 21, 0.55); color: #ff9b94;
+}
+.topbar [data-leave]:hover:not(:disabled) {
+  border-color: var(--red); background: rgba(124, 32, 28, 0.75); color: #ffd2cf;
+}
 .meta-chip b.code { color: var(--gold); letter-spacing: 0.12em; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
 .user-pill {
@@ -2207,7 +2222,7 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   border-radius: 50%; background: rgba(230, 180, 80, 0.14); color: var(--gold-hi); }
 .sheet-crown .icon { width: 28px; height: 28px; }
 .sheet-crown.is-bust { background: rgba(224, 86, 79, 0.14); color: var(--red); }
-.sheet-title { margin: 8px 0 6px; font-family: 'Playfair Display', Georgia, serif; font-size: 30px; color: var(--text-1); }
+.sheet-title { margin: 8px 0 6px; font-family: var(--font-display); font-size: 30px; color: var(--text-1); }
 .sheet-sub { margin: 0 auto; max-width: 34ch; color: var(--text-2); font-size: 14px; line-height: 1.5; }
 .sheet-stack { margin-top: 16px; display: flex; justify-content: center; }
 .sheet-stack svg { height: 70px; width: auto; }

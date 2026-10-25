@@ -48,7 +48,7 @@ export function dealerButtonSVG() {
   <circle cx="20" cy="21.5" r="18" fill="rgba(0,0,0,.35)"/>
   <circle cx="20" cy="20" r="18" fill="#f6f1e4"/>
   <circle cx="20" cy="20" r="14.5" fill="none" stroke="#b08a3e" stroke-width="1.2"/>
-  <text x="20" y="25.5" text-anchor="middle" font-family="'Playfair Display', Georgia, serif" font-size="16" font-weight="700" fill="#2a1d08">D</text>
+  <text x="20" y="25.5" text-anchor="middle" font-family="'Bodoni Moda', Didot, Georgia, serif" font-size="16" font-weight="700" fill="#2a1d08">D</text>
 </svg>`;
 }
 

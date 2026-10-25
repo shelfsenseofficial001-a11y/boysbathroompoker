@@ -991,11 +991,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
-  // What sits under the avatar in the bar at the top of the table.
-  const TOPBAR_MENU = [
-    [{ id: 'settings', icon: icons.gear, label: 'Table settings' }],
-    [{ id: 'leave', icon: icons.leave, label: 'Leave room', danger: true }],
-  ];
+  // What sits under the avatar in the bar at the top of the table. Leaving
+  // isn't in here: it stays a button of its own beside the avatar, because
+  // it's the one thing on this bar people reach for in a hurry.
+  const TOPBAR_MENU = [[{ id: 'settings', icon: icons.gear, label: 'Table settings' }]];
 
   // Which section of the settings sheet is showing. Kept out here so it
   // survives a rebuild of the sheet and you come back to where you were.
@@ -1358,13 +1357,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <span class="meta-chip hide-sm">Blinds <b>${fmt(t.smallBlind)}/${fmt(t.bigBlind)}</b></span>
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
-      <!-- Settings and the way out are both under the avatar, the same as in
-           the lobby: one thing on the right of the bar, not three. -->
-      <div class="topbar-user">${userMenuHTML(user, TOPBAR_MENU)}</div>
+      <div class="topbar-user">
+        ${userMenuHTML(user, TOPBAR_MENU)}
+        <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
+      </div>
     </header>`;
   }
 
   function wireTopbar() {
+    root.querySelector('[data-leave]').addEventListener('click', () => {
+      askingLeave = true;
+      drawOverlay(shown);
+    });
     // Copying the code is how anyone else gets in, so it sits on the code
     // itself rather than only in the waiting room.
     root.querySelectorAll('[data-copy-code]').forEach((btn) => {
@@ -1387,11 +1391,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       onPick: (id) => {
         if (id === 'settings') {
           askingSettings = true;
-          return drawOverlay(shown);
-        }
-        if (id === 'leave') {
-          askingLeave = true;
-          return drawOverlay(shown);
+          drawOverlay(shown);
         }
       },
     });

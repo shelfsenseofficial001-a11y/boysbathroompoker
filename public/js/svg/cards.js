@@ -46,7 +46,7 @@ export function cardFaceSVG(code, { simple = false } = {}) {
   if ('JQK'.includes(r)) {
     center = `
       <rect x="15" y="17" width="30" height="50" rx="3" fill="none" stroke="${color}" stroke-opacity=".28" stroke-width="1"/>
-      <text x="30" y="47" text-anchor="middle" font-family="'Playfair Display', Georgia, serif" font-size="24" font-weight="700" fill="${color}">${rank}</text>
+      <text x="30" y="47" text-anchor="middle" font-family="'Bodoni Moda', Didot, Georgia, serif" font-size="24" font-weight="700" fill="${color}">${rank}</text>
       ${suit(s, 25.5, 51, 9, color)}`;
   } else if (r === 'A') {
     center = suit(s, 17, 29, 26, color);
