@@ -23,6 +23,8 @@ export const icons = {
   robot: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7.5" width="17" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="13.5" r="1.8" fill="currentColor"/><circle cx="15" cy="13.5" r="1.8" fill="currentColor"/><path d="M12 7.5V4M9.5 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="3" r="1.4" fill="currentColor"/></svg>',
   crown: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5l4 3.5 5-6.5 5 6.5 4-3.5-1.8 11H4.8z" fill="currentColor"/></svg>',
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  // The same cross as `fold`, under the name the dismiss buttons use.
+  close: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
   minus: svg('<path d="M5 12h14"/>'),
   pencil: svg('<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M14 6l4 4"/>'),
   soundOn: svg('<path d="M4 9.5h3L12 5v14l-5-4.5H4z" fill="currentColor" stroke-linejoin="round"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>'),

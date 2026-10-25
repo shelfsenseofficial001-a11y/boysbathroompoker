@@ -3,17 +3,30 @@
 // sheet at the table, so the two can't drift apart.
 import { FELTS, BACKS, feltSVG, cardBackSVG } from './svg/themes.js';
 import { getSettings, setSetting } from './settings.js';
+import { icons } from './svg/icons.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 // `kind` is the settings key: 'felt' or 'cardBack'.
 const LISTS = { felt: FELTS, cardBack: BACKS };
-const DRAW = { felt: (id) => feltSVG(id), cardBack: (id) => cardBackSVG(id) };
+// A swatch is its own shape, wider than it is tall but not as wide as the
+// table, so the cloth is cut to the swatch rather than to the table (see
+// .swatch-felt .swatch-art, which sets the same ratio).
+const SWATCH_ASPECT = 76 / 50;
+const DRAW = { felt: (id) => feltSVG(id, SWATCH_ASPECT), cardBack: (id) => cardBackSVG(id) };
 
+// The grid is taller than the space it gets, so it scrolls. On a phone that
+// scroll is easy to miss and awkward to reach - the gesture belongs to the
+// page or the sheet around it - so the grid carries its own pair of arrows,
+// shown only while there is something that way to scroll to.
 export function themeRowHTML(kind, selected) {
   const list = LISTS[kind];
-  return `<div class="swatch-row" role="radiogroup" aria-label="${kind === 'felt' ? 'Table felt' : 'Card back'}" data-theme-row="${kind}">
+  const arrow = (dir, label) =>
+    `<button type="button" class="swatch-more swatch-more-${dir}" data-scroll="${dir}"
+      aria-label="${label}" tabindex="-1">${icons.chevronDown}</button>`;
+  return `<div class="swatch-scroll">${arrow('up', 'Show the ones above')}${arrow('down', 'Show the ones below')}
+    <div class="swatch-row" role="radiogroup" aria-label="${kind === 'felt' ? 'Table felt' : 'Card back'}" data-theme-row="${kind}">
     ${list
       .map(
         (t) => `<button type="button" class="swatch swatch-${kind}${t.id === selected ? ' is-on' : ''}"
@@ -24,6 +37,7 @@ export function themeRowHTML(kind, selected) {
         </button>`
       )
       .join('')}
+    </div>
   </div>`;
 }
 
@@ -58,10 +72,51 @@ function keepInRow(btn) {
   else if (b.right + pad > box.right) row.scrollLeft += b.right - box.right + pad;
 }
 
+// How far there is left to scroll each way, as classes on the wrapper, so the
+// arrows are only there while they'd do something. Called on scroll, on a
+// pick, and whenever a picker is drawn or the space it has changes.
+function syncArrows(row) {
+  const wrap = row.parentElement;
+  if (!wrap?.classList.contains('swatch-scroll')) return;
+  const slack = row.scrollHeight - row.clientHeight;
+  // A grid that fits shows neither arrow. The 2px is for the rounding a
+  // fractional device pixel ratio leaves behind, which would otherwise read
+  // as a permanent scrap of scroll at the bottom.
+  wrap.classList.toggle('can-up', slack > 2 && row.scrollTop > 2);
+  wrap.classList.toggle('can-down', slack > 2 && row.scrollTop < slack - 2);
+}
+
+// Every picker inside `root`, now and after a resize reflows the grid.
+export function syncThemeArrows(root) {
+  root.querySelectorAll('[data-theme-row]').forEach(syncArrows);
+}
+
 // Click anything in a row and it becomes the choice. `onPick` is told which
 // key changed so the caller can redress whatever it has on screen.
 export function wireThemePicker(root, onPick) {
+  // Scrolling the grid is what moves the arrows, and a grid can be drawn long
+  // after this runs, so both are delegated from `root`. Scroll doesn't bubble,
+  // hence the capture phase.
+  root.addEventListener(
+    'scroll',
+    (e) => {
+      if (e.target.matches?.('[data-theme-row]')) syncArrows(e.target);
+    },
+    true
+  );
+  window.addEventListener('resize', () => syncThemeArrows(root));
+
   root.addEventListener('click', (e) => {
+    const arrow = e.target.closest('[data-scroll]');
+    if (arrow) {
+      const row = arrow.parentElement.querySelector('[data-theme-row]');
+      // One row of swatches at a time, read off a real one rather than
+      // assumed, since felt and card backs are different heights.
+      const one = row.firstElementChild?.offsetHeight || 64;
+      const gap = parseFloat(getComputedStyle(row).rowGap) || 10;
+      row.scrollBy({ top: (one + gap) * (arrow.dataset.scroll === 'up' ? -1 : 1), behavior: 'smooth' });
+      return;
+    }
     const btn = e.target.closest('[data-theme]');
     if (!btn) return;
     const kind = btn.dataset.theme;
@@ -76,6 +131,7 @@ export function wireThemePicker(root, onPick) {
       b.setAttribute('aria-checked', String(on));
     });
     keepInRow(btn);
+    syncArrows(btn.parentElement);
     onPick?.(kind, id);
   });
 }

@@ -16,22 +16,24 @@ function rng(seed) {
 }
 
 // --- Felts -----------------------------------------------------------------
-// Plain cloth, ten colours - the rail, the baize and the dashed betting line,
-// and nothing printed on top. `logo` says which way the house mark in the
+// Plain cloth, ten colours - the rail, the baize, the dark lip the baize is
+// let into and the dashed betting line, and nothing printed on top. `edge` is
+// that lip: it has to be a shade of the cloth above it, or it reads as a ring
+// in some other colour drawn around the felt. `logo` says which way the house mark in the
 // middle has to be inked: a pale mark disappears into a white or gold cloth, a
 // dark one into a black felt. The ids outlive the names, since they are what
 // sits in a player's saved settings.
 export const FELTS = [
-  { id: 'green', name: 'Emerald', logo: 'light', rail: ['#3a2219', '#150b07'], railLine: '#5b3a28', felt: ['#1c7f5b', '#0f5c42', '#073624'], line: '#e6b450' },
-  { id: 'red', name: 'Crimson', logo: 'light', rail: ['#3a1a19', '#160807'], railLine: '#5e3028', felt: ['#a8302e', '#7d1f20', '#44100f'], line: '#e6b450' },
-  { id: 'blue', name: 'Sapphire', logo: 'light', rail: ['#1b2838', '#080d14'], railLine: '#2f4860', felt: ['#1f6aa8', '#154a7a', '#0a2742'], line: '#cfe0f5' },
-  { id: 'gray', name: 'Slate', logo: 'light', rail: ['#2b2e34', '#101214'], railLine: '#484d56', felt: ['#71787f', '#4e545b', '#2b2f34'], line: '#dbe0e6' },
-  { id: 'polka', name: 'Onyx', logo: 'light', rail: ['#232323', '#0a0a0a'], railLine: '#3d3d3d', felt: ['#1a1a1a', '#101010', '#050505'], line: '#ffffff' },
-  { id: 'midnight', name: 'Midnight', logo: 'light', rail: ['#1b2141', '#07090f'], railLine: '#333d68', felt: ['#1c2a5e', '#121a3d', '#070a18'], line: '#9db4ff' },
-  { id: 'sakura', name: 'Sakura', logo: 'dark', rail: ['#4a2630', '#1d0e13'], railLine: '#71414e', felt: ['#efa8bd', '#dd8098', '#b05570'], line: '#fff0f4' },
-  { id: 'gold', name: 'Bullion', logo: 'dark', rail: ['#3d2c0c', '#160f03'], railLine: '#6b501a', felt: ['#e3c56a', '#b58f2a', '#6d4f12'], line: '#ffeab0' },
-  { id: 'lines', name: 'Ivory', logo: 'dark', rail: ['#2a2a2a', '#0d0d0d'], railLine: '#4a4a4a', felt: ['#f4efe6', '#e5ded0', '#c9c0ae'], line: '#2a2a2a' },
-  { id: 'carbon', name: 'Carbon', logo: 'light', rail: ['#232427', '#0a0a0b'], railLine: '#3e4044', felt: ['#1f2023', '#151618', '#0b0b0c'], line: '#9aa0a8' },
+  { id: 'green', name: 'Emerald', logo: 'light', rail: ['#3a2219', '#150b07'], railLine: '#5b3a28', felt: ['#1c7f5b', '#0f5c42', '#073624'], edge: '#03130d', line: '#e6b450' },
+  { id: 'red', name: 'Crimson', logo: 'light', rail: ['#3a1a19', '#160807'], railLine: '#5e3028', felt: ['#a8302e', '#7d1f20', '#44100f'], edge: '#1e0706', line: '#e6b450' },
+  { id: 'blue', name: 'Sapphire', logo: 'light', rail: ['#1b2838', '#080d14'], railLine: '#2f4860', felt: ['#1f6aa8', '#154a7a', '#0a2742'], edge: '#040f1b', line: '#cfe0f5' },
+  { id: 'gray', name: 'Slate', logo: 'light', rail: ['#2b2e34', '#101214'], railLine: '#484d56', felt: ['#71787f', '#4e545b', '#2b2f34'], edge: '#121417', line: '#dbe0e6' },
+  { id: 'polka', name: 'Onyx', logo: 'light', rail: ['#232323', '#0a0a0a'], railLine: '#3d3d3d', felt: ['#1a1a1a', '#101010', '#050505'], edge: '#000000', line: '#ffffff' },
+  { id: 'midnight', name: 'Midnight', logo: 'light', rail: ['#1b2141', '#07090f'], railLine: '#333d68', felt: ['#1c2a5e', '#121a3d', '#070a18'], edge: '#03040a', line: '#9db4ff' },
+  { id: 'sakura', name: 'Sakura', logo: 'dark', rail: ['#4a2630', '#1d0e13'], railLine: '#71414e', felt: ['#efa8bd', '#dd8098', '#b05570'], edge: '#4a2029', line: '#fff0f4' },
+  { id: 'gold', name: 'Bullion', logo: 'dark', rail: ['#3d2c0c', '#160f03'], railLine: '#6b501a', felt: ['#e3c56a', '#b58f2a', '#6d4f12'], edge: '#2e2007', line: '#ffeab0' },
+  { id: 'lines', name: 'Ivory', logo: 'dark', rail: ['#2a2a2a', '#0d0d0d'], railLine: '#4a4a4a', felt: ['#f4efe6', '#e5ded0', '#c9c0ae'], edge: '#6f6a5c', line: '#2a2a2a' },
+  { id: 'carbon', name: 'Carbon', logo: 'light', rail: ['#232427', '#0a0a0b'], railLine: '#3e4044', felt: ['#1f2023', '#151618', '#0b0b0c'], edge: '#050505', line: '#9aa0a8' },
 ];
 
 // Every call gets its own id prefix. The table's cloth and the swatch for the
@@ -40,10 +42,39 @@ export const FELTS = [
 // two then borrows the other's gradients and clip.
 let feltSeq = 0;
 
-export function feltSVG(id = 'green') {
+// A real poker table is a stadium: a straight run down each side closed off by
+// a true semicircle at either end, not an ellipse. An ellipse has no straight
+// edge at all, so seats along the sides sat on a curve and the middle of the
+// cloth bulged. Portrait is the exception and stays an oval - see `oval`.
+//
+// Drawing one means the SVG has to know the shape of the box it's going into.
+// The old felt was ellipses on a square viewBox stretched to fit, which an
+// ellipse survives and a semicircle does not - stretched, a round end turns
+// back into an elliptical one. So the viewBox is cut to the same aspect as the
+// element, and `preserveAspectRatio="none"` then scales both axes equally and
+// the ends stay round. `aspect` is width / height; the table is 1.9 across in
+// landscape and 0.68 in portrait, and a swatch is its own shape again.
+export function feltSVG(id = 'green', aspect = 1.9) {
   const t = FELTS.find((f) => f.id === id) || FELTS[0];
   const u = `ft${t.id}${(feltSeq = (feltSeq + 1) % 1e6)}`;
-  return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  // Height is fixed at 100 and width follows the aspect, so every half-height
+  // below is still read straight off the old ellipses.
+  const a = Math.max(0.2, Math.min(5, Number(aspect) || 1.9));
+  const W = 100 * a;
+  // A stadium only reads as a table while it's wider than it is tall. Stood on
+  // its end for the portrait layout it becomes a long tall pill with the
+  // players down its straight sides, which is not a table anyone plays on - so
+  // a portrait table keeps the oval it always had.
+  const oval = a < 1;
+  // One ring of the table: `w`/`h` are its half-width and half-height, as the
+  // ellipses' rx/ry were. The rounded version takes a corner radius of the
+  // half-height, which is what makes the ends semicircles rather than corners.
+  const ring = (w, h, attrs, cy = 50) =>
+    oval
+      ? `<ellipse cx="${(W / 2).toFixed(2)}" cy="${cy.toFixed(2)}" rx="${(w * a).toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`
+      : `<rect x="${(W / 2 - w * a).toFixed(2)}" y="${(cy - h).toFixed(2)}" width="${(w * a * 2).toFixed(2)}"
+          height="${(h * 2).toFixed(2)}" rx="${h.toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`;
+  return `<svg viewBox="0 0 ${W.toFixed(2)} 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <radialGradient id="${u}Rail" cx="50%" cy="40%" r="60%">
       <stop offset="0%" stop-color="${t.rail[0]}"/>
@@ -59,13 +90,13 @@ export function feltSVG(id = 'green') {
       <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <ellipse cx="50" cy="50.8" rx="49.6" ry="49" fill="#000" opacity=".45"/>
-  <ellipse cx="50" cy="50" rx="49.2" ry="48.4" fill="url(#${u}Rail)"/>
-  <ellipse cx="50" cy="50" rx="48.4" ry="47.4" fill="none" stroke="${t.railLine}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
-  <ellipse cx="50" cy="50" rx="45.6" ry="42.6" fill="#03130d"/>
-  <ellipse cx="50" cy="50" rx="45" ry="41.8" fill="url(#${u}Felt)"/>
-  <ellipse cx="50" cy="50" rx="45" ry="41.8" fill="url(#${u}Light)"/>
-  <ellipse cx="50" cy="50" rx="41" ry="37.6" fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"/>
+  ${ring(49.6, 49, 'fill="#000" opacity=".45"', 50.8)}
+  ${ring(49.2, 48.4, `fill="url(#${u}Rail)"`)}
+  ${ring(48.4, 47.4, `fill="none" stroke="${t.railLine}" stroke-width="1.2" vector-effect="non-scaling-stroke"`)}
+  ${ring(45.6, 42.6, `fill="${t.edge}"`)}
+  ${ring(45, 41.8, `fill="url(#${u}Felt)"`)}
+  ${ring(45, 41.8, `fill="url(#${u}Light)"`)}
+  ${ring(41, 37.6, `fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"`)}
 </svg>`;
 }
 

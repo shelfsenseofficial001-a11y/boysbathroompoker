@@ -5,10 +5,11 @@ import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
-import { numberFieldHTML, wireSteppers } from './stepper.js';
+import { numberFieldHTML, readField, wireBlindPair, wireSteppers } from './stepper.js';
+import { flagInvalid } from './invalid.js';
 import { showToast } from './toast.js';
 import { playEntrance } from './motion.js';
-import { themePickerHTML, wireThemePicker } from './themepicker.js';
+import { syncThemeArrows, themePickerHTML, wireThemePicker } from './themepicker.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
@@ -163,14 +164,19 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // Being turned away from a room happens over by the Join button, which is
   // nowhere near the line of red text at the foot of the page — so it's said
   // in a toast, where it can't be missed.
-  const fail = (err) => showToast(err.message, { atPage: true });
+  const fail = (err) => showToast(typeof err === 'string' ? err : err.message, { atPage: true });
 
   // Settings is a page of its own rather than one more panel at the foot of
   // the lobby: it has nothing to do with hosting or joining a game.
   const showPage = (name) => {
     root.querySelectorAll('[data-page]').forEach((p) => (p.hidden = p.dataset.page !== name));
     window.scrollTo({ top: 0 });
-    if (name === 'settings') playPreview();
+    if (name === 'settings') {
+      playPreview();
+      // The grids have no height while the page is hidden, so whether they
+      // overflow can only be measured once it's on screen.
+      syncThemeArrows(root);
+    }
   };
   $('#settings-back').addEventListener('click', () => showPage('main'));
 
@@ -297,14 +303,31 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
 
   playPreview();
 
+  // Big blind follows the small one (and back again) rather than letting a
+  // host build a pair the server will refuse.
+  wireBlindPair($('#sb'), $('#bb'));
+
   $('#create-room').addEventListener('click', async (e) => {
     errEl.textContent = '';
+    // Read the three figures back before anything is sent: a field that can't
+    // be read says so on itself, and the room isn't created on a guess.
+    const smallBlind = readField($('#sb'), 'The small blind', fail);
+    if (smallBlind === null) return;
+    const bigBlind = readField($('#bb'), 'The big blind', fail);
+    if (bigBlind === null) return;
+    if (bigBlind <= smallBlind) {
+      flagInvalid($('#bb'), { focus: true });
+      return fail(new Error('The big blind has to be larger than the small blind.'));
+    }
+    const buyIn = readField($('#buyin-host'), 'Your starting chips', fail);
+    if (buyIn === null) return;
+
     e.currentTarget.disabled = true;
     try {
       const res = await emitAck('createRoom', {
-        smallBlind: Number($('#sb').value),
-        bigBlind: Number($('#bb').value),
-        buyIn: Number($('#buyin-host').value),
+        smallBlind,
+        bigBlind,
+        buyIn,
         isPrivate: $('#room-private').checked,
       });
       onEnterRoom(res.code);
@@ -330,7 +353,16 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
 
   async function join(code, fromList = false) {
     errEl.textContent = '';
-    if (!code) return fail(new Error('Enter a room code.'));
+    // Codes from the open-tables list are the server's own; only one typed
+    // into the box can be wrong, so only that marks the box.
+    if (!code) {
+      if (!fromList) flagInvalid($('#join-code'), { focus: true });
+      return fail(new Error('Enter a room code.'));
+    }
+    if (!fromList && !/^[A-Z]{5}$/.test(code)) {
+      flagInvalid($('#join-code'), { focus: true });
+      return fail(new Error('A room code is five letters.'));
+    }
     try {
       // No buy-in is sent: the host sets every player's stack, in the waiting
       // room or - for someone arriving mid-game - from their late-join figure.
@@ -341,6 +373,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
       if (res.knocking) return setKnocking(true);
       enter(res);
     } catch (err) {
+      if (!fromList) flagInvalid($('#join-code'));
       fail(err);
     }
   }
@@ -375,6 +408,11 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // The open-tables list refreshes itself, so somebody waiting for a friend
   // to host doesn't have to keep reloading the page to see it appear.
   let lastRoomsJSON = null;
+  // The codes the list already showed, so a table that has just opened can be
+  // told apart from one that was there all along and arrive with a transition.
+  // Empty until the first list comes back: on that first fill every table is
+  // new, and animating all of them is the screen's own entrance, not news.
+  let knownCodes = null;
   // Ten to a page: enough to scan without the lobby turning into a list that
   // has to be scrolled past to reach the settings below it.
   const PER_PAGE = 10;
@@ -396,12 +434,13 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         $('#rooms-page').textContent = `Page ${roomsPage + 1} of ${pages} · ${rooms.length} ${rooms.length === 1 ? 'table' : 'tables'}`;
         $('#rooms-prev').disabled = roomsPage === 0;
         $('#rooms-next').disabled = roomsPage >= pages - 1;
+        const fresh = (code) => knownCodes !== null && !knownCodes.has(code);
         list.innerHTML = rooms.length
           ? rooms
               .slice(roomsPage * PER_PAGE, roomsPage * PER_PAGE + PER_PAGE)
               .map(
                 (r) => `
-            <tr>
+            <tr${fresh(r.code) ? ' class="is-new"' : ''}>
               <td>
                 <span class="code">${esc(r.code)}</span>
                 ${r.full ? '<span class="room-full">Full</span>' : ''}
@@ -420,6 +459,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
               )
               .join('')
           : '<tr class="rooms-empty"><td colspan="7">No open tables right now — host one!</td></tr>';
+        // Every code now on the list counts as seen, including the ones on
+        // pages that aren't showing - turning to page two isn't news either.
+        knownCodes = new Set(rooms.map((r) => r.code));
         list.querySelectorAll('[data-code]').forEach((b) =>
           b.addEventListener('click', () => {
             join(b.dataset.code, true);

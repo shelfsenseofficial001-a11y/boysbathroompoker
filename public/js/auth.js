@@ -1,5 +1,6 @@
 // Login / registration screen.
 import { api } from './api.js';
+import { flagInvalid } from './invalid.js';
 import { icons } from './svg/icons.js';
 
 export function renderAuth(root, { onAuthed }) {
@@ -30,14 +31,31 @@ export function renderAuth(root, { onAuthed }) {
 
     root.querySelector('#auth-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = root.querySelector('#username').value.trim();
-      const password = root.querySelector('#password').value;
+      const nameEl = root.querySelector('#username');
+      const passEl = root.querySelector('#password');
+      const username = nameEl.value.trim();
+      const password = passEl.value;
       const errEl = root.querySelector('#auth-error');
       errEl.textContent = '';
+      // The form is novalidate, so an empty box would otherwise submit and
+      // come back with a complaint from the server about nothing in it.
+      if (!username) {
+        errEl.textContent = 'Enter your username.';
+        return flagInvalid(nameEl, { focus: true });
+      }
+      if (!password) {
+        errEl.textContent = 'Enter your password.';
+        return flagInvalid(passEl, { focus: true });
+      }
       try {
         onAuthed(isLogin ? await api.login(username, password) : await api.register(username, password));
       } catch (err) {
         errEl.textContent = err.message;
+        // Which box is wrong isn't something the server will say - it
+        // deliberately won't confirm whether a username exists - so both are
+        // marked and the password is the one put back in focus.
+        flagInvalid(nameEl);
+        flagInvalid(passEl, { focus: true });
       }
     });
   }

@@ -205,6 +205,33 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .input:hover, .field input:hover { border-color: rgba(255, 255, 255, 0.24); }
 .input:focus, .field input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(230, 180, 80, 0.18); }
+
+/* A value the field won't take: red border and one short shake, on the field
+   itself, so a message in a toast or at the foot of the panel has something
+   to point at. Set from invalid.js, cleared on the next keystroke.
+   The shake only ever answers something the player just did, so it is
+   information rather than decoration - but `.reduce-motion` still flattens it
+   (see the bottom of this file) and the border then carries it alone. */
+.input.is-invalid, .field input.is-invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(224, 86, 79, 0.2);
+  animation: shake-in 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+/* Focus is the usual state of a field being corrected, so the red has to beat
+   the gold focus ring rather than sit under it. */
+.input.is-invalid:focus, .field input.is-invalid:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(224, 86, 79, 0.3);
+}
+/* The stepper's buttons sit flush against the input and own the rounded ends,
+   so the red has to run round all three or it reads as a misdrawn box. */
+.stepper:has(.input.is-invalid) .step-btn { border-color: var(--red); }
+@keyframes shake-in {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-5px); }
+  40%, 60% { transform: translateX(5px); }
+}
 .field-row { display: flex; gap: 12px; margin-bottom: 14px; }
 
 /* ---------- Top bar ---------- */
@@ -357,6 +384,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @media (max-width: 560px) {
   .code-block { flex-direction: column; align-items: stretch; gap: 14px; }
   .room-code { font-size: 32px; letter-spacing: 0.18em; }
+  /* Stacked, the code has the row to itself, so it sits in the middle of it
+     rather than hanging off the left edge with its buttons centred below. */
+  .code-id { text-align: center; }
+  /* Tracking is added after every letter, the last one included, so centred
+     text carries an extra 0.18em of air on its right and reads a hair off
+     centre. Taking that much off the right-hand edge puts the letters back
+     in the middle of the block. */
+  .code-id .room-code { margin-right: -0.18em; }
 }
 
 /* Settings rows */
@@ -442,13 +477,27 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .rooms tr:last-child td { border-bottom: 0; }
 .rooms tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
-.rooms .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Everything between the code and the buttons is centred under its heading:
+   those columns are short figures and statuses, and ranged left they drifted
+   away from the headings they belong to. */
+.rooms th:not(:first-child):not(:last-child),
+.rooms td:not(:first-child):not(:last-child) { text-align: center; }
+.rooms .num { font-variant-numeric: tabular-nums; }
 .rooms .of { color: var(--text-3); font-weight: 600; }
 .rooms .code { font-weight: 800; letter-spacing: 0.14em; color: var(--gold); }
 .rooms .sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-3); }
 .rooms-empty td {
   padding: 22px 12px; text-align: center; color: var(--text-3);
 }
+/* A table that has just opened arrives rather than appearing: the list is
+   polled, so without this a new game simply blinks into the middle of it. One
+   pass, on the row's own cells - a <tr> can't be moved by a transform in a
+   table layout - and nothing repeating afterwards. */
+@keyframes roomIn {
+  from { opacity: 0; translate: 0 -6px; background: rgba(230, 180, 80, 0.14); }
+}
+.rooms tbody tr.is-new td { animation: roomIn var(--dur-base) var(--ease-out-expo) both; }
+
 /* Only shown once there's more than one page of tables to turn. */
 .rooms-pager {
   display: flex; align-items: center; justify-content: center; gap: 14px;
@@ -1032,9 +1081,21 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   /* Spread across the full width so each chip is a comfortable tap target. */
   .dock .tray { width: 100%; justify-content: space-between; gap: 4px; }
 }
+/* A portrait table is narrow, so a shown hand is drawn bigger again to stay
+   readable. */
+@container stage (max-aspect-ratio: 5/4) {
+  .camera { --card-show: clamp(44px, 13cqmin, 64px); }
+}
 .camera {
   position: relative;
   aspect-ratio: 1.9;
+  /* How much of a hand held behind a nameplate shows above it. Overwritten
+     inline by computeLayout, which lays out around the same figure. */
+  --pod-hand-show: 0.62;
+  /* The same for a hand turned over at showdown; also written by computeLayout. */
+  --pod-reveal-show: 0.72;
+  /* Headroom over a face-down hand for the peek tilt; also from computeLayout. */
+  --peek-rise: 0.25;
   width: min(calc(100cqw - 28px), calc((100cqh - 20px) * 1.9));
   container: cam / size;
   transform-origin: 50% 50%;
@@ -1043,8 +1104,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   --card-o: clamp(26px, 7.4cqmin, 54px);
   /* Cards turned face up at showdown: big enough to actually read from
      across a phone screen, where --card-o is barely a thumbnail. */
+  /* Cards turned over at showdown, which are drawn larger than the backs so a
+     hand can be read across the table. Kept as a variable because the layout
+     has to leave room above each plate for cards this size, not card-o's. */
   --card-show: clamp(38px, 10.6cqmin, 60px);
-  --card-me: clamp(46px, 12.5cqmin, 96px);
+  --card-me: clamp(37px, 10cqmin, 77px);
   --card-board: clamp(30px, 9.8cqmin, 72px);
   --chip: clamp(14px, 3.6cqmin, 26px);
 }
@@ -1118,10 +1182,56 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    overlap, the cards win: the peek tilt is the only way to see that someone
    is looking at their hand. */
 .hand { display: flex; z-index: 5; pointer-events: none; }
+/* Everyone else's hand, held against the back of their nameplate: centred on
+   the plate and lifted so the plate covers the lower half. --pod-hand-show is
+   how much of a card clears the top of the plate; the rest is behind it.
+   Behind the plate rather than on top of it, which is the whole point - a
+   hand you can read is a hand you shouldn't see. */
+/* How far a tucked-in hand sticks up past the plate. Set on the group so the
+   tag and turn marker above the plate can step over the cards instead of
+   landing on them; 0 where there's no hand behind the plate. */
+/* --pod-hand-show lives on the camera, not here: computeLayout writes it
+   there (it needs the same figure to leave room above each plate), and an
+   inline value on the camera is inherited by every seat. Declaring it on the
+   group as well would beat that inheritance. The fallback is on .camera. */
+.seat-group { --pod-hand-rise: 0px; }
+/* Plus room for the peek: tilting up to look, the cards climb about a
+   quarter of a card, and they did it straight into the badge. */
+.seat-group:has(.pod-hand:not(.revealed)) {
+  --pod-hand-rise: calc(var(--card-o) * 1.4 * (var(--pod-hand-show) + var(--peek-rise)));
+}
+/* A hand turned over at showdown is tucked behind the plate too, showing
+   more of itself (--pod-reveal-show) at the larger --card-show size, so the
+   badge naming what it won with steps over that much. The extra 0.3em is for
+   the fan: the cards are turned a couple of degrees, so their top corners
+   reach a little above a card's height. computeLayout reserves the room. */
+.seat-group:has(.pod-hand.revealed) {
+  --pod-hand-rise: calc(var(--card-show) * 1.4 * var(--pod-reveal-show) + 0.3em);
+}
+.pod-hand {
+  position: absolute; z-index: 0;
+  /* Not stretch: a flex item with an aspect ratio and no height stretches to
+     the line instead of taking its ratio, and the cards came out squashed. */
+  align-items: flex-end;
+  /* bottom:100% puts the whole hand above the plate; the negative margin then
+     pulls all but --pod-hand-show of it back down behind the plate. */
+  left: 50%; bottom: 100%; translate: -50% 0;
+  margin-bottom: calc(var(--card-o) * 1.4 * (var(--pod-hand-show) - 1));
+}
+/* Badge on top, then the cards, then the nameplate. A revealed hand stays
+   behind the plate like a face-down one - on a phone two seats stacked up a
+   rail have no room for two whole cards between them - but more of it shows,
+   and the rank and suit are in the top corner, which is the part that does. */
+.pod-hand.revealed {
+  margin-bottom: calc(var(--card-show) * 1.4 * (var(--pod-reveal-show) - 1));
+}
 .hand .card + .card { margin-left: calc(var(--cw) * -0.38); }
 .hand .card:first-child { transform: rotate(-5deg); }
 .hand .card:last-child { transform: rotate(5deg) translateY(1px); }
-.hand.mine { pointer-events: auto; cursor: grab; touch-action: none; transition: transform 0.25s var(--ease-out); }
+/* Under the nameplates (z-index 4) rather than over them: my hand sits low
+   enough to meet my own tag, and the tag has to read over the cards. Dragging
+   and throwing lift it back to the top, below. */
+.hand.mine { z-index: 3; pointer-events: auto; cursor: grab; touch-action: none; transition: transform 0.25s var(--ease-out); }
 /* For the one frame a carried-over node is re-attached in: it has to land,
    not travel. See settleIn(). */
 .is-settling, .is-settling * { transition: none !important; animation: none !important; }
@@ -1175,7 +1285,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    update re-inserts this node and :hover is only recomputed on the next hit
    test — so the 4px hover nudge replayed on each one. Holding the same
    offset means losing and regaining hover changes nothing. */
-.hand.mine.lifted { z-index: 7; transform: translate(-50%, calc(-50% - 4px)); }
+/* Lifting to peek raises the cards off the felt but not above the nameplate:
+   at z-index 7 they covered my own tag, and "Your turn" is the one thing that
+   must stay readable while I'm looking at my hand. Dragging and throwing still
+   go to the top (above). */
+.hand.mine.lifted { transform: translate(-50%, calc(-50% - 4px)); }
 /* The sideways spread is small on purpose: the cards start at -22% overlap,
    so pushing each one 9% outwards all but cancelled it and left the pair
    sitting apart with felt between them. They stay a hand; they just lift. */
@@ -1239,7 +1353,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* A hand that's been turned over is there to be read: the cards come up
    larger, fan apart instead of overlapping, and sit above the nameplate
    rather than under it. */
-.hand.revealed { z-index: 6; }
+/* Below the nameplate, like the tucked hand: a shown hand hangs off its own
+   plate now rather than lying on the felt, so the badge above it - which names
+   what they won with - has to read over the cards where the two meet. */
+.hand.revealed { z-index: 0; }
 .hand.revealed .card { --cw: var(--card-show); }
 /* They overlap, and the fan is slight. A hand reads as one thing to look at;
    spread apart it became two, and the eye had to travel. The right card lies
@@ -1247,7 +1364,6 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.16); }
 .hand.revealed .card:first-child { transform: rotate(-2deg); }
 .hand.revealed .card:last-child { transform: rotate(2deg); }
-.camera.is-portrait .hand.revealed .card { --cw: clamp(44px, 13cqmin, 64px); }
 .camera.is-portrait .hand.revealed .card + .card { margin-left: calc(var(--cw) * -0.16); }
 
 .card.is-win { filter: drop-shadow(0 0 6px rgba(247, 213, 138, 0.9)) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); transform: translateY(-4px); }
@@ -1276,7 +1392,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ---------- Pot, bets, muck, dealer ---------- */
-.pot { z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }
+/* Anchored by its bottom edge, not its middle: the block is a chip row, a
+   label, the figure and sometimes a "current bet" line, so how tall it is
+   depends on what's in it. Centred on a percentage, a taller pot pushed its
+   own bottom further from the board and read as floating high above the
+   community cards. Pinning the bottom keeps the same small gap under it
+   whatever it is holding, and it grows upward into empty felt. */
+.pot {
+  z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center;
+  transform: translate(-50%, -100%);
+}
 .pot .pot-chips svg { height: clamp(18px, 6cqmin, 40px); width: auto; display: block; }
 .pot-label { font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); margin-top: 2px; }
 .pot-amt {
@@ -1341,8 +1466,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .dealer svg { width: 100%; height: 100%; display: block; }
 
 /* ---------- Seats (pods) ---------- */
+/* A seat is a group: the nameplate, and behind it the cards that player is
+   holding. The group carries the position (it is the .anchor), so the cards
+   can be placed against the plate's own box - which is the only way they stay
+   put when a seat is pinned to the rail in portrait and the plate grows
+   inward from it. */
+.seat-group { z-index: 4; }
 .pod {
-  z-index: 4;
+  position: relative;
+  /* Over the cards behind it, so only their top half shows. */
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 0.55em;
@@ -1380,15 +1513,27 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .camera.is-portrait .pod { font-size: clamp(9px, 2.6cqmin, 13px); padding: 0.25em 0.7em 0.25em 0.25em; gap: 0.4em; }
 .camera.is-portrait .pod .avatar { width: 2.4em; height: 2.4em; }
 .camera.is-portrait .pod .name { max-width: 5.5em; }
-.camera.is-portrait.is-crowded .pod .stack { display: none; }
+/* The chip stack goes at every count, not just a crowded table: with it a
+   plate is over a third of a phone's width, two of them leave the middle a
+   fifth of the table, and that's where the pot sits. The amount is still
+   written on the plate. */
+.camera.is-portrait .pod .stack { display: none; }
 /* Side seats grow inward from the rail instead of straddling their anchor. */
-.camera.is-portrait .pod.side-left { transform: translate(0, -50%); }
-.camera.is-portrait .pod.side-right { transform: translate(-100%, -50%); }
+/* Pinned to the rail: the plate grows inward from the edge rather than
+   straddling its anchor. On the group, since that's what carries the
+   positioning now. */
+.camera.is-portrait .seat-group.side-left { transform: translate(0, -50%); }
+.camera.is-portrait .seat-group.side-right { transform: translate(-100%, -50%); }
 .camera.is-portrait .pod.side-left .tag,
 .camera.is-portrait .pod.side-right .tag { max-width: 9em; }
+/* A seat pinned to a rail has the rail right beside it, so a badge centred on
+   the plate and wider than it - a long hand name - ran off the table. It
+   lines up with the plate's outer edge instead and grows inward. */
+.camera.is-portrait .pod.side-left .tag { left: 0; transform: none; }
+.camera.is-portrait .pod.side-right .tag { left: auto; right: 0; transform: none; }
 
 .pod .tag {
-  position: absolute; left: 50%; bottom: calc(100% + 0.35em); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(100% + 0.35em + var(--pod-hand-rise, 0px)); transform: translateX(-50%);
   font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 0.2em 0.65em; border-radius: 999px; white-space: nowrap;
   background: rgba(0, 0, 0, 0.65); color: var(--text-2); border: 1px solid var(--line-2);
@@ -1453,12 +1598,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   100% { stroke-dashoffset: 100; stroke: var(--red); }
 }
 .turn-marker {
-  position: absolute; left: 50%; top: -2.6em; transform: translateX(-50%);
+  position: absolute; left: 50%; top: calc(-2.6em - var(--pod-hand-rise, 0px)); transform: translateX(-50%);
   color: var(--gold); width: 1.3em; height: 1.3em;
   filter: drop-shadow(0 0 6px rgba(230, 180, 80, 0.8));
 }
 .turn-marker .icon { width: 100%; height: 100%; }
-.pod .tag ~ .turn-marker { top: -3.9em; }
+.pod .tag ~ .turn-marker { top: calc(-3.9em - var(--pod-hand-rise, 0px)); }
 
 /* ---------- Effects layer ---------- */
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
@@ -1962,14 +2107,27 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* Taking a chair is offered on the felt, in the corner nearest where the
    seats are, rather than in a dock that has nothing else to say while
    you're watching. */
+/* The house inviting you to sit down: a full pill with a lit top edge and a
+   shadow under it, so it sits on the felt as a physical thing rather than a
+   label stuck to it. Set in the interface sans like every other control - the
+   Didone is for headings and the house mark, not for something you press. */
 .table-join {
   position: absolute; right: 8px; bottom: 8px; z-index: 32;
-  display: flex; align-items: center; gap: 8px; cursor: pointer;
-  height: 40px; padding: 0 18px; border-radius: var(--r-s);
-  border: 1px solid var(--gold); background: linear-gradient(180deg, var(--gold-hi), var(--gold));
-  color: #2a1c05; font: 800 13px var(--font-ui); letter-spacing: 0.04em;
-  box-shadow: 0 6px 18px rgba(230, 180, 80, 0.28);
-  transition: transform 0.12s var(--ease-out), filter 0.15s, right 0.25s var(--ease-out), bottom 0.25s var(--ease-out);
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  height: 46px; padding: 0 22px 0 14px; border-radius: 999px;
+  border: 1px solid rgba(230, 180, 80, 0.8);
+  background: linear-gradient(180deg, #f9dc9a, var(--gold) 55%, #c9962f);
+  color: #261903;
+  font: 700 15.5px/1 var(--font-ui); letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s var(--ease-out), filter 0.15s, box-shadow 0.15s, right 0.25s var(--ease-out), bottom 0.25s var(--ease-out);
+}
+/* The chevron, turned to point the way in, sits in a well of its own rather
+   than floating against the text. */
+.table-join .icon {
+  width: 26px; height: 26px; padding: 6px; flex: none;
+  border-radius: 50%; background: rgba(38, 25, 3, 0.14);
+  rotate: -90deg; /* the chevron points down as drawn; this points it in */
 }
 /* The chat slides in over the same corner, so step aside rather than sit on
    top of the message box. */
@@ -1977,9 +2135,11 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* Narrow screens: the chat is a full-height sheet over the felt, so there's
    no corner left to step into — wait until it's closed. */
 @media (max-width: 1024px) { .show-chat .table-join { display: none; } }
-.table-join:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.table-join:active { transform: scale(0.97); }
-.table-join .icon { width: 14px; height: 14px; transform: rotate(-90deg); }
+.table-join:hover {
+  filter: brightness(1.06); transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 14px 30px rgba(0, 0, 0, 0.5);
+}
+.table-join:active { transform: translateY(0) scale(0.98); }
 .spec-toggle {
   display: flex; align-items: center; gap: 6px; cursor: pointer;
   height: 34px; padding: 0 11px; border-radius: var(--r-s);
@@ -2216,6 +2376,19 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   animation: sheetIn 0.35s var(--ease-spring) both;
 }
 @keyframes sheetIn { from { transform: translateY(18px) scale(0.96); opacity: 0; } }
+/* The corner cross every sheet carries. Sheets scroll their own content, so
+   this is pinned to the top of the sheet rather than to the top of what's in
+   it, and sits above the content it overlaps. */
+.sheet-x {
+  position: absolute; top: 10px; right: 10px; z-index: 2;
+  width: 30px; height: 30px; display: grid; place-items: center; cursor: pointer;
+  border-radius: 50%; border: 1px solid transparent;
+  background: transparent; color: var(--text-3);
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+.sheet-x:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.07); border-color: var(--line-2); }
+.sheet-x:active { background: rgba(255, 255, 255, 0.12); }
+.sheet-x .icon { width: 16px; height: 16px; }
 .sheet-win { border-color: rgba(230, 180, 80, 0.45); box-shadow: 0 0 0 1px rgba(230, 180, 80, 0.2), 0 30px 80px rgba(0, 0, 0, 0.7); }
 .sheet-kicker { font: 800 10.5px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
 .sheet-crown { margin: 10px auto 4px; width: 54px; height: 54px; display: grid; place-items: center;
@@ -2312,11 +2485,43 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    width it is given and the box is capped, so it never pushes the rest of a
    settings panel down the page. */
 .set-dress { display: flex; flex-direction: column; gap: 14px; margin: 4px 0 14px; }
+/* The grid and the two arrows that scroll it, which sit over its top and
+   bottom edges rather than beside it: beside it they'd take width from the
+   swatches, which is the one thing a phone hasn't got. */
+.swatch-scroll { position: relative; }
 .swatch-row {
   display: grid; gap: 10px; padding: 4px 2px;
   grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   max-height: 196px; overflow-y: auto; overscroll-behavior-y: contain;
   scrollbar-width: thin; scrollbar-color: rgba(230, 180, 80, 0.45) rgba(255, 255, 255, 0.06);
+}
+.swatch-more {
+  position: absolute; z-index: 2; left: 50%; translate: -50% 0;
+  width: 42px; height: 22px; display: none; place-items: center; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--bg-2); color: var(--text-2);
+  box-shadow: var(--shadow-1);
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+/* Shown only while there is something that way to reach: the classes come
+   from themepicker.js, which measures the grid. */
+.swatch-scroll.can-up .swatch-more-up, .swatch-scroll.can-down .swatch-more-down { display: grid; }
+/* A grid that scrolls gives up a strip at each end for the arrows to sit in,
+   so neither ever covers a swatch. Keyed off both classes rather than one, so
+   the strip is there for as long as the grid scrolls at all and the swatches
+   don't shift under the finger on the way down. */
+.swatch-scroll.can-up, .swatch-scroll.can-down { padding-block: 20px; }
+.swatch-more-up { top: 0; }
+.swatch-more-down { bottom: 0; }
+.swatch-more-up .icon { rotate: 180deg; }
+.swatch-more .icon { width: 15px; height: 15px; }
+.swatch-more:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: var(--bg-3); }
+.swatch-more:active { background: rgba(230, 180, 80, 0.18); }
+/* A thumb is wider than a cursor, and these sit over the swatches, so they
+   get the room to be hit without covering a whole row of them. */
+@media (pointer: coarse) {
+  .swatch-more { width: 54px; height: 28px; }
+  .swatch-more .icon { width: 17px; height: 17px; }
 }
 /* Card backs are narrower than a stretch of felt, so more of them fit. */
 .swatch-row[data-theme-row='cardBack'] { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
@@ -2390,6 +2595,18 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   animation: enterRise var(--dur-slow) var(--ease-out-expo) both;
   animation-delay: calc(80ms + var(--i, 0) * var(--stagger) - var(--enter-elapsed, 0ms));
 }
+
+/* The waiting room is the exception: one block, settling down into place. Its
+   heading, room code, seat count and player list used to rise in turn, and
+   since that screen rebuilds itself on every join and on every reload, the
+   stagger read as a flurry of parts assembling rather than as a page arriving.
+   The panel carries the only [data-enter] in the screen, so the rule above
+   still gives it its timing - only the direction changes. */
+.is-entering .waiting-panel { animation-name: enterDrop; }
+/* The chat beside it is the room's other half, so it settles the same way, a
+   beat later - two containers arriving, which is the point. In the table
+   proper the chat slides in and out on its own and is left alone. */
+.is-entering .waiting-chat { animation-name: enterDrop; }
 
 /* The table is the grand entrance: the felt settles into place, the seats
    come up around it one after another, and the dock rises last. */

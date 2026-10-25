@@ -7,7 +7,8 @@ import { getSocket, setGuestName, emitAck } from './socket.js';
 import { applyMotionClass, applyLiteClass, playEntrance } from './motion.js';
 import { showToast } from './toast.js';
 import { icons } from './svg/icons.js';
-import { userPillHTML, wireNameEditor } from './name.js';
+import { userMenuHTML, wireUserMenu } from './name.js';
+import { guardNumberFields } from './invalid.js';
 
 applyMotionClass();
 applyLiteClass();
@@ -24,6 +25,12 @@ document.addEventListener('mousedown', (e) => {
 });
 
 const root = document.getElementById('app');
+
+// Whole-number fields take digits and nothing else, on every screen: the
+// router swaps the contents of #app rather than the element, so one guard
+// here covers the lobby's stakes, the waiting room's and the betting dock's
+// alike, including the ones drawn later.
+guardNumberFields(root);
 
 const state = {
   user: null, // { id, username, bankroll }
@@ -109,14 +116,30 @@ function showAuth() {
   renderAuth(root, { onAuthed: () => enter() });
 }
 
+// Offered from the avatar menu on every screen that has one.
+async function doLogout() {
+  if (state.guest) {
+    // Guest mode: "log out" just gives this tab a fresh guest identity.
+    try { sessionStorage.removeItem('guestName'); } catch {}
+  } else {
+    await api.logout();
+  }
+  // Reload so the socket reconnects under the new identity.
+  location.reload();
+}
+
 // The link outlived the room. Rooms are held in memory for as long as
 // someone is in them, so this is the ordinary end of every link rather than
 // a fault, and it says so instead of showing a bare error.
 function showRoomGone(code) {
+  // The same bar as the lobby: everything about you under the avatar. This
+  // screen can't offer Settings, which is a page of the lobby, so the menu is
+  // a name change and a way out.
+  const menuGroups = [[{ id: 'logout', icon: icons.leave, label: state.guest ? 'New guest' : 'Log out', danger: true }]];
   root.innerHTML = `<div class="screen">
-    <header class="topbar">
+    <header class="topbar topbar-page">
       <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
-      <div class="topbar-user">${state.user ? userPillHTML(state.user) : ''}</div>
+      <div class="topbar-user">${state.user ? userMenuHTML(state.user, menuGroups) : ''}</div>
     </header>
     <main class="page gone-page">
       <div class="eyebrow" data-enter>Room not found</div>
@@ -134,7 +157,7 @@ function showRoomGone(code) {
     </main>
   </div>`;
   root.querySelector('.gone-code').textContent = code;
-  if (state.user) wireNameEditor(root, state.user);
+  if (state.user) wireUserMenu(root, state.user, { groups: menuGroups, onPick: (id) => id === 'logout' && doLogout() });
   playEntrance(root.querySelector('.screen'));
   root.querySelectorAll('[data-home]').forEach((b) => b.addEventListener('click', () => showLobby()));
 }
@@ -144,16 +167,7 @@ function showLobby(notice) {
     user: state.user,
     guest: !!state.guest,
     notice,
-    onLogout: async () => {
-      if (state.guest) {
-        // Guest mode: "log out" just gives this tab a fresh guest identity.
-        try { sessionStorage.removeItem('guestName'); } catch {}
-      } else {
-        await api.logout();
-      }
-      // Reload so the socket reconnects under the new identity.
-      location.reload();
-    },
+    onLogout: doLogout,
     onEnterRoom: (code, notice) => {
       state.roomCode = code;
       showTable(notice);

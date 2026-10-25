@@ -12,9 +12,10 @@ import { motionReduced, toggleMotion, resumeEntrance, ENTRANCE_MS } from './moti
 import { play, soundMuted, toggleSound } from './sound.js';
 import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, ZOOM } from './settings.js';
-import { themePickerHTML, wireThemePicker } from './themepicker.js';
+import { syncThemeArrows, themePickerHTML, wireThemePicker } from './themepicker.js';
 import { showToast } from './toast.js';
-import { numberFieldHTML, wireSteppers } from './stepper.js';
+import { balanceBlinds, numberFieldHTML, readField, wireSteppers } from './stepper.js';
+import { flagInvalid } from './invalid.js';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
@@ -25,26 +26,18 @@ const STREET_SOUND = { flop: 'flop', turn: 'turnCard', river: 'river' };
 // board lower so it clears the upper seats' bets.
 const CENTER = { x: 50, y: 50 };
 const LANDMARKS = {
-  // boardHalf is the space the community cards occupy, as a half-width and
-  // half-height in % of the camera; nothing else is allowed to sit inside it.
-  // cardPad widens the board's keep-out box by roughly half a pair of cards,
-  // because clearOfBoard only knows where a hand's centre point is: without it
-  // a seat whose cards sit diagonally off the board still ends up touching it.
-  landscape: { board: { x: 50, y: 44 }, pot: { x: 50, y: 60 }, muck: { x: 64, y: 60 }, betK: 0.56, myBetK: 0.56, cardsK: 0.4, boardHalf: { w: 21, h: 12 }, cardPad: { w: 7, h: 11 } },
-  portrait: { board: { x: 50, y: 50 }, pot: { x: 50, y: 63 }, muck: { x: 73, y: 63 }, betK: 0.45, myBetK: 0.5, cardsK: 0.37, boardHalf: { w: 27, h: 10 }, cardPad: { w: 10, h: 7 } },
+  // The pot and the muck sit above and below the community cards, both on the
+  // centre line: the board is the middle of the table and these are what it is
+  // being played for, so they read as one column rather than as things left
+  // around the felt. `pot.y` is where the bottom of the pot block sits, not its
+  // middle (see .pot in the stylesheet), so it stays the same distance above
+  // the board however many lines the pot is showing. computeLayout may slide
+  // the whole column down to clear a seat at the top of the table.
+  // cardsK is how far my own hand sits from my seat toward the middle.
+  landscape: { board: { x: 50, y: 44 }, pot: { x: 50, y: 31 }, muck: { x: 50, y: 58 }, cardsK: 0.24 },
+  portrait: { board: { x: 50, y: 50 }, pot: { x: 50, y: 40 }, muck: { x: 50, y: 66 }, cardsK: 0.22 },
 };
 
-// Nudges a point out of the board's footprint, straight away from its centre,
-// so bets and other players' cards never land on the community cards.
-function clearOfBoard(p, half, margin = 1.2) {
-  const dx = p.x - BOARD.x;
-  const dy = p.y - BOARD.y;
-  const spread = Math.hypot(dx / half.w, dy / half.h);
-  if (spread >= margin) return p;
-  if (spread < 0.001) return { x: p.x, y: BOARD.y + half.h * margin }; // dead centre
-  const k = margin / spread;
-  return { x: BOARD.x + dx * k, y: BOARD.y + dy * k };
-}
 let BOARD = LANDMARKS.landscape.board;
 let POT = LANDMARKS.landscape.pot;
 let MUCK = LANDMARKS.landscape.muck;
@@ -185,11 +178,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let askingLeave = false; // the leave confirmation is up
   let enteredAt = 0; // when the current screen's entrance began (motion.js)
   let showAskDone = 0; // hand whose "show your cards?" prompt has been answered
-  // Seat number -> the spot its cards were last nudged to, so a redraw during
-  // a peek can restore it without measuring anything. Declared up here with
-  // the rest of the state: the first draw can land before the body of this
-  // function has finished running, and a `const` further down isn't ready yet.
-  const cardNudges = new Map();
   let askingTransfer = null; // userId being offered the room, pending confirmation
   let askingSettings = false; // the settings panel is up
 
@@ -260,6 +248,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     window.removeEventListener('resize', onResize);
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('pointerdown', onDocPointerDown);
+    feltWatch?.disconnect();
   }
 
   function exit(notice, forced = false) {
@@ -576,7 +565,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // in the waiting room's layout, with no close button — there it's simply
   // part of the page rather than something covering the felt.
   function chatAsideHTML(waiting = false) {
-    return `<aside class="${waiting ? 'waiting-chat' : 'chat'}" id="chat" aria-label="Table chat">
+    return `<aside class="${waiting ? 'waiting-chat' : 'chat'}"${waiting ? ' data-enter' : ''} id="chat" aria-label="Table chat">
       <div class="chat-head"><span>Table chat</span>
         <button class="chat-x chat-results${showResults ? ' is-on' : ''}" data-chat-results
           aria-pressed="${showResults}"
@@ -955,6 +944,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const html = overlayHTML(cur);
     el.classList.toggle('is-empty', !html);
     setHTML(el, html);
+    // The swatch grids have only just been given a size, so whether they
+    // overflow - and so whether their arrows belong - is measured now.
+    if (askingSettings) syncThemeArrows(el);
   }
 
   function overlayHTML(cur) {
@@ -974,10 +966,17 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   const gameOverKey = (o) => `${o.hands}:${o.winner?.userId ?? 'none'}`;
 
+  // Every sheet closes from its own top-right corner as well as from its
+  // buttons and the dimmed area around it, since a corner cross is where
+  // people look first. `dismiss` is read by onOverlayClick, which knows which
+  // sheet is open and what backing out of it means.
+  const sheetX = `<button type="button" class="sheet-x" data-ov="dismiss" aria-label="Close" title="Close">${icons.close}</button>`;
+
   function celebrationHTML(over) {
     const w = over.winner;
     const iWon = w?.userId === user.id;
     return `<div class="sheet sheet-win" role="dialog" aria-modal="true" aria-label="Game over">
+      ${sheetX}
       <div class="sheet-kicker">${over.hands} hand${over.hands === 1 ? '' : 's'} played</div>
       <div class="sheet-crown">${icons.crown}</div>
       <h2 class="sheet-title">${iWon ? 'You win!' : `${esc(w?.username || 'Nobody')} wins!`}</h2>
@@ -1010,6 +1009,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const s = getSettings();
     const zoomOff = s.autoReveal || !s.peekZoom;
     return `<div class="sheet sheet-settings" role="dialog" aria-modal="true" aria-label="Table settings">
+      ${sheetX}
       <h2 class="sheet-title">Table settings</h2>
       <div class="set-split">
         <nav class="set-nav" role="tablist" aria-label="Settings sections">
@@ -1070,6 +1070,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function bustedHTML(cur) {
     const live = cur.table.seats.filter((s) => s && !s.left && s.chips > 0).length;
     return `<div class="sheet sheet-bust" role="dialog" aria-modal="true" aria-label="Out of chips">
+      ${sheetX}
       <div class="sheet-crown is-bust">${icons.allin}</div>
       <h2 class="sheet-title">You're out of chips</h2>
       <p class="sheet-sub">Your seat has gone back to the table. ${live} player${
@@ -1096,6 +1097,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       return '';
     }
     return `<div class="sheet sheet-ask" role="dialog" aria-modal="true" aria-label="Hand the room over">
+      ${sheetX}
       <div class="sheet-crown">${icons.key}</div>
       <h2 class="sheet-title">Make ${esc(who)} the owner?</h2>
       <p class="sheet-sub">They'll deal the hands, set the stakes and answer the door, and closing the room becomes theirs to do. You'll stay at the table as an ordinary player — and you can't take it back yourself.</p>
@@ -1116,6 +1118,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const n = others.size;
     const mid = cur.table.phase !== 'waiting';
     return `<div class="sheet sheet-ask" role="dialog" aria-modal="true" aria-label="Leave the room">
+      ${sheetX}
       <div class="sheet-crown is-bust">${icons.leave}</div>
       <h2 class="sheet-title">${host ? 'Close the room?' : 'Leave the room?'}</h2>
       <p class="sheet-sub">${
@@ -1163,11 +1166,31 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // The only parts of the settings sheet that answer to another control:
   // turning the cards face up takes the peek zoom out of play.
+  // The cloth is cut to the shape of the table it's going on - stretching it
+  // would turn the rounded ends back into elliptical ones - so the felt is
+  // redrawn whenever the table changes shape. Measured rather than assumed,
+  // since the portrait layout is a container query the stylesheet owns.
+  function feltAspect() {
+    const w = els?.camera?.clientWidth;
+    const h = els?.camera?.clientHeight;
+    return w && h ? w / h : 1.9;
+  }
+  // The aspect the cloth on screen was cut for, so a resize that doesn't
+  // change the shape doesn't rebuild it.
+  let feltCutFor = 0;
+  let feltWatch = null;
+
+  function drawFelt() {
+    const felt = els?.camera?.querySelector('.felt');
+    if (!felt) return;
+    feltCutFor = feltAspect();
+    setHTML(felt, feltSVG(getSettings().felt, feltCutFor));
+  }
+
   function redressTable() {
     if (mode !== 'table' || !els?.camera) return;
     const s = getSettings();
-    const felt = els.camera.querySelector('.felt');
-    if (felt) setHTML(felt, feltSVG(s.felt));
+    drawFelt();
     if (els.feltLogo) setHTML(els.feltLogo, feltLogoSVG(feltTheme(s.felt).logo));
     draw(); // the card backs, wherever they are
   }
@@ -1227,6 +1250,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const btn = e.target.closest('[data-ov]');
     if (!btn) return;
     const kind = btn.dataset.ov;
+    // The corner cross: back out of whichever sheet is up. The first three
+    // are questions, so closing one is the same as answering no; the other
+    // two are notices, and closing one puts it away for this game.
+    if (kind === 'dismiss') {
+      if (closeSheet()) return;
+      if (shown?.gameOver) dismissedGameOver = gameOverKey(shown.gameOver);
+      else bustAnswered = true; // staying on to watch, same as the button
+      return drawOverlay(shown);
+    }
     if (kind === 'leave') { askingLeave = true; return drawOverlay(shown); }
     if (kind === 'leave-yes') return leaveRoom();
     if (kind === 'leave-no') askingLeave = false;
@@ -1494,25 +1526,25 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     root.innerHTML = `<div class="screen">
       ${topbarHTML(t, { page: true })}
       <main class="page waiting-page">
-        <section class="panel waiting-panel">
-          <div class="eyebrow" data-enter>Waiting room</div>
-          <h1 class="display" data-enter>Gather your players</h1>
+        <section class="panel waiting-panel" data-enter>
+          <div class="eyebrow">Waiting room</div>
+          <h1 class="display">Gather your players</h1>
           <p class="lead">${isHost ? 'Share the code, set everyone’s starting chips, then deal the first hand.' : 'The host sets everyone’s starting chips and deals the first hand.'}</p>
-          <div class="code-block" data-enter>
-            <div><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
+          <div class="code-block">
+            <div class="code-id"><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
             <span class="code-acts">
               <button class="btn btn-ghost btn-sm" data-copy="link" title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
               <button class="btn btn-ghost btn-sm" data-copy="code" title="Copy just the five-letter code">${icons.copy}<span>Copy code</span></button>
             </span>
           </div>
-          <div class="meta-row" data-enter>
+          <div class="meta-row">
             <span class="seat-count"><b>${n}</b>/${t.maxSeats || 9} seats</span>
             ${isHost ? `<span class="add-bot">
               ${levelSelectHTML(botLevel, n >= (t.maxSeats || 9))}
               <button class="btn btn-ghost btn-sm" data-add-bot ${n >= (t.maxSeats || 9) ? 'disabled' : ''}>${icons.robot}Add bot</button>
             </span>` : ''}
           </div>
-          <ul class="player-list" data-enter>
+          <ul class="player-list">
             ${state.lobby.map((p) => `
               <li class="player-row${p.isBot ? ' is-bot' : ''}">
                 <span class="avatar-sm">${p.isBot ? icons.robot : avatarSVG(p.username)}</span>
@@ -1601,28 +1633,50 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       }
     });
     root.querySelector('[data-start-chips]')?.addEventListener('change', async (e) => {
+      const chips = readField(e.target, 'Starting chips', showError);
+      if (chips === null) return;
       try {
-        await emitAck('setStartingChips', { chips: Number(e.target.value) });
+        await emitAck('setStartingChips', { chips });
       } catch (err) {
         draw(); // put the old figure back before the message, which it would wipe
         showError(err.message);
       }
     });
+    // The two blinds are saved as a pair. Balancing runs inside this handler
+    // rather than on its own listener so the figure it corrects is already in
+    // the field by the time the pair is sent - and the change it fires on that
+    // field re-enters here, which `saving` turns into one save, not two.
+    let saving = false;
     root.querySelectorAll('[data-blind]').forEach((input) => {
       input.addEventListener('change', async () => {
-        const read = (k) => Number(root.querySelector(`[data-blind="${k}"]`)?.value);
+        if (saving) return;
+        const field = (k) => root.querySelector(`[data-blind="${k}"]`);
+        const name = input.dataset.blind === 'bb' ? 'The big blind' : 'The small blind';
+        if (readField(input, name, showError) === null) return;
+        saving = true;
+        let pair;
         try {
-          await emitAck('setBlinds', { smallBlind: read('sb'), bigBlind: read('bb') });
+          pair = balanceBlinds(field('sb'), field('bb'), input.dataset.blind);
+        } finally {
+          saving = false;
+        }
+        try {
+          await emitAck('setBlinds', { smallBlind: pair.sb, bigBlind: pair.bb });
         } catch (err) {
+          // No marking the field here: draw() replaces it with the server's
+          // own figures, so there's nothing left in it that was wrong.
           draw(); // put the old figures back first: it rebuilds the screen,
           showError(err.message); // and would wipe the message if it followed
         }
       });
     });
     root.querySelector('[data-join-chips]')?.addEventListener('change', async (e) => {
+      const chips = readField(e.target, 'Late-joiner chips', showError);
+      if (chips === null) return;
       try {
-        await emitAck('setJoinChips', { chips: Number(e.target.value) });
+        await emitAck('setJoinChips', { chips });
       } catch (err) {
+        flagInvalid(e.target);
         showError(err.message);
       }
     });
@@ -1688,7 +1742,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </aside>
       <main class="stage" id="stage">
         <div class="camera" id="camera">
-          <div class="felt">${feltSVG(getSettings().felt)}</div>
+          <div class="felt"></div>
           <div class="felt-logo" aria-hidden="true">${feltLogoSVG(feltTheme(getSettings().felt).logo)}</div>
           <div class="anchor" style="left:${BOARD.x}%;top:${BOARD.y}%"><div class="board" id="board"></div><div class="phase-label" id="phase"></div></div>
           <div class="anchor pot" id="pot" style="left:${POT.x}%;top:${POT.y}%"></div>
@@ -1723,6 +1777,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
       chatJump: $('chat-jump'),
     };
+    // The cloth needs the camera's measured shape, so it goes in once the
+    // markup is in the document rather than as part of the string above.
+    drawFelt();
+    // The table turns between landscape and portrait on a container query the
+    // stylesheet owns, and opening the chat reshapes it too - neither of which
+    // is a state update, so drawTable wouldn't hear about it. Watching the
+    // camera itself catches every one of them.
+    feltWatch?.disconnect();
+    feltWatch = new ResizeObserver(() => {
+      if (mode === 'table' && Math.abs(feltAspect() - feltCutFor) > 0.01) drawFelt();
+    });
+    feltWatch.observe(els.camera);
     buildDock();
     wireTopbar();
     applyHistoryOpen();
@@ -1908,6 +1974,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // ---------------------------------------------------------------------------
   // Layout
   // ---------------------------------------------------------------------------
+  // How much of a hand held behind a nameplate sticks up above it, as a
+  // fraction of a card. The stylesheet positions the cards with it (see
+  // .pod-hand) and the layout below needs the same figure to leave room for
+  // them above the plate, so it's set here and handed to the CSS.
+  const POD_HAND_SHOW = 0.62;
+  // The same for a hand turned over at showdown. More of it shows, since it's
+  // there to be read - but it stays tucked behind the plate rather than
+  // standing on top of it, because on a phone two seats stacked up a rail have
+  // no room for two whole cards and two badges between them. The rank and
+  // suit are in a card's top corner, so they read either way.
+  const POD_REVEAL_SHOW = 0.72;
+  // How far a face-down hand lifts, as a fraction of a card, when its player
+  // peeks: the tilt (peekTiltL/R in the stylesheet) raises the cards and turns
+  // them, so their top corners climb about a quarter of a card. The badge
+  // above sits clear of that permanently - a badge that hopped up every time
+  // someone looked at their cards would be its own distraction.
+  const PEEK_RISE = 0.25;
+
   function computeLayout(table) {
     const portrait = els.camera.clientWidth < els.camera.clientHeight;
     const lm = portrait ? LANDMARKS.portrait : LANDMARKS.landscape;
@@ -1919,10 +2003,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       el.style.left = `${p.x}%`;
       el.style.top = `${p.y}%`;
     };
+    // An x percentage is of the camera's width and a y percentage of its
+    // height, so anything comparing the two needs both in pixels.
+    const camW = els.camera.clientWidth || 1;
+    const camH = els.camera.clientHeight || 1;
     place(els.board.parentElement, BOARD);
-    place(els.pot, POT);
     place(els.muck, MUCK);
     place(els.foldZone, BOARD);
+    place(els.pot, POT);
     // Printed where the cards are played, the way a real table's mark sits
     // under the board - not at the geometric middle, where the pot readout
     // landed on top of it.
@@ -1936,86 +2024,222 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (start < 0) start = 0;
     const ordered = [...list.slice(start), ...list.slice(0, start)];
     const n = ordered.length;
-    const cardKeepOut = { w: lm.boardHalf.w + lm.cardPad.w, h: lm.boardHalf.h + lm.cardPad.h };
-    // How far a seat's chips must sit from its cards to stay visible: half a
-    // pair of cards plus the chip and its label. --card-o in the stylesheet
-    // is clamp(26px, 7.4cqmin, 54px).
-    const camW = els.camera.clientWidth || 1;
-    const camH = els.camera.clientHeight || 1;
-    const cardW = Math.min(54, Math.max(26, 0.074 * Math.min(camW, camH)));
-    const minBetGap = cardW * 0.9 + 24;
+    els.camera.style.setProperty('--pod-hand-show', String(POD_HAND_SHOW));
+    els.camera.style.setProperty('--pod-reveal-show', String(POD_REVEAL_SHOW));
+    els.camera.style.setProperty('--peek-rise', String(PEEK_RISE));
+    // Everyone else's cards sit behind their nameplate with part of them
+    // showing above it - more once they're turned over at showdown, at a
+    // larger size - and their badge above that again. A plate any closer to the top of the
+    // table puts the badge, and then the cards, under the bar across the top
+    // of the screen.
+    //
+    // Measured from the plate's TOP edge, which is what the cards stand on,
+    // and then back to the anchor at its middle. Reserving from the middle
+    // left exactly half a plate too little: enough to get away with on a tall
+    // phone, not on a wide desktop table, where the badge was cut in half.
+    //
+    // showW mirrors --card-show in the stylesheet: a hand turned over is drawn
+    // larger than the backs, and it is the showdown that needs the room. The
+    // plate and the badge are read off the ones already on screen - both are
+    // sized in em off a clamp, so a guess here would drift from the stylesheet.
+    const cqmin = Math.min(camW, camH);
+    const showW = portrait
+      ? Math.min(64, Math.max(44, 0.13 * cqmin))
+      : Math.min(60, Math.max(38, 0.106 * cqmin));
+    const podH = els.seats.querySelector('.pod')?.getBoundingClientRect().height || 0.088 * camH;
+    const tagEl = els.seats.querySelector('.pod .tag');
+    const tagH = (tagEl ? tagEl.getBoundingClientRect().height : 0.045 * camH) + 7;
+    // How far a seat's hand and badge stand above its plate at showdown, the
+    // taller of a hand's two states. A revealed hand is tucked behind the plate
+    // like a face-down one, just showing more of it.
+    const standPx = showW * 1.4 * POD_REVEAL_SHOW + tagH;
+    const minPodY = ((podH / 2 + standPx + 4) / camH) * 100;
     // My own hand is drawn much larger than anyone else's (--card-me against
-    // --card-o), and my chips sit on the same line from my seat to the middle,
-    // so they landed on top of my cards. They move aside by a measured amount
-    // rather than a nudge: half a pair is a whole card wide, plus the chip
-    // stack and a margin. Sideways, not upwards — in portrait the pot sits
-    // directly above the hand and there's no room between the two.
-    const myCardW = Math.min(96, Math.max(46, 0.125 * Math.min(camW, camH)));
-    const myBetSide = ((myCardW + 38) / camW) * 100;
+    // --card-o), and it now sits low enough to tuck under my own tag - which
+    // leaves the space straight above it free for my chips. They go there,
+    // squared up over the middle of the hand: half a card plus the stack and
+    // a little air.
+    const myCardW = Math.min(77, Math.max(37, 0.1 * Math.min(camW, camH)));
+    const myBetRise = ((myCardW * 1.4) / 2 + 30) / camH * 100;
     const rx = portrait ? 36 : 44;
     const ry = 43;
     const map = new Map();
+
+    // --- What's already on screen ------------------------------------------
+    // A plate is as wide as the name in it, and plates, bets and the dealer
+    // button are all sized in em off clamps, so they're read off the ones
+    // drawn last time rather than guessed. The very first draw has nothing to
+    // read and uses estimates; the next update corrects it.
+    const pct = (px, of) => (px / of) * 100;
+    const podFont = Math.min(14, Math.max(10, 0.0235 * cqmin));
+    const plateSize = (seat) => {
+      const el = els.seats.querySelector(`.pod[data-seat="${seat}"]`);
+      return { w: pct(el?.offsetWidth || 15 * podFont, camW), h: pct(el?.offsetHeight || podH, camH) };
+    };
+    const betEl = els.seats.querySelector('.anchor.bet');
+    const betW = pct(betEl?.offsetWidth || 4.6 * podFont, camW);
+    const betH = pct(betEl?.offsetHeight || 2 * podFont, camH);
+    const dealerW = pct(Math.min(30, Math.max(18, 0.046 * cqmin)), camW);
+    const gapX = pct(5, camW);
+    const boxOf = (el) => {
+      const r = el.getBoundingClientRect();
+      const c = els.camera.getBoundingClientRect();
+      return { t: pct(r.top - c.top, camH), b: pct(r.bottom - c.top, camH), l: pct(r.left - c.left, camW), r: pct(r.right - c.left, camW) };
+    };
+    const boardBox = boxOf(els.board);
+    const potBox = boxOf(els.pot);
+    const muckBox = boxOf(els.muck);
+    // A seat's footprint, top to bottom: its badge, the hand behind the plate,
+    // the plate itself and - on a phone, where the chips go under the plate -
+    // its bet. It has two shapes, and they never coexist: while the betting
+    // is on, the hand is face down and small and there may be chips under the
+    // plate; at showdown the hand is turned up and larger and the chips are
+    // already in the pot. So seats are spaced for whichever shape is taller,
+    // not for both stacked together - adding them up asked for room a phone
+    // doesn't have. Measured from the plate's centre: up, and down.
+    const gapY = pct(4, camH);
+    const cardO = Math.min(54, Math.max(26, 0.074 * cqmin));
+    const aboveBet = pct(podH / 2 + cardO * 1.4 * (POD_HAND_SHOW + PEEK_RISE) + tagH + 2, camH);
+    const aboveShow = pct(podH / 2 + standPx + 2, camH);
+    const belowBet = pct(podH / 2, camH) + (portrait ? gapY + betH : 0);
+    const belowShow = pct(podH / 2, camH);
+    const above = Math.max(aboveBet, aboveShow);
+    const below = Math.max(belowBet, belowShow);
+    // Centre to centre, two seats one above the other need this much.
+    const step = Math.max(aboveBet + belowBet, aboveShow + belowShow);
+
+    // --- Portrait: two rails and, for an odd count, one seat at the top ------
+    // A tall table has the board straight across its middle, so the seats go
+    // down the two rails - above the board and below it - spread out by the
+    // room each one actually needs. An angle round an ellipse can't do that:
+    // at nine players it put two seats on each rail a few pixels apart.
+    const slot = new Map();
+    if (portrait) {
+      const m = n - 1;
+      const top = m % 2 === 1;
+      const perSide = (m - (top ? 1 : 0)) / 2;
+      const lower = Math.floor(perSide / 2);
+      const upper = perSide - lower;
+      // Seats one above another between two heights. The ones above the
+      // board sit as high as they can, with any room to spare left between
+      // them and the board - that's where the pot is. The ones below it share
+      // their room out evenly.
+      const spread = (count, from, to, alignTop) => {
+        if (!count) return [];
+        const room = Math.max(0, to - from - (above + (count - 1) * step + below));
+        const gap = alignTop ? room / count : room / (count + 1);
+        const first = from + (alignTop ? 0 : gap) + above;
+        return Array.from({ length: count }, (_, q) => first + q * (step + gap));
+      };
+      const upperYs = spread(upper, 0.6, boardBox.t - 0.8, true);
+      const lowerYs = spread(lower, boardBox.b + 0.8, 99.4, false);
+      // Clockwise from me at the bottom: up the left rail, across the top,
+      // down the right.
+      const order = [
+        ...lowerYs.slice().reverse().map((y) => ({ side: 'left', y })),
+        ...upperYs.slice().reverse().map((y) => ({ side: 'left', y })),
+        ...(top ? [{ side: null, y: spread(1, 0.6, potBox.t - 0.8, true)[0] }] : []),
+        ...upperYs.map((y) => ({ side: 'right', y })),
+        ...lowerYs.map((y) => ({ side: 'right', y })),
+      ];
+      order.forEach((o, j) => slot.set(j + 1, o));
+    }
+
     ordered.forEach((p, i) => {
+      const isMe = p.userId === user.id;
+      const size = plateSize(p.seat);
       // Seat 0 (me) at the bottom; others follow clockwise in action order.
       const a = ((90 + (i * 360) / n) * Math.PI) / 180;
       const pod = { x: 50 + rx * Math.cos(a), y: 50 + ry * Math.sin(a) };
-      const isMe = p.userId === user.id;
-      // My own cards, my “Your turn” tag and my nameplate stack up in the same
-      // narrow strip at the bottom. The plate drops a little and cardsK lifts
-      // my hand (there's only a few pixels between the plate and the edge of
-      // the table, so the room has to come from above) to leave the tag
-      // between them readable as the cards grow with the screen.
-      if (isMe) pod.y += portrait ? 2.5 : 1.5;
-      const toward = (k) => ({ x: pod.x + (CENTER.x - pod.x) * k, y: pod.y + (CENTER.y - pod.y) * k });
-      // Cards sit on the felt in front of each seat — far enough in to be
-      // clearly visible rather than hiding behind the nameplate.
-      // In front of the seat, but kept off the community cards by the board's
-      // keep-out box widened by the cards' own size. Overlapping the nameplate
-      // is fine - the cards are drawn on top of it, so you can still see them
-      // tilt when that player peeks.
-      const cards = isMe
-        ? toward(lm.cardsK)
-        : clearOfBoard(toward(portrait ? 0.3 : 0.32), cardKeepOut, 1.12);
-      const vx = CENTER.x - pod.x;
-      const vy = CENTER.y - pod.y;
-      const len = Math.hypot(vx, vy) || 1;
-      // Dealer button sits beside the cards, on the side facing the table's
-      // edge so it never lands on the board.
-      const off = isMe ? (portrait ? 16 : 10) : portrait ? 11 : 7;
-      let px = -vy / len;
-      let py = vx / len;
-      if (Math.abs(cards.x - px * off - 50) > Math.abs(cards.x + px * off - 50) + 0.01) {
-        px = -px;
-        py = -py;
-      }
-      let bet = isMe ? toward(lm.myBetK) : clearOfBoard(toward(lm.betK), lm.boardHalf);
-      // Cards and bet both sit on the line from the seat to the middle, so for
-      // seats near the board they can land on top of each other and hide the
-      // chips. Measured in real pixels — an x percentage is of the camera's
-      // width and a y percentage of its height, so the two can't be compared
-      // directly — and the bet slides sideways, away from the dealer button,
-      // until it clears the cards.
-      // Mine sit beside my hand, on the opposite side from the dealer button.
-      if (isMe) bet = { x: clamp(cards.x - px * myBetSide, 7, 93), y: bet.y };
-      const apart = Math.hypot(((cards.x - bet.x) / 100) * camW, ((cards.y - bet.y) / 100) * camH);
-      if (!isMe && apart < minBetGap) {
-        const push = ((minBetGap - apart) / camW) * 100;
-        bet = clearOfBoard({ x: bet.x - px * push, y: bet.y - py * push }, lm.boardHalf);
-      }
-      const dealer = { x: cards.x + px * off, y: cards.y + py * off };
-      // Portrait is tight: pull side seats out to the rail and keep them clear
-      // of the band across the middle where the board sits.
       let side = null;
-      if (portrait && !isMe) {
-        if (Math.abs(pod.y - 50) < 15) pod.y = 50 + (pod.y >= 50 ? 15 : -15);
-        if (Math.abs(pod.x - 50) > 12) {
-          side = pod.x < 50 ? 'left' : 'right';
-          pod.x = side === 'left' ? 2 : 98;
-        }
+      if (isMe) {
+        // My own cards, my “Your turn” tag and my nameplate stack up in the
+        // same narrow strip at the bottom; the plate drops a little to make
+        // room for them.
+        pod.y += portrait ? 2.5 : 1.5;
+      } else if (portrait) {
+        const s = slot.get(i);
+        side = s.side;
+        pod.y = s.y;
+        pod.x = side === 'left' ? 2 : side === 'right' ? 98 : 50;
+      } else {
+        // Room above for the hand and badge, and the whole plate on the table.
+        pod.y = Math.max(pod.y, minPodY);
+        pod.x = clamp(pod.x, size.w / 2 + 0.6, 100 - size.w / 2 - 0.6);
       }
-      const stack = { x: pod.x + (portrait ? 9 : 5), y: pod.y };
-      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i });
+      // The plate as it will be drawn: a seat pinned to a rail grows inward
+      // from it rather than straddling its anchor.
+      const plateL = side === 'left' ? pod.x : side === 'right' ? pod.x - size.w : pod.x - size.w / 2;
+      const plate = { l: plateL, r: plateL + size.w, t: pod.y - size.h / 2, b: pod.y + size.h / 2 };
+      const plateCx = (plate.l + plate.r) / 2;
+      const stack = { x: plateCx, y: pod.y };
+
+      if (isMe) {
+        const toward = (k) => ({ x: pod.x + (CENTER.x - pod.x) * k, y: pod.y + (CENTER.y - pod.y) * k });
+        const cards = toward(lm.cardsK);
+        // Dealer button beside my cards.
+        const off = portrait ? 16 : 10;
+        const dealer = { x: cards.x + off, y: cards.y };
+        // My chips sit squarely above my hand rather than off to one side.
+        const bet = { x: cards.x, y: clamp(cards.y - myBetRise, 8, 92) };
+        map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate });
+        return;
+      }
+
+      // Everyone else's chips and the dealer button sit right against their
+      // plate: as close to the player as they can be without going under it,
+      // and out of the column the pot, board and muck run down. The dealer
+      // button is beside the plate, on the side facing the middle. The chips
+      // go beside it too on a wide table; on a phone there's no width to
+      // spare - two plates and the pot fill it - so they go just under the
+      // plate, in the room the spacing above set aside for them.
+      const inward = plateCx <= 50 ? 1 : -1;
+      const edge = inward > 0 ? plate.r : plate.l;
+      const isDealer = table.dealerSeat === p.seat;
+      const dealer = { x: edge + inward * (gapX + dealerW / 2), y: pod.y };
+      const betFrom = edge + inward * (gapX + (isDealer ? dealerW + gapX : 0));
+      const bet = portrait
+        ? { x: plateCx, y: plate.b + gapY + betH / 2 }
+        : { x: betFrom + inward * (betW / 2), y: pod.y };
+      // Where this player's cards are: behind the plate, at its top edge.
+      const cards = { x: plateCx, y: plate.t };
+      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate });
     });
+
+    // --- The centre column ---------------------------------------------------
+    // The pot, board and muck run down the middle. If a seat at the top of the
+    // table reaches into that column - the seat facing me, at an even count -
+    // the whole column slides down to clear it, as far as the room above my
+    // own chips allows.
+    const colL = Math.min(potBox.l, muckBox.l) - 0.5;
+    const colR = Math.max(potBox.r, muckBox.r) + 0.5;
+    let topClear = -Infinity;
+    let bottomLimit = 99;
+    for (const L of map.values()) {
+      if (L.isMe) {
+        bottomLimit = Math.min(bottomLimit, L.bet.y - pct(14, camH));
+        continue;
+      }
+      if (L.plate.r < colL || L.plate.l > colR) continue;
+      // A phone seat's chips hang under its plate, so they count too.
+      const foot = portrait ? L.bet.y + betH / 2 : L.plate.b;
+      if (L.pod.y < boardBox.t) topClear = Math.max(topClear, foot);
+      else bottomLimit = Math.min(bottomLimit, L.pod.y - above);
+    }
+    const need = topClear + 1 - potBox.t;
+    const room = bottomLimit - 1 - muckBox.b;
+    const shift = need > 0 ? Math.min(need, Math.max(0, room)) : 0;
+    if (shift > 0) {
+      POT = { x: POT.x, y: POT.y + shift };
+      BOARD = { x: BOARD.x, y: BOARD.y + shift };
+      MUCK = { x: MUCK.x, y: MUCK.y + shift };
+      DECK = BOARD;
+      place(els.board.parentElement, BOARD);
+      place(els.pot, POT);
+      place(els.muck, MUCK);
+      place(els.foldZone, BOARD);
+      if (els.feltLogo) place(els.feltLogo, BOARD);
+    }
     return { portrait, n, map };
   }
 
@@ -2038,6 +2262,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const pt = prev ? prev.table : null;
     layout = computeLayout(t);
     els.camera.classList.toggle('is-portrait', layout.portrait);
+    // A resize that reshapes the table needs the cloth cut again. Compared
+    // with a little slack, so a pixel of reflow doesn't rebuild the felt.
+    if (Math.abs(feltAspect() - feltCutFor) > 0.01) drawFelt();
     els.camera.classList.toggle('is-crowded', layout.n >= 5);
     // Only a genuinely new hand deals cards in. Plain redraws (cancelling a
     // fold, ending a peek, resizing) must not replay everyone's deal.
@@ -2095,7 +2322,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const fresh = els.seats.querySelector('[data-mine]');
       if (fresh && fresh.outerHTML === mineHTML) settleIn(fresh, mine);
     }
-    clearCardsOfPods();
     drawBoard(t, newHand, ctx.winCards);
     drawPot(t, summary);
     drawMuck(t);
@@ -2446,7 +2672,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const isLoser = !!ctx.summary && !isWinner;
     const away = p.left || p.sittingOut;
     const menuOpen = seatMenuFor === p.userId;
-    const cls = ['anchor', 'pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', L.pod.y > 62 && 'is-low', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
+    // 'anchor' has moved to the group around the plate - the plate is now
+    // placed by that group, so that the cards tucked behind it can be
+    // positioned against the plate's own box.
+    const cls = ['pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', L.pod.y > 62 && 'is-low', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
+      .filter(Boolean)
+      .join(' ');
+    const groupCls = ['anchor', 'seat-group', L.isMe && 'is-me', L.side && `side-${L.side}`]
       .filter(Boolean)
       .join(' ');
     const tag = seatTag(p, { acting, isMe: L.isMe, isWinner, t, summary: ctx.summary });
@@ -2457,7 +2689,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
     const stack = p.chips > 0 ? `<div class="stack">${chipStackSVG(p.chips, { maxCols: 3, maxPerCol: 6 })}</div>` : '';
 
-    let html = `<div class="${cls}" style="left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}" data-seat="${p.seat}">
+    let html = `<div class="${groupCls}" style="left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}">
+      ${L.isMe ? '' : handHTML(p, L, ctx)}
+      <div class="${cls}" data-seat="${p.seat}">
       <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
       <div class="who"><span class="name-row"><span class="name">${esc(p.username)}</span>${marksHTML(p, ctx)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}
@@ -2481,8 +2715,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
              }`
           : ''
       }
+      </div>
     </div>`;
-    html += handHTML(p, L, ctx);
+    // Mine stay where they were: out on the felt, big enough to peek at and to
+    // throw in to fold.
+    if (L.isMe) html += handHTML(p, L, ctx);
     if (BETTING.includes(t.phase) && p.betThisStreet > 0) {
       html += `<div class="anchor bet" style="left:${L.bet.x}%;top:${L.bet.y}%">${chipStackSVG(p.betThisStreet, { maxCols: 2, maxPerCol: 5 })}<span class="bet-amt">${fmt(p.betThisStreet)}</span></div>`;
     }
@@ -2490,103 +2727,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       html += `<div class="anchor dealer" style="left:${L.dealer.x}%;top:${L.dealer.y}%">${dealerButtonSVG()}</div>`;
     }
     return html;
-  }
-
-  // The seat positions are worked out from percentages before anything is on
-  // screen, so they can't know how wide a nameplate turned out with this
-  // player's name at this font size. This measures both afterwards and, where
-  // they overlap, looks for the nearest spot that clears the nameplate while
-  // staying off the community cards and inside the table.
-
-  function applyNudges() {
-    for (const hand of els.seats.querySelectorAll('[data-hand]')) {
-      const at = cardNudges.get(Number(hand.dataset.hand));
-      if (!at) continue;
-      hand.style.left = at.left;
-      hand.style.top = at.top;
-    }
-  }
-
-  function clearCardsOfPods() {
-    if (!layout || !els?.seats) return;
-    // Where a hand ends up is decided by measuring what's actually on screen,
-    // so the answer depends on the camera it's measured through. A peek zooms
-    // that camera, and every redraw while it's held — any bet, any fold —
-    // re-ran this and could settle on a different spot, so other players'
-    // cards twitched around the felt while you were reading your own. The
-    // seats are rebuilt from markup each time, so the last placements are
-    // put back rather than worked out afresh.
-    if (peeking || dragging) return applyNudges();
-    const W = els.camera.offsetWidth;
-    const H = els.camera.offsetHeight;
-    if (!W || !H) return;
-    const rect = els.camera.getBoundingClientRect();
-    const k = W / (rect.width || W); // screen px -> camera px
-    const box = (el) => {
-      const r = el.getBoundingClientRect();
-      return {
-        l: (r.left - rect.left) * k,
-        r: (r.right - rect.left) * k,
-        t: (r.top - rect.top) * k,
-        b: (r.bottom - rect.top) * k,
-      };
-    };
-    const hits = (a, b, pad = 2) =>
-      Math.min(a.r, b.r) - Math.max(a.l, b.l) > -pad && Math.min(a.b, b.b) - Math.max(a.t, b.t) > -pad;
-    const half = boardHalfOf();
-    const bx = (BOARD.x / 100) * W;
-    const by = (BOARD.y / 100) * H;
-    const hw = (half.w / 100) * W;
-    const hh = (half.h / 100) * H;
-
-    // Straight out from the middle first, then sideways, then back in: the
-    // rail usually has the room the board doesn't.
-    const dirs = [];
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2;
-      dirs.push([Math.cos(a), Math.sin(a)]);
-    }
-
-    // Chips in front of a seat are as much worth seeing as the nameplate.
-    const betBoxes = [...els.seats.querySelectorAll('.bet')].map(box);
-
-    for (const hand of els.seats.querySelectorAll('[data-hand]')) {
-      const seat = Number(hand.dataset.hand);
-      const L = layout.map.get(seat);
-      if (!L || L.isMe) continue; // my own hand is draggable; leave it be
-      const pod = els.seats.querySelector(`.pod[data-seat="${seat}"]`);
-      if (!pod) continue;
-      const podBox = box(pod);
-      const handBox = box(hand);
-      const blocked = (b) => hits(podBox, b, 0) || betBoxes.some((x) => hits(x, b, 0));
-      if (!blocked(handBox)) {
-        cardNudges.delete(seat); // sits fine where the layout put it
-        continue;
-      }
-
-      const w = handBox.r - handBox.l;
-      const h = handBox.b - handBox.t;
-      const cx = (L.cards.x / 100) * W;
-      const cy = (L.cards.y / 100) * H;
-      let placed = null;
-      for (let step = 8; step <= 120 && !placed; step += 8) {
-        for (const [ux, uy] of dirs) {
-          const nx = cx + ux * step;
-          const ny = cy + uy * step;
-          const b = { l: nx - w / 2, r: nx + w / 2, t: ny - h / 2, b: ny + h / 2 };
-          if (blocked(b)) continue; // still on the nameplate or someone's chips
-          if (Math.hypot((nx - bx) / hw, (ny - by) / hh) < 1) continue; // on the board
-          if (b.l < 4 || b.r > W - 4 || b.t < 4 || b.b > H - 4) continue; // off the table
-          placed = { nx, ny };
-          break;
-        }
-      }
-      if (!placed) continue; // nowhere better; leave it where it was
-      const at = { left: `${(placed.nx / W) * 100}%`, top: `${(placed.ny / H) * 100}%` };
-      cardNudges.set(seat, at);
-      hand.style.left = at.left;
-      hand.style.top = at.top;
-    }
   }
 
   // Puts a node that was carried across a redraw back into the new markup.
@@ -2602,18 +2742,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     node.classList.remove('is-settling');
   }
 
-  // The board's keep-out, inflated by the cards' own size, in percent.
-  function boardHalfOf() {
-    const lm = layout?.portrait ? LANDMARKS.portrait : LANDMARKS.landscape;
-    return { w: lm.boardHalf.w + lm.cardPad.w, h: lm.boardHalf.h + lm.cardPad.h };
-  }
-
   // Deal animation offset: each card flies in from the deck, round-robin.
-  function dealStyle(L, cardIdx) {
+  function dealStyle(L, cardIdx, to = L.cards) {
     const W = els.camera.clientWidth;
     const H = els.camera.clientHeight;
-    const dx = ((DECK.x - L.cards.x) / 100) * W;
-    const dy = ((DECK.y - L.cards.y) / 100) * H;
+    const dx = ((DECK.x - to.x) / 100) * W;
+    const dy = ((DECK.y - to.y) / 100) * H;
     return `--dx:${dx.toFixed(0)}px;--dy:${dy.toFixed(0)}px;--d:${(cardIdx * layout.n + L.index) * 90}ms`;
   }
 
@@ -2653,15 +2787,20 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         ${faceUp || getSettings().peekHintSeen ? '' : `<span class="peek-hint">${open ? 'Throw to fold' : 'Hold to peek · throw to fold'}</span>`}
       </div>`;
     }
+    // Everyone else's cards sit behind their nameplate with the top half
+    // showing, the way a player holds them against the rail: enough to see
+    // them lift when that player looks, never enough to read. Positioned by
+    // the plate itself rather than by the felt (see .pod-hand), so a seat
+    // pinned to the rail in portrait carries its cards with it.
     if (p.holeCards) {
-      return `<div class="anchor hand revealed${lost}" style="${pos}" data-hand="${p.seat}">
+      return `<div class="hand pod-hand revealed${lost}" data-hand="${p.seat}">
         ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms` })).join('')}
       </div>`;
     }
-    // Someone else's face-down cards. When they're checking their hand the
-    // cards tilt up and settle — you see them looking, never what they hold.
-    return `<div class="anchor hand${p.peeking ? ' is-peeked' : ''}" style="${pos}" data-hand="${p.seat}">
-      ${[0, 1].map((i) => cardHTML('', { face: false, cls: deal ? 'deal' : '', style: `${deal ? dealStyle(L, i) : ''};--d2:${i * 160}ms` })).join('')}
+    // When they're checking their hand the cards tilt up and settle — you see
+    // them looking, never what they hold.
+    return `<div class="hand pod-hand${p.peeking ? ' is-peeked' : ''}" data-hand="${p.seat}">
+      ${[0, 1].map((i) => cardHTML('', { face: false, cls: deal ? 'deal' : '', style: `${deal ? dealStyle(L, i, L.pod) : ''};--d2:${i * 160}ms` })).join('')}
       ${p.peeking ? `<span class="peek-tell">${icons.eye}</span>` : ''}
     </div>`;
   }
@@ -2888,13 +3027,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.dock.querySelectorAll('.quick-btn, .step-btn, #amt-range, #amt-input').forEach((el) => (el.disabled = !m.canRaise));
     drawFoldButton();
     drawAllinButton();
-    const join = q('join-btn');
-    if (join) {
-      const free = shown?.seatsFree ?? 0;
-      join.disabled = free < 1;
-      setHTML(q('join-label'), `${icons.chevron}${free > 0 ? 'Take a seat' : 'Every seat is taken'}`);
-      join.title = free > 0 ? 'You’ll be dealt in on the next hand' : 'Every seat is taken right now';
-    }
     syncAmount();
   }
 
@@ -3255,7 +3387,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (kind === 'raise') {
       const amt = currentAmount();
       if (amt >= m.maxTotal) payload = { type: 'allin' };
-      else if (amt < m.minTotal) return showError(`Minimum is ${fmt(m.minTotal)}.`);
+      else if (amt < m.minTotal) {
+        flagInvalid(els.dock.querySelector('#amt-input'));
+        return showError(`Minimum is ${fmt(m.minTotal)}.`);
+      }
       else payload = m.isRaise ? { type: 'raise', amount: amt - m.t.currentBet } : { type: 'bet', amount: amt };
     } else {
       payload = { type: kind };
