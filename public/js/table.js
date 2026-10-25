@@ -134,6 +134,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let model = null; // derived betting info for the local player
   let peeking = false;
   let zoomClearTimer = null; // clears the camera's inline transition after a peek
+  let settingsTab = 'cards'; // which section of the settings sheet is showing
   let pendingTotal = null; // chosen bet/raise-to total, null = use minimum
   let holding = false; // a pointer is down on my cards (peek or drag in progress)
   let dragging = false; // my cards are being dragged (toss-to-fold)
@@ -990,6 +991,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </div>`;
   }
 
+  // Which section of the settings sheet is showing. Kept out here so it
+  // survives a rebuild of the sheet and you come back to where you were.
+  const SET_TABS = ['cards', 'look', 'feel'];
+  const tabButton = (id, icon, label) =>
+    `<button type="button" class="set-tab${settingsTab === id ? ' is-on' : ''}" role="tab"
+      aria-selected="${settingsTab === id}" data-tab="${id}">${icon}<span>${label}</span></button>`;
+  const panelHidden = (id) => (settingsTab === id ? '' : 'hidden');
+
   // The same visual settings the lobby offers, reachable without leaving the
   // table. Everything here is per-browser and takes effect on the next draw.
   function settingsHTML() {
@@ -997,40 +1006,55 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const zoomOff = s.autoReveal || !s.peekZoom;
     return `<div class="sheet sheet-settings" role="dialog" aria-modal="true" aria-label="Table settings">
       <h2 class="sheet-title">Table settings</h2>
-      <div class="set-list">
-        <section class="set-group">
-          <h3 class="set-head">${icons.eye}Your cards</h3>
-          <label class="switch-row">
-            <input type="checkbox" data-set="autoReveal" ${s.autoReveal ? 'checked' : ''}>
-            <span>Turn my cards face up as soon as they're dealt<small>Nothing left to peek at, and the table can't see you looking</small></span>
-          </label>
-          <label class="switch-row">
-            <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
-            <span>Zoom in on my cards when peeking</span>
-          </label>
-          <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
-            <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
-            <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
-              min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
-          </div>
-          <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
-            <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
-            <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
-              min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
-          </div>
-        </section>
-        <section class="set-group">
-          <h3 class="set-head">${icons.sparkle}Table</h3>
-          <label class="switch-row">
-            <input type="checkbox" data-set="motion" ${reduceMotion ? '' : 'checked'}>
-            <span>Animations<small>Cards dealing, chips moving, the countdown ring</small></span>
-          </label>
-          <label class="switch-row">
-            <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
-            <span>Sounds</span>
-          </label>
-          ${themePickerHTML(s)}
-        </section>
+      <div class="set-split">
+        <nav class="set-nav" role="tablist" aria-label="Settings sections">
+          <span class="set-nav-head">Play</span>
+          ${tabButton('cards', icons.eye, 'Your cards')}
+          <span class="set-nav-head">Table</span>
+          ${tabButton('look', icons.sparkle, 'Appearance')}
+          ${tabButton('feel', icons.soundOn, 'Motion &amp; sound')}
+        </nav>
+        <div class="set-pane">
+          <section class="set-panel" data-panel="cards" role="tabpanel" ${panelHidden('cards')}>
+            <h3 class="set-lede">How your own cards behave</h3>
+            <p class="set-note">Only you see this. Nobody at the table is told how you look at your hand.</p>
+            <label class="switch-row">
+              <input type="checkbox" data-set="autoReveal" ${s.autoReveal ? 'checked' : ''}>
+              <span>Turn my cards face up as soon as they're dealt<small>Nothing left to peek at, and the table can't see you looking</small></span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
+              <span>Zoom in on my cards when peeking</span>
+            </label>
+            <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
+              <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
+              <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
+                min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
+            </div>
+            <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
+              <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
+              <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
+                min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
+            </div>
+          </section>
+          <section class="set-panel" data-panel="look" role="tabpanel" ${panelHidden('look')}>
+            <h3 class="set-lede">How the table looks to you</h3>
+            <p class="set-note">Yours alone — everyone here can sit at a different-looking felt.</p>
+            ${themePickerHTML(s)}
+          </section>
+          <section class="set-panel" data-panel="feel" role="tabpanel" ${panelHidden('feel')}>
+            <h3 class="set-lede">Motion and sound</h3>
+            <p class="set-note">Turn either off if the table feels busy, or to save a slower device some work.</p>
+            <label class="switch-row">
+              <input type="checkbox" data-set="motion" ${reduceMotion ? '' : 'checked'}>
+              <span>Animations<small>Cards dealing, chips moving, the countdown ring</small></span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" data-set="sound" ${soundMuted() ? '' : 'checked'}>
+              <span>Sounds<small>Chips, the flip of a card, your turn coming round</small></span>
+            </label>
+          </section>
+        </div>
       </div>
       <div class="sheet-actions">
         <button class="btn btn-primary btn-lg" data-ov="settings-close">Done</button>
@@ -1175,6 +1199,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (e.target === e.currentTarget) {
       if (closeSheet()) return;
       if (resultHand) return dismissResult(resultHand);
+      return;
+    }
+    // Switching section swaps which panel is showing rather than rebuilding
+    // the sheet: a rebuild would replay the sheet's entrance and throw away
+    // where each swatch row had been scrolled to.
+    const tab = e.target.closest('[data-tab]');
+    if (tab) {
+      const id = tab.dataset.tab;
+      if (!SET_TABS.includes(id) || id === settingsTab) return;
+      settingsTab = id;
+      const sheet = tab.closest('.sheet-settings');
+      sheet.querySelectorAll('[data-tab]').forEach((b) => {
+        const on = b === tab;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      sheet.querySelectorAll('[data-panel]').forEach((p) => (p.hidden = p.dataset.panel !== id));
+      sheet.querySelector('.set-pane').scrollTop = 0;
       return;
     }
     const btn = e.target.closest('[data-ov]');

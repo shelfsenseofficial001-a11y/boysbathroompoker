@@ -39,18 +39,23 @@ export function themePickerHTML(s = getSettings()) {
     </div>`;
 }
 
-// Nudge a half-seen swatch fully into its row. Deliberately not
-// scrollIntoView: `block: 'nearest'` walks every scrolling ancestor, so in the
-// settings sheet - where the rows sit low in a tall panel - tapping a swatch
-// scrolled the whole sheet and the rows vanished from under the finger. This
-// moves the row sideways and nothing else.
+// Nudge a half-seen swatch fully into view. Deliberately not scrollIntoView:
+// `block: 'nearest'` walks every scrolling ancestor, so in the settings sheet
+// - where the grid sits low in a tall panel - tapping a swatch scrolled the
+// whole sheet and the swatches vanished from under the finger. This scrolls
+// the grid itself and nothing above it.
+// Measured from rects, not offsetTop: the grid isn't a positioned element, so
+// offsets are relative to some ancestor further up and scrolling by them moved
+// the wrong amount.
 function keepInRow(btn) {
   const row = btn.parentElement;
   const pad = 8;
-  const left = btn.offsetLeft - pad;
-  const right = btn.offsetLeft + btn.offsetWidth + pad;
-  if (left < row.scrollLeft) row.scrollLeft = left;
-  else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth;
+  const b = btn.getBoundingClientRect();
+  const box = row.getBoundingClientRect();
+  if (b.top - pad < box.top) row.scrollTop -= box.top - b.top + pad;
+  else if (b.bottom + pad > box.bottom) row.scrollTop += b.bottom - box.bottom + pad;
+  if (b.left - pad < box.left) row.scrollLeft -= box.left - b.left + pad;
+  else if (b.right + pad > box.right) row.scrollLeft += b.right - box.right + pad;
 }
 
 // Click anything in a row and it becomes the choice. `onPick` is told which
