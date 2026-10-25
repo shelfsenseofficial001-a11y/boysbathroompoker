@@ -74,6 +74,65 @@ export function feltSVG(id = 'green', aspect = 1.9) {
       ? `<ellipse cx="${(W / 2).toFixed(2)}" cy="${cy.toFixed(2)}" rx="${(w * a).toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`
       : `<rect x="${(W / 2 - w * a).toFixed(2)}" y="${(cy - h).toFixed(2)}" width="${(w * a * 2).toFixed(2)}"
           height="${(h * 2).toFixed(2)}" rx="${h.toFixed(2)}" ry="${h.toFixed(2)}" ${attrs}/>`;
+  // Light falls from above and a little in front, the way it does over a real
+  // table: the near side of the cushion is lit, the far side is in its own
+  // shadow, and the cloth sits below the rail rather than flush with it.
+  //
+  // The shape is a stadium or an oval, not a circle, so none of this can be a
+  // radial gradient - a radial drawn on a long table pools in the middle and
+  // leaves the ends flat. Everything that has to follow the edge is a stroke
+  // on the edge itself: blurred to soften it and clipped to one side, so the
+  // half that would spill over the edge is cut away and the half that reads as
+  // depth stays.
+  // The panel worked into the straight run of the rail, where a player leans:
+  // a darker inlay with a bracket at each end and a few studs inside them. The
+  // metalwork is the cloth's bright accent, the same colour its betting line
+  // is drawn in: in the rail's own brown it was dark on dark and read as a
+  // smudge at any size. Only the
+  // straight part carries it - the length of rail between the two rounded ends
+  // - which is why a portrait table, drawn as an oval with no straight run at
+  // all, goes without.
+  //
+  // `cy` is the middle of the rail band it sits in, so the same call serves the
+  // near rail and the far one.
+  const railPanel = (cy) => {
+    if (oval) return '';
+    // The rail's straight run: its width less the rounded cap at either end.
+    const run = 49.2 * a - 48.4 - 11;
+    if (run < 10) return ''; // too short to inlay; it would read as a smudge
+    const x0 = W / 2 - run;
+    const x1 = W / 2 + run;
+    const half = 2.1; // the inlay's own half-height
+    // A bracket: two strokes meeting at a corner, the outer one doubled back,
+    // which is as much of a scroll as survives at this size.
+    const bracket = (x, dir) => `
+      <path d="M${(x + dir * 5.2).toFixed(2)} ${(cy - half).toFixed(2)}
+               q${(-dir * 3.6).toFixed(2)} 0 ${(-dir * 4.4).toFixed(2)} ${half.toFixed(2)}
+               q${(dir * 0.8).toFixed(2)} ${half.toFixed(2)} ${(dir * 4.4).toFixed(2)} ${half.toFixed(2)}"
+            fill="none" stroke="${t.line}" stroke-opacity=".72" stroke-width="0.7"
+            stroke-linecap="round"/>`;
+    // The studs: a diamond is three strokes of a pen at this scale, so it is
+    // drawn as one and repeated.
+    const stud = (x, y, r) =>
+      `<path d="M${x.toFixed(2)} ${(y - r * 1.25).toFixed(2)} L${(x + r).toFixed(2)} ${y.toFixed(2)} L${x.toFixed(2)} ${(y + r * 1.25).toFixed(2)} L${(x - r).toFixed(2)} ${y.toFixed(2)}Z" fill="${t.line}" fill-opacity=".62"/>`;
+    // Clustered inside each bracket rather than marching the whole way along:
+    // spread out they turned the rail into a ruler.
+    const studs = (x, dir) =>
+      stud(x + dir * 8.4, cy - 1.15, 0.8) + stud(x + dir * 8.4, cy + 1.15, 0.8) + stud(x + dir * 11, cy, 0.8);
+    return `
+    <g>
+      <rect x="${x0.toFixed(2)}" y="${(cy - half).toFixed(2)}" width="${(run * 2).toFixed(2)}" height="${(half * 2).toFixed(2)}"
+        rx="${(half * 0.5).toFixed(2)}" fill="url(#${u}Inlay)" stroke="${t.railLine}" stroke-opacity=".42"
+        stroke-width="1" vector-effect="non-scaling-stroke"/>
+      ${bracket(x0, 1)}${bracket(x1, -1)}
+      ${studs(x0, 1)}${studs(x1, -1)}
+    </g>`;
+  };
+
+  const soften = (id, px) =>
+    `<filter id="${id}" x="-12%" y="-12%" width="124%" height="124%">
+      <feGaussianBlur stdDeviation="${px}"/>
+    </filter>`;
   return `<svg viewBox="0 0 ${W.toFixed(2)} 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <radialGradient id="${u}Rail" cx="50%" cy="40%" r="60%">
@@ -89,13 +148,66 @@ export function feltSVG(id = 'green', aspect = 1.9) {
       <stop offset="0%" stop-color="#fff" stop-opacity=".09"/>
       <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
     </radialGradient>
+    <!-- The sheen along the top of the padded rail, gone by halfway down. -->
+    <linearGradient id="${u}Sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="14%" stop-color="#fff" stop-opacity=".11"/>
+      <stop offset="42%" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="78%" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity=".10"/>
+    </linearGradient>
+    <!-- The inlay is sunk into the cushion, so it is darkest at its own top
+         edge and catches a little light at the bottom. -->
+    <linearGradient id="${u}Inlay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity=".66"/>
+      <stop offset="34%" stop-color="#000" stop-opacity=".34"/>
+      <stop offset="72%" stop-color="${t.railLine}" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity=".14"/>
+    </linearGradient>
+    <!-- The cloth is darkest where the rail overhangs it, which is the top. -->
+    <linearGradient id="${u}Well" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000" stop-opacity=".7"/>
+      <stop offset="55%" stop-color="#000" stop-opacity=".46"/>
+      <stop offset="100%" stop-color="#000" stop-opacity=".34"/>
+    </linearGradient>
+    ${soften(`${u}b1`, 1.7)}
+    ${soften(`${u}b2`, 0.6)}
+    <clipPath id="${u}cFelt">${ring(45, 41.8, '')}</clipPath>
+    <clipPath id="${u}cRail">${ring(49.2, 48.4, '')}</clipPath>
   </defs>
   ${ring(49.6, 49, 'fill="#000" opacity=".45"', 50.8)}
   ${ring(49.2, 48.4, `fill="url(#${u}Rail)"`)}
-  ${ring(48.4, 47.4, `fill="none" stroke="${t.railLine}" stroke-width="1.2" vector-effect="non-scaling-stroke"`)}
+  <!-- Rail, lit: the sheen clipped to the rail's own silhouette so it reads as
+       a rounded cushion catching the light rather than an outline drawn on. -->
+  <g clip-path="url(#${u}cRail)">
+    ${railPanel(4.5)}${railPanel(95.5)}
+    ${ring(49.2, 48.4, `fill="none" stroke="url(#${u}Sheen)" stroke-width="2.6"`)}
+    <!-- The cloth's own colour bouncing up onto the inside of the cushion. The
+         felt is painted over its inner half a few lines down, leaving the half
+         that lands on the rail. -->
+    <g filter="url(#${u}b2)">
+      ${ring(46.2, 43.2, `fill="none" stroke="${t.felt[0]}" stroke-opacity=".5" stroke-width="1.6"`)}
+    </g>
+  </g>
+  <!-- The trim worked into the cushion, a hint rather than an outline: at full
+       strength it drew a wire round the whole table and flattened it again. -->
+  ${ring(48.4, 47.4, `fill="none" stroke="${t.railLine}" stroke-opacity=".45" stroke-width="1.2" vector-effect="non-scaling-stroke"`)}
   ${ring(45.6, 42.6, `fill="${t.edge}"`)}
   ${ring(45, 41.8, `fill="url(#${u}Felt)"`)}
+  <!-- Cloth, sunk: the shadow the rail casts onto it, hugging the edge all the
+       way round and deepest under the overhang at the top. -->
+  <g clip-path="url(#${u}cFelt)">
+    <g filter="url(#${u}b1)">
+      ${ring(45, 41.8, `fill="none" stroke="url(#${u}Well)" stroke-width="4.2"`)}
+    </g>
+    <g filter="url(#${u}b2)">
+      ${ring(45, 41.8, `fill="none" stroke="url(#${u}Well)" stroke-width="1.8"`)}
+    </g>
+  </g>
   ${ring(45, 41.8, `fill="url(#${u}Light)"`)}
+  <!-- The seam pressed into the cloth a little in from the rail, and the
+       dashed line the bets are pushed over. -->
+  ${ring(43.2, 39.8, `fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1" vector-effect="non-scaling-stroke"`)}
   ${ring(41, 37.6, `fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"`)}
 </svg>`;
 }
