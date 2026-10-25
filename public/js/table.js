@@ -1007,12 +1007,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
             <span>Zoom in on my cards when peeking</span>
           </label>
-          <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+          <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
             <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
             <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
               min="${ZOOM.level.min}" max="${ZOOM.level.max}" step="${ZOOM.level.step}" value="${s.zoomLevel}">
           </div>
-          <div class="set-field" ${zoomOff ? 'hidden' : ''}>
+          <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
             <label for="set-zoom-speed">Zoom speed <b>${s.zoomSpeed} ms</b></label>
             <input class="range" type="range" id="set-zoom-speed" data-set="zoomSpeed"
               min="${ZOOM.speed.min}" max="${ZOOM.speed.max}" step="${ZOOM.speed.step}" value="${s.zoomSpeed}">
@@ -1148,8 +1148,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const s = getSettings();
     const zoom = sheet.querySelector('[data-set="peekZoom"]');
     if (zoom) zoom.disabled = s.autoReveal;
+    // Only the two zoom sliders follow the peek switch. This used to say
+    // '.set-field', which was every field in the sheet back when the sliders
+    // were the only ones - the felt and card-back rows are fields too, so
+    // with peek zoom off they were hidden along with them.
     const off = s.autoReveal || !s.peekZoom;
-    sheet.querySelectorAll('.set-field').forEach((f) => (f.hidden = off));
+    sheet.querySelectorAll('[data-zoom-field]').forEach((f) => (f.hidden = off));
   }
 
   // Backs out of whichever sheet is up, if it's one you're allowed to
