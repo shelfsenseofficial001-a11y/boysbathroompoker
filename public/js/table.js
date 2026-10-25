@@ -1150,6 +1150,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
               <input type="checkbox" data-set="peekZoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
               <span>Zoom in on my cards when peeking</span>
             </label>
+            <label class="switch-row">
+              <input type="checkbox" data-set="showTutorial" ${s.showTutorial ? 'checked' : ''}>
+              <span>Show how to play when a game starts<small>Peeking, folding and betting by drag - the guide you can switch off from the guide itself</small></span>
+            </label>
             <div class="set-field" data-zoom-field ${zoomOff ? 'hidden' : ''}>
               <label for="set-zoom-level">Zoom strength <b>${s.zoomLevel.toFixed(2)}×</b></label>
               <input class="range" type="range" id="set-zoom-level" data-set="zoomLevel"
@@ -1450,17 +1454,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawWaiting(shown); // keeps the chat panel, drops the table's elements
       resumeEntrance(root.querySelector('.screen'), enteredAt);
     } else if (mode !== 'table') {
+      // Only a game this screen watched begin: the waiting room giving way
+      // to the table. Loading straight onto a table - a reload, a reconnect,
+      // a link into a game already going - is arriving, not a start, and
+      // the first hand alone wasn't enough to tell them apart: every reload
+      // during it brought the guide back.
+      const started = mode === 'waiting';
       enteredAt = performance.now();
       buildTable();
       resumeEntrance(root.querySelector('.table-screen'), enteredAt);
       mode = 'table';
       renderedHand = 0; // fresh table: let the first hand deal in
       // A match is starting, so the three gestures it is played with are
-      // worth a word. Only at the first hand: coming back to a table
-      // mid-match (a reload, a reconnect) is not the start of anything, and
-      // only for someone holding cards - a spectator has no use for them.
+      // worth a word - to someone holding cards; a spectator has no use for
+      // them.
       const seated = shown.table.seats.some((p) => p && p.userId === user.id && !p.left);
-      if (getSettings().showTutorial && seated && (shown.table.handNumber ?? 0) <= 1) askingTutorial = true;
+      if (getSettings().showTutorial && seated && started) askingTutorial = true;
       drawTable(null, shown);
     } else {
       drawTable(prev && prev.table.phase !== 'waiting' ? prev : null, shown);

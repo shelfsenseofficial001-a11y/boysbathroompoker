@@ -528,10 +528,25 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* A link whose room has since closed. */
-.gone-page { max-width: 620px; }
+/* The dead-room screen, cut to match the 404 page it is the in-app twin of:
+   the cards dealt out above, the words centred under them. The two say
+   different things - one address that never existed, one room that has since
+   closed - and should look like the same game saying them. */
+.gone-page {
+  max-width: 620px;
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(18px, 4vh, 34px);
+  text-align: center;
+  overflow: hidden; /* the betting line runs past the page's edges */
+}
+.gone-page .say { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 34rem; }
+.gone-page .lead, .gone-page .help-text { margin: 0; }
+.gone-page .display { margin: 0; }
 .gone-code { color: var(--gold); letter-spacing: 0.14em; }
-.gone-actions { margin-top: 28px; display: flex; }
-.gone-actions .btn { width: auto; }
+/* A pill, like the way back on the 404 page, rather than a full-width block. */
+.gone-home { width: auto; margin-top: 6px; border-radius: 999px; }
+.gone-home .icon { width: 16px; height: 16px; }
 
 /* Auth */
 .auth-wrap { flex: 1; display: grid; place-items: center; padding: 24px; }

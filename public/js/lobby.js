@@ -141,6 +141,10 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           <input type="checkbox" id="peek-zoom" ${s.peekZoom ? 'checked' : ''} ${s.autoReveal ? 'disabled' : ''}>
           <span>Zoom in on my cards when peeking</span>
         </label>
+        <label class="switch-row">
+          <input type="checkbox" id="show-tutorial" ${s.showTutorial ? 'checked' : ''}>
+          <span>Show how to play when a game starts</span>
+        </label>
         <div class="slider-row" id="zoom-rows" ${s.peekZoom && !s.autoReveal ? '' : 'hidden'}>
           <div class="field">
             <label for="zoom-level">Zoom strength <b id="zoom-level-val">${s.zoomLevel.toFixed(2)}×</b></label>
@@ -289,6 +293,8 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     setSetting('peekZoom', e.target.checked);
     syncZoomSection();
   });
+  // The way back to the guide for anyone who switched it off from the guide.
+  $('#show-tutorial').addEventListener('change', (e) => setSetting('showTutorial', e.target.checked));
   level.addEventListener('input', (e) => {
     const v = Number(e.target.value);
     $('#zoom-level-val').textContent = `${v.toFixed(2)}×`;
@@ -307,6 +313,7 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     const d = resetSettings();
     $('#auto-reveal').checked = d.autoReveal;
     $('#peek-zoom').checked = d.peekZoom;
+    $('#show-tutorial').checked = d.showTutorial;
     level.value = d.zoomLevel;
     speed.value = d.zoomSpeed;
     $('#zoom-level-val').textContent = `${d.zoomLevel.toFixed(2)}×`;
