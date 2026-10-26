@@ -2546,8 +2546,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       Math.max(0, pct((els.stage.clientWidth - camW) / 2 - 2, camW))
     );
     const slot = new Map();
+    // Index 0 is my own seat and is laid out on its own, at the bottom - but
+    // only when I have one. Watching from the rail, every seat on the table
+    // belongs on a side rail, and the rails run the whole height, since
+    // there is no plate of mine at the foot for them to stop short of.
+    const seated = ordered[0]?.userId === user.id;
     if (portrait) {
-      const m = n - 1;
+      const m = seated ? n - 1 : n;
       // One seat at the top when there is an odd one out, and the rest split
       // evenly between the two rails - so the table is symmetric about its
       // middle however many are playing.
@@ -2589,7 +2594,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // which is the camera's own edge. Only the chips have to be on the
       // cloth, and onFelt sees to that where they land.
       const myPodY = 50 + ry + 2.5;
-      const railYs = spread(perSide, 0.6, myPodY - pct(podH, camH) - gapY);
+      const railBottom = seated ? myPodY - pct(podH, camH) - gapY : 99.4;
+      const railYs = spread(perSide, 0.6, railBottom);
       // Clockwise from me at the bottom: up the left rail, across the top,
       // down the right.
       const order = [
@@ -2597,7 +2603,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         ...(top ? [{ side: null, y: spread(1, 0.6, muckBox.t - 0.8)[0] }] : []),
         ...railYs.map((y) => ({ side: 'right', y })),
       ];
-      order.forEach((o, j) => slot.set(j + 1, o));
+      order.forEach((o, j) => slot.set(seated ? j + 1 : j, o));
     }
 
     ordered.forEach((p, i) => {
