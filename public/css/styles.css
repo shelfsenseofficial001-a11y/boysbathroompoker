@@ -1544,14 +1544,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    on the felt: with the figure here a four-figure bet takes no more room
    beside the seat than a two-figure one.
 
-   The tray spans the plate minus --tray-in at each end. That inset is what
-   lets the acting outline (below) be cut to fit: it's a fixed length, so the
-   plate's ring knows exactly where the tray's ring takes over. It has to
-   clear the rounded ends, or the tray would hang off the curve. */
-.pod { --tray-in: 2.4em; }
-.camera.is-portrait .pod { --tray-in: 1.9em; }
+   The tray is one fixed width, centred under the plate, rather than the
+   plate's own width less an inset: a long name made a long tray, so my seat
+   carried a far wider one than the bots beside me for the same two-figure
+   bet. A set width makes every seat's tray the same pill, and the acting
+   outline (below) can still be cut to fit, since the gap left at each end
+   follows from it. */
+.pod { --tray-w: 4.8em; }
+.camera.is-portrait .pod { --tray-w: 4.2em; }
 .pod-bet {
-  position: absolute; z-index: 1; top: 100%; left: var(--tray-in); right: var(--tray-in);
+  position: absolute; z-index: 1; top: 100%;
+  left: 50%; translate: -50% 0; width: var(--tray-w);
   height: 1.2em; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--line-2); border-top: 0; border-radius: 0 0 0.6em 0.6em;
   /* The bottom of the plate's gradient, solid, so the plate's border under
@@ -1650,11 +1653,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border: 2px solid var(--gold); opacity: 0.7; pointer-events: none;
 }
 /* With a tray under the plate, the ring's bottom edge is cut out along the
-   tray's width - the tray's own length of ring goes round it instead. The
-   ring sits 5px out from the plate's padding box, so the tray's ring starts
-   --tray-in + 1px in from this one's edge. */
+   tray's width - the tray's own length of ring goes round it instead. This
+   ring's box is the plate's plus 5px at each edge, and the tray is centred,
+   so what's kept at each end is half of what the tray leaves over, plus the
+   1px the two rings overlap by. */
 .pod.is-acting.has-bet::before {
-  --keep: calc(var(--tray-in) + 1px);
+  --keep: calc((100% - var(--tray-w)) / 2 + 1px);
   -webkit-mask:
     linear-gradient(#000 0 0) top / 100% calc(100% - 4px) no-repeat,
     linear-gradient(#000 0 0) left bottom / var(--keep) 4px no-repeat,
