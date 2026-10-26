@@ -1693,7 +1693,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             <div class="code-id"><div class="micro">Room code</div><div class="room-code selectable">${esc(roomCode)}</div></div>
             <span class="code-acts">
               <button class="btn btn-ghost btn-sm" data-copy="link" title="Copy a link that drops them straight into this room">${icons.copy}<span>Copy link</span></button>
-              <button class="btn btn-ghost btn-sm" data-copy="code" title="Copy just the five-letter code">${icons.copy}<span>Copy code</span></button>
+              <button class="btn btn-ghost btn-sm" data-copy="code" title="Copy just the five-character code">${icons.copy}<span>Copy code</span></button>
             </span>
           </div>
           <div class="meta-row">

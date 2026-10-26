@@ -67,9 +67,9 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
         </section>
         <section class="panel" data-enter>
           <h2 class="h2">Join a game</h2>
-          <p class="help-text">Enter the 5-letter code your host shared. They set everyone's chips.</p>
+          <p class="help-text">Enter the 5-character code your host shared. They set everyone's chips.</p>
           <div class="field-row">
-            <div class="field"><label for="join-code">Room code</label><input id="join-code" type="text" maxlength="5" autocomplete="off" placeholder="ABCDE" style="text-transform:uppercase;letter-spacing:.2em;font-weight:700"></div>
+            <div class="field"><label for="join-code">Room code</label><input id="join-code" type="text" maxlength="5" autocomplete="off" placeholder="AB2DE" style="text-transform:uppercase;letter-spacing:.2em;font-weight:700"></div>
           </div>
           <button class="btn btn-lg" id="join-room">Join room</button>
           <div class="knock-wait" id="knock-wait" hidden>
@@ -380,9 +380,12 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
       if (!fromList) flagInvalid($('#join-code'), { focus: true });
       return fail(new Error('Enter a room code.'));
     }
-    if (!fromList && !/^[A-Z]{5}$/.test(code)) {
+    // Letters and digits both: the server builds a code out of an alphabet
+    // that drops the ambiguous characters but keeps 2-9, so a letters-only
+    // test turned away most real codes before they ever reached it.
+    if (!fromList && !/^[A-Z0-9]{5}$/.test(code)) {
       flagInvalid($('#join-code'), { focus: true });
-      return fail(new Error('A room code is five letters.'));
+      return fail(new Error('A room code is five letters and numbers.'));
     }
     try {
       // No buy-in is sent: the host sets every player's stack, in the waiting
