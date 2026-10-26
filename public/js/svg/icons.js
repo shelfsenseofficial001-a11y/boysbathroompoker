@@ -21,7 +21,12 @@ export const icons = {
   // as the rest rather than an emoji of its own, which would land in
   // whatever the reader's system draws and never match the button beside it.
   emoji: svg('<circle cx="12" cy="12" r="9"/><path d="M8.4 14.2a4.4 4.4 0 0 0 7.2 0"/><path d="M9.2 9.4h.01M14.8 9.4h.01"/>'),
-  history: svg('<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
+  // A clock wound back, rather than the three lines that were here before:
+  // those are what every other app on the machine uses for a menu, so the
+  // button read as "more" instead of "the hands already played".
+  history: svg(
+    '<path d="M3.1 12a8.9 8.9 0 1 0 2.6-6.3L3 8.4"/><path d="M3 3.6v4.8h4.8"/><path d="M12 7.4V12l3.5 2.1"/>'
+  ),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
   leave: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>'),
   robot: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7.5" width="17" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="13.5" r="1.8" fill="currentColor"/><circle cx="15" cy="13.5" r="1.8" fill="currentColor"/><path d="M12 7.5V4M9.5 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="3" r="1.4" fill="currentColor"/></svg>',
