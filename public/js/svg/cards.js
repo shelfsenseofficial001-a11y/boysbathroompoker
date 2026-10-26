@@ -18,7 +18,11 @@ function suit(s, x, y, size, color) {
 const SUIT_NAME = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
 
 // `code` is like "As", "Td", "2c". `simple` draws the plain variant: one
-// rank over one suit, centred, with no corner indices and no pip layout.
+// rank over one suit, with no corner indices and no pip layout. The pair
+// sits in the top two thirds of the card rather than across its middle: a
+// hand turned over at showdown is tucked behind its nameplate with only
+// POD_REVEAL_SHOW of the card above it, and a suit set at the middle was
+// covered by the plate. Everything the card says is inside that strip.
 // Everyone plays off the same screen, so a card never has to be read from
 // the far side of a table, and at small sizes this stays legible where the
 // full face turns to mush.
@@ -44,8 +48,8 @@ export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
     return `<svg viewBox="0 0 60 84" xmlns="http://www.w3.org/2000/svg" aria-label="${rank} of ${SUIT_NAME[s]}" role="img">
   <rect x=".5" y=".5" width="59" height="83" rx="5.5" fill="#fbf8f1" stroke="#cfc6b4"/>
   <rect x="2" y="2" width="56" height="80" rx="4.5" fill="none" stroke="#fff" stroke-opacity=".7"/>
-  <text x="30" y="40" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
-  ${suit(s, 18.5, 47, 23, color)}
+  <text x="30" y="34" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
+  ${suit(s, 19, 38, 22, color)}
 </svg>`;
   }
 
