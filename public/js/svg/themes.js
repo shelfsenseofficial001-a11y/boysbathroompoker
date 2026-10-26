@@ -229,6 +229,16 @@ export function feltSVG(id = 'green', aspect = 1.9) {
 
 export const feltTheme = (id) => FELTS.find((f) => f.id === id) || FELTS[0];
 
+// --- Suit colours ----------------------------------------------------------
+// A two-colour deck is what a real one looks like; a four-colour deck is what
+// a lot of online players read faster, since a suit can be told from the
+// colour alone without looking at the pip. The faces themselves are drawn in
+// svg/cards.js, which holds the two palettes.
+export const DECKS = [
+  { id: 'two', name: 'Two colours' },
+  { id: 'four', name: 'Four colours' },
+];
+
 // --- Card backs ------------------------------------------------------------
 export const BACKS = [
   { id: 'classic', name: 'Classic' },

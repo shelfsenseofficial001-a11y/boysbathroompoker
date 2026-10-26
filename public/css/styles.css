@@ -2873,6 +2873,23 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 /* Card backs are narrower than a stretch of felt, so more of them fit. */
 .swatch-row[data-theme-row='cardBack'] { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
+/* Two of them and no more coming, so they take half the row each rather than
+   sitting at one end of a grid cut for a dozen - and there is nothing to
+   scroll to, so the box doesn't scroll. Setting overflow-y on the others
+   makes a scroll container of both axes: the ring round the chosen swatch
+   and the lift under the pointer then reached past the content box, which
+   is what put a sideways scrollbar under these two and shifted the row
+   whenever the pointer crossed one. */
+.swatch-row[data-theme-row='deck'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: none; overflow: visible; padding: 4px 3px;
+}
+/* The lift the other swatches take on hover is a tenth of an inch on a
+   swatch this wide, which reads as the row moving rather than as the
+   swatch answering. The border and the name light up as they do elsewhere;
+   that is cue enough. */
+.swatch-deck:hover .swatch-art { scale: 1; }
+.swatch-row[data-theme-row='deck'] .swatch-name { max-width: none; }
 .swatch {
   cursor: pointer; padding: 0;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -2891,6 +2908,15 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    swatch is just a big picture of itself. */
 .swatch-felt .swatch-art { width: 100%; max-width: 84px; aspect-ratio: 76 / 50; }
 .swatch-cardBack .swatch-art { width: 100%; max-width: 48px; aspect-ratio: 44 / 62; }
+/* Four real faces dealt across the whole tile, rather than a card-shaped
+   swatch with a picture in it: the hand is the preview, so it is given the
+   width to be read at. The cards are sized as a share of the tile and the
+   gaps with them, so the row ends where the tile does at any width. */
+.swatch-deck .swatch-art {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  gap: 4.5%; padding: 12px 0; background: rgba(255, 255, 255, 0.04);
+}
+.swatch-deck .deck-card { display: block; flex: 0 1 19%; aspect-ratio: 60 / 84; }
 .swatch:hover { color: var(--text-1); }
 .swatch:hover .swatch-art { border-color: rgba(230, 180, 80, 0.5); scale: 1.04; }
 .swatch:focus-visible { outline: none; }

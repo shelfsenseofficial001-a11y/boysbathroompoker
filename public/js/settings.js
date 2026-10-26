@@ -3,7 +3,7 @@
 // dressed. The cloth and the card backs are each player's own: two people at
 // one table can sit at different-looking felts without disagreeing about the
 // game, since nothing here is sent to the server.
-import { FELTS, BACKS } from './svg/themes.js';
+import { FELTS, BACKS, DECKS } from './svg/themes.js';
 
 const KEY = 'bbp-settings';
 
@@ -37,6 +37,9 @@ const DEFAULTS = {
   // How the table is dressed. See svg/themes.js for what's on offer.
   felt: 'green',
   cardBack: 'classic',
+  // Two colours, the way a deck on a table is printed. Four is there for
+  // anyone who reads a suit faster off its colour.
+  deck: 'two',
 };
 
 // An id saved by an older build - or edited by hand - must not leave the
@@ -67,6 +70,7 @@ export function getSettings() {
     peekHintSeen: stored.peekHintSeen === true,
     felt: oneOf(FELTS, stored.felt, DEFAULTS.felt),
     cardBack: oneOf(BACKS, stored.cardBack, DEFAULTS.cardBack),
+    deck: oneOf(DECKS, stored.deck, DEFAULTS.deck),
   };
   return cache;
 }

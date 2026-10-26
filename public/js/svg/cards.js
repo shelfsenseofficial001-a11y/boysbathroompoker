@@ -1,13 +1,27 @@
 // Inline SVG playing cards (all 52 faces + one back design). Suits are drawn
 // as paths rather than font glyphs so they look identical on every platform
 // (iOS would otherwise render the red suits as emoji).
+import { getSettings } from '../settings.js';
+
 const SUIT_PATH = {
   h: 'M5 9.4C5 9.4 0 6.1 0 3.1 0 1.3 1.3 0 3 0 3.9 0 4.6.5 5 1.3 5.4.5 6.1 0 7 0 8.7 0 10 1.3 10 3.1 10 6.1 5 9.4 5 9.4Z',
   d: 'M5 0 9 5 5 10 1 5Z',
   s: 'M5 0C5 0 0 3.7 0 6.1 0 7.6 1.2 8.6 2.5 8.6 3.4 8.6 4.1 8.1 4.5 7.5 4.4 8.7 4 9.4 3.1 10H6.9C6 9.4 5.6 8.7 5.5 7.5 5.9 8.1 6.6 8.6 7.5 8.6 8.8 8.6 10 7.6 10 6.1 10 3.7 5 0 5 0Z',
   c: 'M5 .2A2.3 2.3 0 1 1 5 4.8 2.3 2.3 0 0 1 5 .2ZM2.6 3.9A2.3 2.3 0 1 1 2.6 8.5 2.3 2.3 0 0 1 2.6 3.9ZM7.4 3.9A2.3 2.3 0 1 1 7.4 8.5 2.3 2.3 0 0 1 7.4 3.9ZM4.4 6H5.6C5.6 7.8 6 9 7 10H3C4 9 4.4 7.8 4.4 6Z',
 };
-const SUIT_COLOR = { s: '#1b1d22', c: '#1b1d22', h: '#c8302a', d: '#c8302a' };
+// Black and red is the deck in everybody's hands; the four-colour deck gives
+// clubs and diamonds their own so a suit can be read off the colour without
+// looking at the pip. Both are drawn on the same cream face, so the two new
+// colours are deep enough to hold against it rather than the pale green and
+// sky blue a screen-first palette would use.
+const DECK_COLORS = {
+  two: { s: '#1b1d22', c: '#1b1d22', h: '#c8302a', d: '#c8302a' },
+  four: { s: '#1b1d22', c: '#12763f', h: '#c8302a', d: '#1668c4' },
+};
+// `deck` names a palette outright - which is what the settings swatches
+// need, each one drawn in the deck it offers rather than in the deck that
+// happens to be in use. Everything else asks the player's own setting.
+const suitColors = (deck) => DECK_COLORS[deck || getSettings().deck] || DECK_COLORS.two;
 const RANK_LABEL = { T: '10', J: 'J', Q: 'Q', K: 'K', A: 'A' };
 
 function suit(s, x, y, size, color) {
@@ -72,6 +86,18 @@ export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
   <g transform="rotate(180 30 42)">${corner}</g>
   ${center}
 </svg>`;
+}
+
+// The swatch in the settings: the four aces dealt out in a row, each a real
+// card face in the plain variant the 404's spread is built from. The choice
+// is then made by looking at the cards themselves, in the deck being offered
+// - which is what `deck` is for, since the picker has to draw a deck that
+// isn't the one in play.
+const SWATCH_HAND = ['As', 'Ah', 'Ac', 'Ad'];
+export function deckSwatchHTML(id) {
+  return SWATCH_HAND.map(
+    (code) => `<span class="deck-card">${cardFaceSVG(code, { simple: true, deck: id })}</span>`
+  ).join('');
 }
 
 let backCache = null;

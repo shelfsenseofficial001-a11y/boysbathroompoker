@@ -1,20 +1,26 @@
 // The two rows of swatches that dress the table: one for the cloth, one for
 // the back of the cards. The same control serves the lobby and the settings
 // sheet at the table, so the two can't drift apart.
-import { FELTS, BACKS, feltSVG, cardBackSVG } from './svg/themes.js';
+import { FELTS, BACKS, DECKS, feltSVG, cardBackSVG } from './svg/themes.js';
+import { deckSwatchHTML } from './svg/cards.js';
 import { getSettings, setSetting } from './settings.js';
 import { icons } from './svg/icons.js';
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
-// `kind` is the settings key: 'felt' or 'cardBack'.
-const LISTS = { felt: FELTS, cardBack: BACKS };
+// `kind` is the settings key: 'felt', 'cardBack' or 'deck'.
+const LISTS = { felt: FELTS, cardBack: BACKS, deck: DECKS };
+const ROW_LABEL = { felt: 'Table felt', cardBack: 'Card back', deck: 'Suit colours' };
 // A swatch is its own shape, wider than it is tall but not as wide as the
 // table, so the cloth is cut to the swatch rather than to the table (see
 // .swatch-felt .swatch-art, which sets the same ratio).
 const SWATCH_ASPECT = 76 / 50;
-const DRAW = { felt: (id) => feltSVG(id, SWATCH_ASPECT), cardBack: (id) => cardBackSVG(id) };
+const DRAW = {
+  felt: (id) => feltSVG(id, SWATCH_ASPECT),
+  cardBack: (id) => cardBackSVG(id),
+  deck: (id) => deckSwatchHTML(id),
+};
 
 // The grid is taller than the space it gets, so it scrolls. On a phone that
 // scroll is easy to miss and awkward to reach - the gesture belongs to the
@@ -26,7 +32,7 @@ export function themeRowHTML(kind, selected) {
     `<button type="button" class="swatch-more swatch-more-${dir}" data-scroll="${dir}"
       aria-label="${label}" tabindex="-1">${icons.chevronDown}</button>`;
   return `<div class="swatch-scroll">${arrow('up', 'Show the ones above')}${arrow('down', 'Show the ones below')}
-    <div class="swatch-row" role="radiogroup" aria-label="${kind === 'felt' ? 'Table felt' : 'Card back'}" data-theme-row="${kind}">
+    <div class="swatch-row" role="radiogroup" aria-label="${ROW_LABEL[kind]}" data-theme-row="${kind}">
     ${list
       .map(
         (t) => `<button type="button" class="swatch swatch-${kind}${t.id === selected ? ' is-on' : ''}"
@@ -50,6 +56,10 @@ export function themePickerHTML(s = getSettings()) {
     <div class="set-field">
       <label>Card backs</label>
       ${themeRowHTML('cardBack', s.cardBack)}
+    </div>
+    <div class="set-field">
+      <label>Suit colours</label>
+      ${themeRowHTML('deck', s.deck)}
     </div>`;
 }
 

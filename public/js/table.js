@@ -1500,7 +1500,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     setHTML(felt, feltSVG(getSettings().felt, feltCutFor));
   }
 
-  function redressTable() {
+  function redressTable(kind) {
+    // The hands already recorded carry faces of their own, so a change of
+    // suit colours has to reach the sidebar as well as the felt. It only
+    // runs on a pick, which is rare enough to redraw the lot.
+    if (kind === 'deck') drawHistory();
     if (mode !== 'table' || !els?.camera) return;
     const s = getSettings();
     drawFelt();
@@ -2745,6 +2749,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function onResize() {
     if (mode !== 'table' || !layout) return;
     const portrait = els.camera.clientWidth < els.camera.clientHeight;
+    // The table standing up is also what swaps the card faces, so the redraw
+    // that follows the turn covers both.
     if (portrait !== layout.portrait) drawTable(shown, shown);
   }
 
