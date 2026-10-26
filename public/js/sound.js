@@ -170,6 +170,13 @@ const SOUNDS = {
     tone(t + 0.14, { freq: 1567.98, dur: 0.32, type: 'sine', gain: 0.07 });
   },
   click: (t) => tone(t, { freq: 900, to: 1400, dur: 0.05, type: 'sine', gain: 0.1 }),
+  // Somebody said something. Two soft notes a fourth apart, quieter than
+  // anything the table itself does and nothing like the turn cue above -
+  // talk is worth knowing about, never worth looking up from your hand for.
+  chat: (t) => {
+    tone(t, { freq: 587.33, dur: 0.09, type: 'sine', gain: 0.075 });
+    tone(t + 0.075, { freq: 783.99, dur: 0.14, type: 'sine', gain: 0.06 });
+  },
 };
 
 export function play(name, delay = 0) {

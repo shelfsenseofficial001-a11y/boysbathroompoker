@@ -310,7 +310,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Somebody else talking while the panel is shut is worth a nudge; your
     // own message never is.
     if (!chatShowing() && entry.userId !== user.id) chatUnread += 1;
-    if (entry.userId !== user.id) play('click');
+    // Its own cue rather than the general click, so talk is recognisable
+    // from across the room with the panel shut. The table's own lines say
+    // nothing a sound would add - the hand they report has already been
+    // heard.
+    if (!entry.system && entry.userId !== user.id) play('chat');
     // Reading back when it landed: hold on to it for the jump button, so the
     // way down also says what is waiting at the bottom.
     const mine = entry.userId === user.id;
