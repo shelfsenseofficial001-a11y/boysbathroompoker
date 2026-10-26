@@ -1304,10 +1304,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    inline value on the camera is inherited by every seat. Declaring it on the
    group as well would beat that inheritance. The fallback is on .camera. */
 .seat-group { --pod-hand-rise: 0px; }
-/* Plus room for the peek: tilting up to look, the cards climb about a
-   quarter of a card, and they did it straight into the badge. */
+/* Just clear of the cards as they are held. The room for the peek used to
+   be kept here permanently, which left a third of a card of empty felt
+   between a badge and the hand under it for the whole game - "SB", "Call"
+   and "Winner" all floating well above the plate they belong to. It is
+   given only while that player is actually looking, below. */
 .seat-group:has(.pod-hand:not(.revealed)) {
-  --pod-hand-rise: calc(var(--card-o) * 1.4 * (var(--pod-hand-show) + var(--peek-rise)));
+  --pod-hand-rise: calc(var(--card-o) * 1.4 * var(--pod-hand-show) + 0.3em);
+}
+/* Tilting up to look, the cards climb about a quarter of a card, and they
+   did it straight into the badge. The badge steps up with them and back
+   down after - the peek is a moment with its own animation, so the step
+   reads as part of it rather than as the badge wandering. */
+.seat-group:has(.pod-hand.is-peeked) {
+  --pod-hand-rise: calc(var(--card-o) * 1.4 * (var(--pod-hand-show) + var(--peek-rise)) + 0.3em);
 }
 /* A hand turned over at showdown is tucked behind the plate too, showing
    more of itself (--pod-reveal-show) at the larger --card-show size, so the
@@ -1696,6 +1706,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 
 .pod .tag {
   position: absolute; left: 50%; bottom: calc(100% + 0.35em + var(--pod-hand-rise, 0px)); transform: translateX(-50%);
+  transition: bottom 0.25s var(--ease-out);
   font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 0.2em 0.65em; border-radius: 999px; white-space: nowrap;
   background: rgba(0, 0, 0, 0.65); color: var(--text-2); border: 1px solid var(--line-2);
