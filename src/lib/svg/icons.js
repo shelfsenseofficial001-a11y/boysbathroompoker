@@ -9,6 +9,13 @@ export const icons = {
   raise: svg('<path d="M12 19V5"/><path d="M6 11l6-6 6 6"/>'),
   allin: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor"/></svg>',
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  // The same eye with a stroke through it, for a password currently on
+  // screen: the button says what pressing it does, and what it does is hide.
+  'eye-off': svg(
+    '<path d="M10.7 5.1A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.4 3.4"/>' +
+      '<path d="M6.5 6.6A18 18 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4.2-.9"/>' +
+      '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/>'
+  ),
   // Room owner. A key rather than a crown, because the crown already means
   // "won this hand" on the seat tags and the two would read as one thing.
   key: svg('<circle cx="8" cy="9" r="4.2"/><path d="M11.2 11.8 20 20.5"/><path d="m17 17.5 2-2"/>'),

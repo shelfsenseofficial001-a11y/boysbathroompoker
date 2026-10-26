@@ -1,8 +1,9 @@
 // The Supabase client, one per page.
 //
-// Identity only. Every chip in this game is moved by the Node server, which
-// owns the deck, the pot and the bankroll; nothing here is allowed to be the
-// authority on what a player is worth. See docs/supabase.md.
+// Identity only - a name, and the account it belongs to. Every chip in this
+// game is moved by the Node server, which owns the deck, the pot and the
+// stacks; and those stacks belong to a room rather than to a player, so there
+// is nothing here for an account to be worth. See docs/supabase.md.
 import { createClient } from '@supabase/supabase-js';
 
 const url = import.meta.env.VITE_SUPABASE_URL;

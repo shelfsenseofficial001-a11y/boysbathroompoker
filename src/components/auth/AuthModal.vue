@@ -5,11 +5,23 @@
 // whichever tab was asked for. The first-visit prompt opens it with the guest
 // option showing and no way out but an answer - Escape and the backdrop
 // resolve to "continue as guest", which is a choice rather than a dead end.
+//
+// There is no email field. A username is what an account is reached by, and
+// useAuth maps it to a synthetic address for Supabase Auth, which has no
+// other way to authenticate. A player never sees that address.
 import { ref, computed, watch, nextTick } from 'vue';
-import { useGuestAuth } from '../../composables/useGuestAuth.js';
+import {
+  useAuth,
+  usernameAvailable,
+  USERNAME_RE,
+  INGAME_NAME_RE,
+  MIN_PASSWORD,
+} from '../../composables/useAuth.js';
+import { clearInvalid } from '../../lib/invalid.js';
 import BaseModal from '../ui/BaseModal.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import TextField from '../ui/TextField.vue';
+import PasswordInput from '../ui/PasswordInput.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
 
 const props = defineProps({
@@ -21,103 +33,132 @@ const props = defineProps({
 });
 const emit = defineEmits(['done', 'close']);
 
-const auth = useGuestAuth();
+const auth = useAuth();
 
 const tab = ref(props.initialTab === 'signup' ? 'signup' : 'login');
-const email = ref('');
-const password = ref('');
 const username = ref('');
+const ingameName = ref('');
+const password = ref('');
+const confirm = ref('');
 const busy = ref(false);
 const formError = ref('');
-const sentTo = ref(''); // set once a confirmation email is on its way
+const sentTo = ref(''); // set if an account somehow lands on a confirmation
 const fieldErrors = ref({});
 
-const emailField = ref(null);
-const passwordField = ref(null);
 const usernameField = ref(null);
+const ingameField = ref(null);
+const passwordField = ref(null);
+const confirmField = ref(null);
+
+const FIELDS = { username: usernameField, ingameName: ingameField, password: passwordField, confirm: confirmField };
+
+// A password on screen was revealed for one moment of typing. Submitting, or
+// moving to the other tab, ends that moment - the boxes stay where they are
+// and the text in them would otherwise still be readable over the shoulder of
+// whoever is sitting down next.
+function hidePasswords() {
+  passwordField.value?.hide();
+  confirmField.value?.hide();
+}
 
 const isSignup = computed(() => tab.value === 'signup');
-// A guest signing up keeps the id their chips hang off, so this is an
+// A guest signing up keeps the id their seat hangs off, so this is an
 // upgrade rather than a second account - and it is worth saying so.
 const upgrading = computed(() => isSignup.value && auth.isGuest.value);
 
 const title = computed(() => {
-  if (sentTo.value) return 'Check your email';
+  if (sentTo.value) return 'Almost there';
   if (props.showGuest) return 'Before you sit down';
   return isSignup.value ? 'Create an account' : 'Welcome back';
 });
 
 const subtitle = computed(() => {
-  if (sentTo.value) return `We’ve sent a confirmation link to ${sentTo.value}.`;
-  if (props.showGuest) return 'Play as a guest, or keep your chips between visits with an account.';
-  if (upgrading.value) return 'Your chips and your seat come with you.';
-  return isSignup.value ? 'Chips are play money — an account just keeps them.' : 'Log in to pick up where you left off.';
+  if (sentTo.value) return 'This account needs confirming before it will let you in.';
+  if (props.showGuest) return 'Play as a guest, or pick a username and keep it between visits.';
+  if (upgrading.value) return 'Your name and your seat come with you.';
+  return isSignup.value
+    ? 'A username to log in with, and a name for the table.'
+    : 'Log in to pick up where you left off.';
 });
-
-// Deliberately loose. The real check is whether the confirmation mail
-// arrives; a clever pattern here only turns away people with unusual - and
-// perfectly valid - addresses.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Matches the check constraint on profiles.username, and the character set
-// the table's own rename allows.
-const USERNAME_RE = /^[\p{L}\p{N} _.'-]{3,20}$/u;
 
 function validate() {
   const errors = {};
-  const mail = email.value.trim();
-  if (!mail) errors.email = 'Enter your email address.';
-  else if (!EMAIL_RE.test(mail)) errors.email = 'That doesn’t look like an email address.';
-
-  if (!password.value) errors.password = 'Enter a password.';
-  else if (isSignup.value && password.value.length < 8) {
-    errors.password = 'Use at least 8 characters.';
+  const handle = username.value.trim();
+  if (!handle) errors.username = 'Enter your username.';
+  else if (isSignup.value && !USERNAME_RE.test(handle)) {
+    errors.username = 'Use 3–20 letters, numbers or _ . - characters.';
   }
 
   if (isSignup.value) {
-    const name = username.value.trim();
-    if (!name) errors.username = 'Pick a name for the table.';
-    else if (!USERNAME_RE.test(name)) {
-      errors.username = 'Use 3–20 letters, numbers, spaces or _ . - characters.';
+    const name = ingameName.value.trim();
+    if (!name) errors.ingameName = 'Pick a name for the table.';
+    else if (!INGAME_NAME_RE.test(name)) {
+      errors.ingameName = 'Use up to 20 letters, numbers, spaces or _ . - characters.';
     }
   }
 
-  fieldErrors.value = errors;
-  // The first bad box is the one that gets marked and the cursor.
-  const first = ['email', 'password', 'username'].find((k) => errors[k]);
-  if (first) {
-    const field = { email: emailField, password: passwordField, username: usernameField }[first];
-    field.value?.flag();
+  if (!password.value) errors.password = 'Enter a password.';
+  else if (isSignup.value && password.value.length < MIN_PASSWORD) {
+    errors.password = `Use at least ${MIN_PASSWORD} characters.`;
   }
+
+  // Checked here rather than at Supabase, which is never told about it: the
+  // second box exists to catch a typo in the first, and only this page can
+  // see both.
+  if (isSignup.value) {
+    if (!confirm.value) errors.confirm = 'Type the password again.';
+    else if (confirm.value !== password.value) errors.confirm = 'These don’t match.';
+  }
+
+  return mark(errors);
+}
+
+// The first bad box is the one that gets the cursor.
+function mark(errors) {
+  fieldErrors.value = errors;
+  const first = ['username', 'ingameName', 'password', 'confirm'].find((k) => errors[k]);
+  if (first) FIELDS[first].value?.flag();
   return !first;
 }
 
 async function submit() {
   if (busy.value) return;
   formError.value = '';
+  hidePasswords();
   if (!validate()) return;
   busy.value = true;
   try {
     if (isSignup.value) {
+      const handle = username.value.trim();
+      // Asked before signing up, so a taken name is a sentence under the box
+      // it belongs to rather than an auth error about an address nobody saw.
+      if (!(await usernameAvailable(handle))) {
+        mark({ username: 'That username is taken.' });
+        return;
+      }
       const { needsConfirmation } = await auth.signUp({
-        email: email.value.trim(),
+        username: handle,
+        ingameName: ingameName.value.trim(),
         password: password.value,
-        username: username.value.trim(),
       });
       if (needsConfirmation) {
-        sentTo.value = email.value.trim();
+        sentTo.value = handle;
         return;
       }
     } else {
-      await auth.signIn({ email: email.value.trim(), password: password.value });
+      await auth.signIn({ username: username.value.trim(), password: password.value });
     }
     emit('done');
   } catch (err) {
-    formError.value = err.message;
-    // Which box is wrong is not something the server will say - it
-    // deliberately won't confirm whether an email has an account - so on a
-    // refused login both are marked and the password takes the cursor.
+    // A clash that got past the check - two people signing up at once, or the
+    // availability function missing - still belongs on the username box.
+    if (/username is taken/i.test(err.message)) mark({ username: err.message });
+    else formError.value = err.message;
+    // Which box is wrong on a refused login is not something the server will
+    // say - it deliberately won't confirm whether a username has an account -
+    // so both are marked and the password takes the cursor.
     if (!isSignup.value) {
-      emailField.value?.flag();
+      usernameField.value?.flag();
       passwordField.value?.flag();
     }
   } finally {
@@ -140,13 +181,18 @@ async function continueAsGuest() {
 }
 
 // Swapping tabs clears what the other one complained about, but keeps what
-// has been typed: an email entered on the wrong tab is still their email.
+// has been typed: a username entered on the wrong tab is still their username.
+// The boxes have to be unmarked as well as unmessaged - username and password
+// are on both tabs, so a border left red from a refused login would sit there
+// over the sign-up form with nothing to explain it.
 async function switchTo(next) {
   tab.value = next;
   formError.value = '';
   fieldErrors.value = {};
+  for (const field of Object.values(FIELDS)) clearInvalid(field.value?.el);
+  hidePasswords();
   await nextTick();
-  emailField.value?.el?.focus();
+  usernameField.value?.el?.focus();
 }
 
 watch(
@@ -170,10 +216,14 @@ function onDismiss() {
     @close="emit('close')"
     @dismiss="onDismiss"
   >
-    <!-- Sent, and nothing to do here until they follow the link. -->
+    <!-- Email confirmation is on at the Supabase end, which usernames cannot
+         satisfy - there is no inbox behind a synthetic address. Say what has
+         happened rather than spinning. -->
     <div v-if="sentTo" class="auth-sent">
       <p class="help-text">
-        Open it to finish setting up your account. You can keep playing in the meantime.
+        <strong class="selectable">{{ sentTo }}</strong> was created, but this server is set to
+        confirm accounts by email — and a username has no inbox to confirm from. Switch email
+        confirmation off in Supabase, then log in. You can keep playing as a guest meanwhile.
       </p>
       <div class="sheet-actions">
         <BaseButton variant="primary" size="lg" @click="emit('done')">
@@ -208,41 +258,51 @@ function onDismiss() {
 
       <form class="auth-form" novalidate @submit.prevent="submit">
         <TextField
-          ref="emailField"
-          v-model="email"
-          label="Email"
-          type="email"
-          autocomplete="email"
-          placeholder="you@example.com"
-          :error="fieldErrors.email"
-          :disabled="busy"
-        />
-        <TextField
-          ref="passwordField"
-          v-model="password"
-          label="Password"
-          type="password"
-          :autocomplete="isSignup ? 'new-password' : 'current-password'"
-          :hint="isSignup ? 'At least 8 characters.' : ''"
-          :error="fieldErrors.password"
+          ref="usernameField"
+          v-model="username"
+          label="Username"
+          autocomplete="username"
+          :maxlength="20"
+          :placeholder="isSignup ? 'How you log in' : ''"
+          :hint="isSignup ? 'Letters, numbers, _ . - — and yours alone.' : ''"
+          :error="fieldErrors.username"
           :disabled="busy"
         />
         <TextField
           v-if="isSignup"
-          ref="usernameField"
-          v-model="username"
-          label="Name at the table"
+          ref="ingameField"
+          v-model="ingameName"
+          label="In-game name"
           autocomplete="nickname"
           :maxlength="20"
           placeholder="What everyone sees"
-          :error="fieldErrors.username"
+          hint="Shown at the table. Share it with whoever you like."
+          :error="fieldErrors.ingameName"
+          :disabled="busy"
+        />
+        <PasswordInput
+          ref="passwordField"
+          v-model="password"
+          label="Password"
+          :autocomplete="isSignup ? 'new-password' : 'current-password'"
+          :hint="isSignup ? `At least ${MIN_PASSWORD} characters.` : ''"
+          :error="fieldErrors.password"
+          :disabled="busy"
+        />
+        <PasswordInput
+          v-if="isSignup"
+          ref="confirmField"
+          v-model="confirm"
+          label="Confirm password"
+          autocomplete="new-password"
+          :error="fieldErrors.confirm"
           :disabled="busy"
         />
 
         <p v-if="formError" class="error-text selectable" role="alert">{{ formError }}</p>
 
         <BaseButton type="submit" variant="primary" size="lg" :disabled="busy">
-          {{ busy ? 'One moment…' : isSignup ? (upgrading ? 'Keep my chips' : 'Create account') : 'Log in' }}
+          {{ busy ? 'One moment…' : isSignup ? (upgrading ? 'Keep this player' : 'Create account') : 'Log in' }}
         </BaseButton>
       </form>
 

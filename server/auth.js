@@ -27,9 +27,9 @@ router.post('/register', async (req, res) => {
   }
 
   const hash = await bcrypt.hash(password, SALT_ROUNDS);
-  const userId = db.createUser(username, hash, 1000);
+  const userId = db.createUser(username, hash);
   req.session.userId = userId;
-  res.json({ id: userId, username, bankroll: 1000 });
+  res.json({ id: userId, username });
 });
 
 router.post('/login', async (req, res) => {
@@ -45,7 +45,7 @@ router.post('/login', async (req, res) => {
   if (!ok) return res.status(401).json({ error: 'Invalid username or password.' });
 
   req.session.userId = user.id;
-  res.json({ id: user.id, username: user.username, bankroll: user.bankroll });
+  res.json({ id: user.id, username: user.username });
 });
 
 router.post('/logout', (req, res) => {
@@ -56,7 +56,7 @@ router.get('/me', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
   const user = db.getUserById(req.session.userId);
   if (!user) return res.status(401).json({ error: 'Not logged in.' });
-  res.json({ id: user.id, username: user.username, bankroll: user.bankroll });
+  res.json({ id: user.id, username: user.username });
 });
 
 router.get('/history', (req, res) => {

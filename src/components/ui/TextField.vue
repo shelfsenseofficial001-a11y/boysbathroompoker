@@ -18,6 +18,11 @@ const props = defineProps({
   hint: { type: String, default: '' },
   error: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  // Shown, selectable, copyable - and not editable. Different from
+  // `disabled`, which greys a field out and takes it out of the tab order:
+  // a value the player still needs to read and copy is not the same as one
+  // that has been switched off.
+  readonly: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -48,6 +53,8 @@ defineExpose({ flag, el: input });
       :placeholder="placeholder"
       :maxlength="maxlength ?? undefined"
       :disabled="disabled"
+      :readonly="readonly"
+      :aria-readonly="readonly ? 'true' : undefined"
       :aria-invalid="error ? 'true' : undefined"
       :aria-describedby="error ? errorId : undefined"
       @input="emit('update:modelValue', $event.target.value)"

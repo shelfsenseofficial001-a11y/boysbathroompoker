@@ -1,60 +1,37 @@
 <script setup>
 // The lobby: host a table, join one by code, or pick one off the open list.
 // Settings sits behind the avatar menu as a page of its own.
-import { ref, computed, onMounted, nextTick } from 'vue';
-import { useGuestAuth } from '../../composables/useGuestAuth.js';
-import { supabaseConfigured } from '../../lib/supabase.js';
+import { ref, onMounted, nextTick } from 'vue';
 import { emitAck } from '../../lib/socket.js';
 import { showToast } from '../../lib/toast.js';
 import { playEntrance } from '../../lib/motion.js';
-import TopBar from '../layout/TopBar.vue';
 import HostRoomForm from './HostRoomForm.vue';
 import JoinRoomForm from './JoinRoomForm.vue';
 import RoomList from './RoomList.vue';
 import SettingsPage from './SettingsPage.vue';
 
 const props = defineProps({
-  user: { type: Object, required: true },
+  // Null when nobody is signed in. The homepage still renders - it is the
+  // page the first-visit sheet and the logged-out state sit on top of, and a
+  // sheet floating over an empty screen is the bug this avoids. What it drops
+  // is the half that needs a socket: you cannot host or join from here
+  // without an identity, and a dead socket would only say so in red.
+  user: { type: Object, default: null },
   guest: { type: Boolean, default: false },
   notice: { type: String, default: '' },
 });
 const emit = defineEmits(['enter-room', 'logout', 'auth']);
 
-const auth = useGuestAuth();
-// A guest has an account they never asked for; the bar offers them a real
-// one. Somebody already signed in sees their name and nothing else.
-const showAuth = computed(() => supabaseConfigured && auth.isGuest.value);
+// The avatar menu, the auth buttons and the footer all belong to the app
+// shell now (src/App.vue), so this screen is only the lobby itself.
 
-// Everything that isn't "change my name" lives in the menu under the avatar,
-// so the bar carries a brand and a name and nothing else.
-const menuGroups = computed(() => {
-  const account = [];
-  if (showAuth.value) {
-    account.push({ id: 'signup', icon: 'key', label: 'Keep this account' });
-  }
-  return [
-    [{ id: 'settings', icon: 'gear', label: 'Settings' }, ...account],
-    [
-      {
-        id: 'logout',
-        icon: 'leave',
-        label: auth.hasAccount.value ? 'Log out' : props.guest ? 'New guest' : 'Log out',
-        danger: true,
-      },
-    ],
-  ];
-});
-
+// Which of the lobby's two pages is showing. Settings is a page rather than
+// a panel at the foot of the list: it has nothing to do with hosting or
+// joining a game.
 const page = ref('main');
+const error = ref('');
 const screen = ref(null);
 const joinForm = ref(null);
-// Why we're back here, when the room ended rather than the player leaving.
-const error = ref(props.notice || '');
-
-// Being turned away from a room happens over by the Join button, which is
-// nowhere near the line of red text at the foot of the page — so it's said in
-// a toast, where it can't be missed.
-const fail = (message) => showToast(message, { atPage: true });
 
 async function showPage(name) {
   page.value = name;
@@ -62,11 +39,14 @@ async function showPage(name) {
   window.scrollTo({ top: 0 });
 }
 
-function onMenuPick(id) {
-  if (id === 'logout') return emit('logout');
-  if (id === 'signup') return emit('auth', 'signup');
-  if (id === 'settings') showPage('settings');
+// A rename from the profile page. The bar reads `user.username`, and the
+// avatar is drawn from it, so both follow from this one assignment.
+function onRenamed(name) {
+  if (props.user) props.user.username = name;
 }
+
+// Called by the app shell, whose avatar menu owns the Settings item now.
+defineExpose({ showPage });
 
 function entered({ code, notice }) {
   error.value = '';
@@ -87,15 +67,7 @@ onMounted(() => playEntrance(screen.value));
 </script>
 
 <template>
-  <div ref="screen" class="screen">
-    <TopBar
-      :user="user"
-      :menu-groups="menuGroups"
-      :show-auth="showAuth"
-      @pick="onMenuPick"
-      @auth="emit('auth', $event)"
-    />
-
+  <div ref="screen" class="lobby-screen">
     <main v-show="page === 'main'" class="page">
       <section class="hero" data-enter>
         <div class="eyebrow">Play-money Texas Hold’em</div>
@@ -105,14 +77,28 @@ onMounted(() => playEntrance(screen.value));
           bragging rights.
         </p>
       </section>
-      <div class="lobby-grid">
-        <HostRoomForm @entered="entered" @fail="fail" />
-        <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
-      </div>
-      <RoomList @join="joinForm?.join($event, true)" @watch="watchRoom" @fail="fail" />
-      <p class="error-text" role="alert">{{ error }}</p>
+      <!-- Hosting and joining go through the socket, so they wait for the
+           server's own record of this player. Signed out there is nothing to
+           wait for; signed in it is a moment, and saying so beats three dead
+           panels. -->
+      <template v-if="user">
+        <div class="lobby-grid">
+          <HostRoomForm @entered="entered" @fail="fail" />
+          <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
+        </div>
+        <RoomList @join="joinForm?.join($event, true)" @watch="watchRoom" @fail="fail" />
+        <p class="error-text" role="alert">{{ error }}</p>
+      </template>
+      <p v-else class="lead lobby-signed-out">Finding your seat…</p>
     </main>
 
-    <SettingsPage v-if="page === 'settings'" @back="showPage('main')" />
+    <SettingsPage
+      v-if="page === 'settings'"
+      :user="user"
+      @back="showPage('main')"
+      @auth="emit('auth', $event)"
+      @logout="emit('logout')"
+      @renamed="onRenamed"
+    />
   </div>
 </template>

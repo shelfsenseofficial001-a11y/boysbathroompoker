@@ -62,7 +62,14 @@ function verifyLocally(token) {
   if (payload.aud !== 'authenticated') return null;
   if (typeof payload.sub !== 'string' || !payload.sub) return null;
 
-  return { id: payload.sub, isAnonymous: payload.is_anonymous === true };
+  return {
+    id: payload.sub,
+    isAnonymous: payload.is_anonymous === true,
+    // Carried through for the display name, and for nothing else. See the
+    // note above verifyAccessToken.
+    metadata: payload.user_metadata || {},
+    email: typeof payload.email === 'string' ? payload.email : '',
+  };
 }
 
 async function verifyRemotely(token) {
@@ -73,7 +80,12 @@ async function verifyRemotely(token) {
     if (!res.ok) return null;
     const user = await res.json();
     if (!user || typeof user.id !== 'string') return null;
-    return { id: user.id, isAnonymous: user.is_anonymous === true };
+    return {
+      id: user.id,
+      isAnonymous: user.is_anonymous === true,
+      metadata: user.user_metadata || {},
+      email: typeof user.email === 'string' ? user.email : '',
+    };
   } catch {
     // Auth server unreachable. Refusing is the right answer: letting a
     // handshake through unverified because the network blinked is how an
@@ -82,8 +94,15 @@ async function verifyRemotely(token) {
   }
 }
 
-// Resolves to { id, isAnonymous } for a good token, or null for anything
-// else. `id` is the Supabase auth user id (a uuid).
+// Resolves to { id, isAnonymous, metadata, email } for a good token, or null
+// for anything else. `id` is the Supabase auth user id (a uuid).
+//
+// `metadata` is the account's own `user_metadata`, and the account can write
+// it through `updateUser`. That is right for what it is used for here - a
+// display name, which is allowed to duplicate and allowed to change - and it
+// must never decide anything else. Permission, ownership and uniqueness all
+// hang off `id`, which is the only part of this that a holder of the token
+// cannot choose.
 exports.verifyAccessToken = async function verifyAccessToken(token) {
   if (typeof token !== 'string' || token.length < 20) return null;
   if (localVerify) return verifyLocally(token);

@@ -7,19 +7,57 @@
 // disagreeing about the game.
 import { ref, computed } from 'vue';
 import { useSettings, ZOOM } from '../../composables/useSettings.js';
+import { motionReduced, toggleMotion } from '../../lib/motion.js';
+import { soundMuted, toggleSound } from '../../lib/sound.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import ThemePicker from '../ui/ThemePicker.vue';
 import PeekPreview from './PeekPreview.vue';
+import ProfilePage from './ProfilePage.vue';
 
-defineEmits(['back']);
+defineProps({
+  user: { type: Object, default: null },
+});
+defineEmits(['back', 'auth', 'logout', 'renamed']);
 
 const { settings, reset } = useSettings();
 const tab = ref('look');
 
-const TABS = [
-  { id: 'look', icon: 'sparkle', label: 'Appearance' },
-  { id: 'cards', icon: 'eye', label: 'Your cards' },
+// Motion and sound are not part of the settings object: each keeps its own
+// key, because the table reads them directly while it is drawing and cannot
+// wait for a reactive store. Mirrored into refs here so a checkbox can bind
+// to them, with the toggle functions staying the one place that writes.
+const animations = ref(!motionReduced());
+const sounds = ref(!soundMuted());
+
+function onMotion() {
+  toggleMotion();
+  animations.value = !motionReduced();
+}
+function onSound() {
+  toggleSound();
+  sounds.value = !soundMuted();
+}
+
+// Grouped, because the second group is about you rather than about the
+// table. Each group keeps its own heading; the items are the same shape and
+// the same button as they always were.
+const GROUPS = [
+  {
+    head: 'Table',
+    tabs: [
+      { id: 'look', icon: 'sparkle', label: 'Appearance' },
+      { id: 'cards', icon: 'eye', label: 'Your cards' },
+    ],
+  },
+  {
+    head: 'Account',
+    tabs: [{ id: 'profile', icon: 'key', label: 'Profile' }],
+  },
+  {
+    head: 'This device',
+    tabs: [{ id: 'feel', icon: 'sliders', label: 'Motion & sound' }],
+  },
 ];
 
 // Turning the cards face up takes the whole peek-zoom section out of play.
@@ -41,20 +79,22 @@ const pct = (value, { min, max }) => `${((value - min) / (max - min)) * 100}%`;
     <div class="panel">
       <div class="set-split">
         <nav class="set-nav" role="tablist" aria-label="Settings sections">
-          <span class="set-nav-head">Table</span>
-          <button
-            v-for="t in TABS"
-            :key="t.id"
-            type="button"
-            class="set-tab"
-            :class="{ 'is-on': tab === t.id }"
-            role="tab"
-            :aria-selected="String(tab === t.id)"
-            :title="t.label"
-            @click="tab = t.id"
-          >
-            <SvgIcon :name="t.icon" /><span>{{ t.label }}</span>
-          </button>
+          <template v-for="group in GROUPS" :key="group.head">
+            <span class="set-nav-head">{{ group.head }}</span>
+            <button
+              v-for="t in group.tabs"
+              :key="t.id"
+              type="button"
+              class="set-tab"
+              :class="{ 'is-on': tab === t.id }"
+              role="tab"
+              :aria-selected="String(tab === t.id)"
+              :title="t.label"
+              @click="tab = t.id"
+            >
+              <SvgIcon :name="t.icon" /><span>{{ t.label }}</span>
+            </button>
+          </template>
         </nav>
         <div class="set-pane">
           <section class="set-panel" role="tabpanel" :hidden="tab !== 'look'">
@@ -123,6 +163,41 @@ const pct = (value, { min, max }) => `${((value - min) / (max - min)) * 100}%`;
             </div>
             <PeekPreview :active="tab === 'cards'" />
           </section>
+
+          <!-- The same two switches the table carries in its own settings
+               sheet, and the same storage behind them: a player who turns
+               animations off before they sit down should not have to find
+               the toggle again once they have. -->
+          <section class="set-panel" role="tabpanel" :hidden="tab !== 'feel'">
+            <h3 class="set-lede">Motion and sound</h3>
+            <p class="set-note">
+              Turn either off if the table feels busy, or to save a slower device some work.
+              Kept on this device, like the rest of these.
+            </p>
+            <label class="switch-row">
+              <input type="checkbox" :checked="animations" @change="onMotion" />
+              <span>
+                Animations
+                <small>Cards dealing, chips moving, the countdown ring</small>
+              </span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" :checked="sounds" @change="onSound" />
+              <span>
+                Sounds
+                <small>Chips, the flip of a card, your turn coming round</small>
+              </span>
+            </label>
+          </section>
+
+          <div role="tabpanel" :hidden="tab !== 'profile'">
+            <ProfilePage
+              :user="user"
+              @auth="$emit('auth', $event)"
+              @logout="$emit('logout')"
+              @renamed="$emit('renamed', $event)"
+            />
+          </div>
         </div>
       </div>
     </div>

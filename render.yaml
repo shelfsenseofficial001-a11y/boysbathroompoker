@@ -25,10 +25,29 @@ services:
       # Generated once by Render and kept thereafter; never commit a real one.
       - key: SESSION_SECRET
         generateValue: true
-      # Guest mode: every browser tab plays under its own name, no sign-up.
-      # Set to false to turn the account system back on.
+      # Auth bypass, development only. The server refuses to start if this is
+      # "true" while NODE_ENV=production, so it stays false here.
       - key: SKIP_AUTH
-        value: "true"
+        value: "false"
+      # Supabase. Set each of these in the Render dashboard - sync: false keeps
+      # the values out of this file and out of the repository.
+      #
+      # The two VITE_ values are read at build time and end up in the bundle,
+      # which is what the anon key is for. The server-side pair verifies the
+      # token a socket connects with: the JWT secret verifies locally with no
+      # network call, URL + anon key is the fallback.
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_AUTH_EMAIL_DOMAIN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
 
 # The free plan has no persistent disk, so data/poker.db is rebuilt whenever the
 # service restarts or redeploys. That costs nothing in guest mode, where the

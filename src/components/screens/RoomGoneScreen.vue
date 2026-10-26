@@ -4,31 +4,21 @@
 // and it says so instead of showing a bare error.
 import { onMounted, ref } from 'vue';
 import { playEntrance } from '../../lib/motion.js';
-import TopBar from '../layout/TopBar.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import CardSpread from '../ui/CardSpread.vue';
 
-const props = defineProps({
+defineProps({
   code: { type: String, required: true },
-  user: { type: Object, default: null },
-  guest: { type: Boolean, default: false },
 });
-defineEmits(['home', 'logout']);
-
-// This screen can't offer Settings, which is a page of the lobby, so the menu
-// is a name change and a way out.
-const menuGroups = [
-  [{ id: 'logout', icon: 'leave', label: props.guest ? 'New guest' : 'Log out', danger: true }],
-];
+defineEmits(['home']);
 
 const screen = ref(null);
 onMounted(() => playEntrance(screen.value));
 </script>
 
 <template>
-  <div ref="screen" class="screen">
-    <TopBar :user="user" :menu-groups="menuGroups" @pick="$emit('logout')" />
+  <div ref="screen" class="gone-screen">
     <main class="page gone-page">
       <!-- The same figures the 404 page deals, so a dead link and a dead room
            are plainly the same game talking. -->

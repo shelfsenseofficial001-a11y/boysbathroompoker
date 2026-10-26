@@ -232,7 +232,177 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   30%, 50%, 70% { transform: translateX(-5px); }
   40%, 60% { transform: translateX(5px); }
 }
+/* A password field and the button that reveals it. The button sits inside
+   the box, and the box is padded out of its way - 44px of tap target plus a
+   little air, so a long password runs behind nothing. */
+.field-password { position: relative; display: flex; }
+.field-password .input { padding-right: 50px; }
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: var(--r-s);
+  padding: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.password-toggle:hover:not(:disabled) { color: var(--text-1); }
+.password-toggle:disabled { cursor: default; opacity: 0.5; }
+/* Keyboard focus has to be visible on a control that sits on top of another
+   one - the input's own gold ring is around the box, not around this. */
+.password-toggle:focus-visible {
+  outline: none;
+  color: var(--text-1);
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
 .field-row { display: flex; gap: 12px; margin-bottom: 14px; }
+
+/* ---------- The front door ----------
+   What a signed-out visitor meets. Not a stripped lobby with its panels
+   missing - a page with one obvious way in and a quieter one beside it. */
+.lobby-door { max-width: 52ch; margin-top: 6px; }
+.lobby-door .lead { margin-bottom: 20px; }
+.lobby-door-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.lobby-door-actions .btn { width: auto; min-width: 180px; }
+@media (max-width: 560px) {
+  .lobby-door-actions { flex-direction: column; }
+  .lobby-door-actions .btn { width: 100%; }
+}
+.lobby-signed-out { margin-top: 8px; color: var(--text-3); }
+
+/* ---------- The door is shut ----------
+   Nobody can sign in, which is a configuration problem and not the player's
+   fault, so it reads as a room rather than an error box: an empty table, six
+   seats nobody is in, and two cards left face down on the felt. The seats
+   breathe very slightly, which is the only thing on screen suggesting the
+   place is still running. */
+.shut-screen {
+  display: grid; place-items: center; gap: 34px; padding: 40px 20px;
+  grid-template-rows: auto auto;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(18, 36, 28, 0.9), var(--bg-0, #050908));
+}
+.shut-felt {
+  position: relative; width: min(340px, 78vw); aspect-ratio: 1.55;
+  border-radius: 50% / 46%;
+  background: radial-gradient(70% 70% at 50% 44%, #16372a, #0c2219 72%, #091a13);
+  border: 2px solid rgba(230, 180, 80, 0.22);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55), 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.shut-seat {
+  position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  /* Six seats around the oval, each turned to its own place on the ring. */
+  rotate: calc(var(--i) * 60deg);
+  translate: 0 calc(-1 * min(150px, 34vw));
+  transform-origin: 50% 50%;
+  animation: seatBreath 5.5s ease-in-out infinite both;
+  animation-delay: calc(var(--i) * 0.42s);
+}
+@keyframes seatBreath { 50% { opacity: 0.42; } }
+.shut-cards { position: absolute; top: 50%; left: 50%; display: flex; gap: 6px; margin: -24px 0 0 -29px; }
+.shut-cards i {
+  width: 26px; height: 38px; border-radius: 4px;
+  background: linear-gradient(160deg, #13261d, #0a1711);
+  border: 1px solid rgba(230, 180, 80, 0.4);
+}
+.shut-cards i:first-child { rotate: -7deg; }
+.shut-cards i:last-child { rotate: 7deg; }
+.shut-say { max-width: 46ch; text-align: center; }
+.shut-say .kicker {
+  display: block; margin-bottom: 8px;
+  font: 800 10px var(--font-ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold);
+}
+.shut-say h1 { margin: 0 0 10px; }
+.shut-say .help-text { margin-top: 12px; }
+.reduce-motion .shut-seat { animation: none; }
+
+/* ---------- Signing in and out ----------
+   The gap between being one person and being nobody. It used to be a white
+   flash and a reload; now three cards are gathered up or dealt down while the
+   work happens behind it. It answers something the player just did and lasts
+   exactly as long as that takes, which is the line this file draws elsewhere
+   between information and decoration - `.reduce-motion` flattens it and the
+   words carry it alone. */
+.auth-transit {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(16, 32, 25, 0.97), rgba(5, 9, 8, 0.99));
+  animation: transitFade 0.22s var(--ease-out) both;
+}
+@keyframes transitFade { from { opacity: 0; } }
+.auth-transit-cards { position: relative; width: 132px; height: 92px; }
+.transit-card {
+  position: absolute; top: 0; left: 50%; width: 58px; height: 82px;
+  margin-left: -29px; border-radius: 7px;
+  background: linear-gradient(160deg, #13261d, #0a1711);
+  border: 1px solid rgba(230, 180, 80, 0.5);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.55);
+}
+/* Dealt out: the three slide apart and settle, one after another. */
+.is-in .transit-card { animation: dealOut 0.62s var(--ease-out) both; }
+.is-in .transit-card:nth-child(2) { animation-delay: 0.09s; }
+.is-in .transit-card:nth-child(3) { animation-delay: 0.18s; }
+@keyframes dealOut {
+  from { translate: 0 -28px; rotate: -14deg; opacity: 0; }
+  to { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
+}
+.is-in .transit-card:nth-child(1) { --x: -42px; --r: -9deg; }
+.is-in .transit-card:nth-child(3) { --x: 42px; --r: 9deg; }
+/* Gathered in: the fan closes, squares up and lifts away. */
+.is-out .transit-card { animation: gatherIn 0.74s var(--ease-in-out, ease-in-out) both; }
+.is-out .transit-card:nth-child(2) { animation-delay: 0.06s; }
+.is-out .transit-card:nth-child(3) { animation-delay: 0.12s; }
+@keyframes gatherIn {
+  0% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
+  55% { translate: 0 0; rotate: 0deg; opacity: 1; }
+  100% { translate: 0 -26px; rotate: 0deg; opacity: 0; }
+}
+.is-out .transit-card:nth-child(1) { --x: -42px; --r: -9deg; }
+.is-out .transit-card:nth-child(3) { --x: 42px; --r: 9deg; }
+.auth-transit-label {
+  margin: 0; font: 700 19px var(--font-display); letter-spacing: 0.02em; color: var(--text-1);
+}
+/* Held still, and the sentence does the work. */
+.reduce-motion .auth-transit { animation: none; }
+.reduce-motion .transit-card { animation: none !important; opacity: 1; }
+.reduce-motion .is-out .transit-card:nth-child(1),
+.reduce-motion .is-in .transit-card:nth-child(1) { translate: -42px 0; rotate: -9deg; }
+.reduce-motion .is-out .transit-card:nth-child(3),
+.reduce-motion .is-in .transit-card:nth-child(3) { translate: 42px 0; rotate: 9deg; }
+
+/* ---------- Profile ---------- */
+/* A field that is read rather than filled in. Dimmer than a live field and
+   plainly not a box awaiting a keystroke, but still selectable and copyable -
+   which is why it is `readonly` and not `disabled`. */
+.field input[readonly] {
+  background: rgba(255, 255, 255, 0.02);
+  border-style: dashed;
+  color: var(--text-2);
+  cursor: default;
+}
+.field input[readonly]:hover { border-color: var(--line-2); }
+.field input[readonly]:focus { border-color: var(--line-2); box-shadow: none; }
+.profile-form { display: flex; flex-direction: column; gap: 14px; max-width: 420px; }
+.profile-form .sheet-actions { margin-top: 2px; }
+/* A rule above each new question, so the two forms on this page read as two
+   things to do rather than one long one. */
+.profile-rule { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+.profile-guest-name {
+  margin: 14px 0 18px; font: 700 20px var(--font-display); color: var(--text-1);
+}
+/* Kept in the layout whether or not it says anything: an aria-live region
+   that comes and goes is announced as an arrival rather than a change, and
+   the buttons under it would jump as it appeared. */
+.ok-text { min-height: 1.2em; margin: 0; font-size: var(--fs-small); color: var(--green); }
 
 /* ---------- Top bar ---------- */
 .topbar {
@@ -257,9 +427,19 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .topbar-page { padding-inline: max(18px, calc((100% - var(--page-w, 980px)) / 2 + 20px)); }
 /* The wordmark is small for a Didone, so it gets the heavier weight and a
    little tracking to keep the thin strokes from disappearing. */
-.brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: 0.015em; white-space: nowrap; }
+/* `flex-shrink: 0` is the rule that matters: the bar is a flex row, and
+   without it the brand is the thing that gives way when the right-hand group
+   wants room. The mark is never allowed to shrink, wrap or be pushed out. */
+.brand {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  font-family: var(--font-display); font-weight: 700; font-size: 18px;
+  letter-spacing: 0.015em; white-space: nowrap;
+  color: inherit; text-decoration: none;
+}
 .brand em { font-style: normal; color: var(--gold); }
-.brand .logo { width: 30px; height: 30px; }
+.brand .logo { width: 30px; height: 30px; flex: none; }
+/* Said once, plainly: whatever else the bar drops as it narrows, not this. */
+.brand .logo, .brand > .contents { display: block; }
 .topbar-meta { display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center; min-width: 0; }
 .meta-chip {
   /* A chip holding a button (the room code) or an icon (public/private) gets
@@ -330,6 +510,13 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @keyframes menuIn { from { opacity: 0; translate: 0 -6px; } }
 /* A rule between blocks, never above the first one. */
 .umenu-group + .umenu-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+/* Whose menu this is. Only drawn at the widths where the pill beside the
+   avatar has had to drop the name. */
+.umenu-head {
+  margin: 2px 2px 6px; padding: 0 10px;
+  font: 700 11px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .umenu-item {
   display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px;
   border: 0; border-radius: var(--r-s); background: none; cursor: pointer; text-align: left;
@@ -353,11 +540,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   .topbar .hide-md { display: none; }
 }
 @media (max-width: 900px) {
-  .brand span, .user-pill .user-name { display: none; }
+  /* `.brand span` used to live here, and it matched two spans: the wordmark,
+     which it meant, and the `<span class="contents">` SvgIcon wraps every
+     icon in - so hiding the text took the logo with it and the bar lost its
+     brand entirely below 900px. The wordmark has a class of its own now, and
+     the mark is never part of what gets hidden. */
+  .brand-name, .user-pill .user-name { display: none; }
 }
 @media (max-width: 720px) {
   .topbar { padding: 0 10px; height: 50px; }
-  .brand span, .user-pill .user-name, .topbar .hide-sm { display: none; }
+  .brand-name, .user-pill .user-name, .topbar .hide-sm { display: none; }
 }
 
 /* ---------- Pages (auth, lobby, waiting room) ---------- */
@@ -3359,3 +3551,257 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    that delay is just a pause, so it goes too. */
 .reduce-motion .history, .reduce-motion .chat { transition-delay: 0s !important; }
 .btn.is-off { color: var(--text-3); }
+
+/* ---------- Landing page ----------
+   The page somebody meets before they have an account. It leans on the
+   existing tokens throughout - gold primary, the Didone for headings, the
+   same panels and rules as the lobby - so it reads as the front of this game
+   rather than a brochure bolted onto it. */
+.landing { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.landing-main { flex: 1; width: 100%; max-width: var(--page-w, 980px); margin: 0 auto; padding: 0 20px; }
+
+.lp-hero {
+  display: grid; gap: 34px; align-items: center;
+  padding: clamp(36px, 7vw, 78px) 0 clamp(30px, 5vw, 56px);
+}
+.lp-h1 { margin: 10px 0 14px; font-size: clamp(32px, 7vw, 58px); line-height: 1.05; }
+.lp-hero .lead { max-width: 46ch; }
+.lp-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.lp-cta .btn { width: auto; min-width: 186px; }
+.lp-support { margin: 14px 0 0; color: var(--text-3); font-size: var(--fs-small); }
+.lp-hero-art { display: flex; justify-content: center; }
+.lp-table { width: 100%; max-width: 420px; height: auto; }
+.lp-felt-rim { fill: #0b1a14; stroke: rgba(230, 180, 80, 0.26); stroke-width: 2; }
+.lp-felt { fill: #16382a; }
+.lp-felt-line { fill: none; stroke: rgba(255, 255, 255, 0.07); }
+.lp-card { fill: #f2f4f1; stroke: rgba(0, 0, 0, 0.3); }
+.lp-card-mine { fill: #13261d; stroke: rgba(230, 180, 80, 0.55); }
+.lp-chip { fill: #27483a; stroke: rgba(255, 255, 255, 0.16); }
+.lp-chip-gold { fill: var(--gold); stroke: var(--gold-lo); }
+.lp-seat { fill: rgba(255, 255, 255, 0.05); stroke: rgba(255, 255, 255, 0.12); }
+
+.lp-steps { padding: 18px 0 10px; }
+.lp-step-row { display: grid; gap: 16px; margin: 18px 0 0; padding: 0; list-style: none; }
+.lp-step { padding: 18px; border-radius: var(--r-m); background: var(--bg-1); border: 1px solid var(--line); }
+.lp-step-n {
+  display: grid; place-items: center; width: 30px; height: 30px; margin-bottom: 10px;
+  border-radius: 50%; background: rgba(230, 180, 80, 0.14); color: var(--gold);
+  font: 700 14px var(--font-ui);
+}
+.lp-step-t { margin: 0 0 6px; font: 700 16px var(--font-ui); color: var(--text-1); }
+
+.lp-dev-note {
+  margin: 38px 0 0; padding: 11px 14px; border-radius: var(--r-s);
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line);
+  color: var(--text-3); font-size: var(--fs-small);
+}
+
+.lp-group { padding: clamp(32px, 6vw, 58px) 0 0; }
+.lp-group-h { margin: 0 0 6px; }
+.lp-group-lede { margin: 0 0 24px; max-width: 48ch; }
+.lp-feats { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.lp-feat {
+  display: grid; gap: 16px; align-items: center;
+  padding: 20px; border-radius: var(--r-m);
+  background: var(--bg-1); border: 1px solid var(--line);
+}
+.lp-feat-t { margin: 0 0 7px; font: 700 17px var(--font-ui); color: var(--text-1); }
+.lp-feat-art { display: flex; justify-content: center; }
+/* A tag in words. Colour alone says nothing to a reader who cannot see it,
+   and this pairing holds AA against the panel behind it. */
+.lp-soon {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(74, 168, 232, 0.16); border: 1px solid rgba(74, 168, 232, 0.45);
+  color: #a8d6f7; font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+  vertical-align: middle; white-space: nowrap;
+}
+.lp-feat.is-soon { border-style: dashed; }
+
+.lp-close { padding: clamp(40px, 7vw, 72px) 0 10px; text-align: center; }
+.lp-close .lead { margin: 8px auto 0; max-width: 44ch; }
+.lp-cta-mid { justify-content: center; }
+
+.lp-notice {
+  display: flex; gap: 12px; align-items: flex-start;
+  margin: 34px 0 44px; padding: 16px 18px; border-radius: var(--r-m);
+  background: rgba(60, 194, 127, 0.07); border: 1px solid rgba(60, 194, 127, 0.24);
+  color: var(--text-2); font-size: var(--fs-small);
+}
+.lp-notice .icon { flex: none; margin-top: 2px; color: var(--green); }
+.lp-notice p { margin: 0; }
+.lp-notice b { color: var(--text-1); }
+
+@media (min-width: 760px) {
+  .lp-hero { grid-template-columns: 1.05fr 0.95fr; gap: 48px; }
+  .lp-step-row { grid-template-columns: repeat(3, 1fr); }
+  .lp-feat { grid-template-columns: 180px 1fr; gap: 26px; padding: 24px; }
+  /* Alternating sides, so four groups of the same shape do not read as one
+     long list. Below this width every visual sits above its own text. */
+  .is-flipped .lp-feat { grid-template-columns: 1fr 180px; }
+  .is-flipped .lp-feat .lp-feat-art { order: 2; }
+}
+
+/* ---------- Feature illustrations ----------
+   Conceptual drawings, not screenshots, and never carrying data that could
+   be mistaken for somebody's real game. They loop only while on screen, and
+   under reduced motion they hold their end state rather than their first
+   frame - a still of the finished idea still reads as the idea. */
+.fviz { width: 100%; max-width: 180px; }
+.fviz-svg { width: 100%; height: auto; display: block; }
+.fv-shadow { fill: rgba(0, 0, 0, 0.35); }
+.fv-chip { fill: #27483a; stroke: rgba(255, 255, 255, 0.16); }
+.fv-chip-gold { fill: var(--gold); stroke: var(--gold-lo); }
+.fv-panel { fill: var(--bg-2); stroke: var(--line-2); }
+.fv-felt { fill: #16382a; stroke: rgba(230, 180, 80, 0.22); }
+.fv-card { fill: #f2f4f1; stroke: rgba(0, 0, 0, 0.3); }
+.fv-muck { fill: rgba(0, 0, 0, 0.28); stroke: rgba(255, 255, 255, 0.1); }
+.fv-pot { fill: rgba(0, 0, 0, 0.3); stroke: rgba(255, 255, 255, 0.12); }
+.fv-ring { fill: none; stroke: var(--text-3); stroke-width: 2.5; }
+.fv-slash { stroke: var(--text-3); stroke-width: 2.5; stroke-linecap: round; }
+.fv-glyph { fill: var(--text-3); font: 700 17px var(--font-ui); text-anchor: middle; }
+.fv-label { fill: var(--text-3); font: 800 9px var(--font-ui); letter-spacing: 0.16em; text-anchor: middle; }
+.fv-micro { fill: var(--text-3); font: 700 8px var(--font-ui); letter-spacing: 0.1em; text-anchor: middle; }
+.fv-avatar { fill: rgba(255, 255, 255, 0.05); stroke: var(--line-2); }
+.fv-avatar-head { fill: var(--text-3); }
+.fv-tag { fill: rgba(230, 180, 80, 0.16); stroke: rgba(230, 180, 80, 0.4); }
+.fv-tag-text { fill: var(--gold); font: 800 9px var(--font-ui); letter-spacing: 0.12em; text-anchor: middle; }
+.fv-faded { opacity: 0.3; }
+.fv-bar { fill: var(--text-3); }
+.fv-pill { fill: rgba(60, 194, 127, 0.16); stroke: rgba(60, 194, 127, 0.4); }
+.fv-pill-text { fill: var(--green); font: 800 9px var(--font-ui); letter-spacing: 0.12em; text-anchor: middle; }
+.fv-tap-dot { fill: rgba(255, 255, 255, 0.5); }
+.fv-tap-ring { fill: none; stroke: var(--green); stroke-width: 2; opacity: 0; }
+.fv-lock-body { fill: var(--text-3); }
+.fv-lock-shackle { fill: none; stroke: var(--text-3); stroke-width: 2.5; }
+.fv-add { fill: rgba(230, 180, 80, 0.12); stroke: rgba(230, 180, 80, 0.45); stroke-dasharray: 4 3; }
+.fv-add-plus { stroke: var(--gold); stroke-width: 2.5; stroke-linecap: round; }
+.fv-rung { fill: rgba(230, 180, 80, 0.3); }
+.fv-row { fill: rgba(255, 255, 255, 0.04); stroke: var(--line); }
+.fv-blank { fill: rgba(255, 255, 255, 0.12); }
+
+.fviz.is-live .fv-tap-1 { animation: fvTap 2.4s var(--ease-out) infinite; }
+.fviz.is-live .fv-tap-2 { animation: fvTap 2.4s var(--ease-out) 0.3s infinite; }
+@keyframes fvTap {
+  0% { opacity: 0.9; scale: 0.5; }
+  35%, 100% { opacity: 0; scale: 2.1; }
+}
+.fviz.is-live .fv-toss { animation: fvToss 3s var(--ease-out) infinite; }
+@keyframes fvToss {
+  0%, 12% { translate: 0 0; opacity: 1; }
+  62%, 100% { translate: 78px -8px; opacity: 0; }
+}
+.fviz.is-live .fv-fly { animation: fvFly 2.8s var(--ease-out) infinite; }
+@keyframes fvFly {
+  0%, 10% { translate: 0 0; opacity: 0; }
+  20% { opacity: 1; }
+  70%, 100% { translate: 66px -14px; opacity: 0; }
+}
+.fviz.is-live .fv-refill ellipse {
+  animation: fvRefill 2.6s var(--ease-out) infinite;
+  animation-delay: calc(var(--i) * 0.14s);
+}
+@keyframes fvRefill {
+  0% { opacity: 0; translate: 0 10px; }
+  25%, 85% { opacity: 1; translate: 0 0; }
+  100% { opacity: 0; translate: 0 10px; }
+}
+.fviz.is-live .fv-rung {
+  animation: fvRung 2.8s var(--ease-out) infinite;
+  animation-delay: calc(var(--i) * 0.16s);
+}
+@keyframes fvRung { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fviz.is-live * { animation: none !important; }
+}
+.reduce-motion .fviz.is-live * { animation: none !important; }
+
+/* ---------- Footer ---------- */
+.site-foot { margin-top: auto; border-top: 1px solid var(--line); background: var(--bg-1); }
+.foot-inner {
+  display: grid; gap: 28px;
+  width: 100%; max-width: var(--page-w, 980px); margin: 0 auto; padding: 36px 20px 28px;
+}
+.foot-mark { font-size: 17px; }
+.foot-line { margin: 12px 0 0; max-width: 38ch; color: var(--text-3); font-size: var(--fs-small); }
+.foot-nav { display: grid; gap: 22px; }
+.foot-head {
+  margin: 0 0 6px;
+  font: 800 10px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3);
+}
+.foot-col ul { margin: 0; padding: 0; list-style: none; display: grid; }
+/* 44px of tap target, without the links drifting apart under a mouse. */
+.foot-col .link {
+  display: inline-flex; align-items: center; min-height: 44px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: 500 14px var(--font-ui); color: var(--text-2); text-decoration: none; text-align: left;
+}
+.foot-col .link:hover { color: var(--gold); }
+.foot-col .link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.foot-bar {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; justify-content: space-between;
+  width: 100%; max-width: var(--page-w, 980px); margin: 0 auto; padding: 16px 20px 24px;
+  border-top: 1px solid var(--line);
+  color: var(--text-3); font-size: var(--fs-small);
+}
+.foot-bar > p { margin: 0; }
+
+@media (min-width: 760px) {
+  .foot-inner { grid-template-columns: 1.2fr 1.8fr; gap: 48px; }
+  .foot-nav { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- The app shell ----------
+   Painted on the first frame, before anything is known about the session.
+   The bar, the content slot and the foot are all here; only what genuinely
+   depends on who is reading waits, and it waits inside a box of the right
+   size rather than by leaving the page empty.
+
+   The blank flash this replaced had three causes, all of them the same
+   mistake in different clothes: the whole page was waiting on an answer that
+   only one corner of it needed. */
+.app-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.app-shell > .landing,
+.app-shell > .lobby-screen,
+.app-shell > .gone-screen,
+.app-shell > .screen { flex: 1; display: flex; flex-direction: column; }
+
+/* The content slot while the session resolves. Shown only to somebody whose
+   last visit ended signed in - everyone else is given the landing page,
+   which is where they were going anyway. */
+.shell-wait {
+  flex: 1; width: 100%; max-width: var(--page-w, 980px);
+  margin: 0 auto; padding: 48px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+
+/* A placeholder that holds its space. Deliberately dim and slow: it should
+   read as "not yet" rather than as something to look at. */
+.sk {
+  display: block; border-radius: var(--r-s);
+  background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+  background-size: 200% 100%;
+  animation: skShift 1.4s linear infinite;
+}
+.sk-title { width: min(340px, 70%); height: 38px; }
+.sk-line { width: min(520px, 90%); height: 14px; }
+.sk-short { width: min(300px, 60%); }
+/* The width of "Log in" + "Sign up" together, so the bar does not jump when
+   the real buttons arrive in their place. */
+.sk-pill { width: 148px; height: 34px; border-radius: 999px; }
+.topbar-wait { display: flex; align-items: center; }
+@keyframes skShift {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+/* It is a waiting state, not an animation anybody asked for. */
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation: none; }
+}
+.reduce-motion .sk { animation: none; }
+
+/* Said to a screen reader, shown to nobody. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}

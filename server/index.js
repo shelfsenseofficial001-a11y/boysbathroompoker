@@ -11,6 +11,18 @@ const { router: authRouter, requireAuth } = require('./auth');
 const { attachSockets } = require('./sockets');
 const { supabaseAuthEnabled } = require('./supabaseAuth');
 
+// Auth bypass is a development convenience and must be impossible to switch
+// on in a deployed build. Refusing to start is the only honest response: a
+// server that quietly ignored the flag would still be a server somebody
+// believed was in guest mode, and one that honoured it would let every
+// visitor in as whoever they typed.
+if (process.env.NODE_ENV === 'production' && process.env.SKIP_AUTH === 'true') {
+  throw new Error(
+    'SKIP_AUTH=true is not allowed when NODE_ENV=production. It bypasses login ' +
+      'entirely and exists for local development only. Unset it, or set it to false.'
+  );
+}
+
 const app = express();
 // Hosts like Render terminate TLS at a proxy and forward plain HTTP, so
 // Express has to be told to believe X-Forwarded-* - without this req.secure

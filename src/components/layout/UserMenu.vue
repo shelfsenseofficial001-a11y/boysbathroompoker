@@ -2,8 +2,13 @@
 // Everything about you, under your avatar: change your name, and whatever
 // else the screen has to offer. `groups` is a list of lists - each inner list
 // is a block of items with a rule drawn between blocks, so related things sit
-// together. An item is { id, icon, label, danger? }.
+// together. An item is { id, icon, label, danger?, mobileOnly? }.
+//
+// `mobileOnly` is for an offer the top bar makes as a button when it has the
+// width and cannot below 640px. The item is always rendered and hidden by CSS
+// above that width, so the menu a mouse sees is unchanged.
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { useAuth } from '../../composables/useAuth.js';
 import { avatarSVG } from '../../lib/svg/avatars.js';
 import { emitAck } from '../../lib/socket.js';
 import SvgIcon from '../ui/SvgIcon.vue';
@@ -23,8 +28,20 @@ const wrap = ref(null);
 const pill = ref(null);
 const nameInput = ref(null);
 
-// "Change name" always comes first, then whatever the screen added.
-const blocks = computed(() => [[{ id: 'rename', icon: 'pencil', label: 'Change name' }], ...props.groups]);
+const auth = useAuth();
+
+// "Change name" is here for a guest and nowhere else.
+//
+// A guest has no profile and no page of their own, so the menu is the only
+// place they can be named at all. An account has Settings > Profile, where
+// the in-game name sits beside the username it is easily confused with - and
+// a second way in, offering only half of that, is how the two drift apart.
+const blocks = computed(() => {
+  const rename = auth.hasAccount.value
+    ? []
+    : [[{ id: 'rename', icon: 'pencil', label: 'Change name' }]];
+  return [...rename, ...props.groups];
+});
 
 const avatar = computed(() => avatarSVG(props.user.username));
 
@@ -127,7 +144,11 @@ onBeforeUnmount(() => {
         <span class="user-name">{{ user.username }}</span>
         <SvgIcon name="chevronDown" />
       </button>
-      <div class="umenu" role="menu" :hidden="!open">
+      <div class="umenu" role="menu" aria-label="Your account" :hidden="!open">
+        <!-- Who this menu belongs to. The pill shows the name beside the
+             avatar when there is room for it; under 900px there isn't, and
+             this is where it goes instead. -->
+        <p class="umenu-head only-sm">{{ user.username }}</p>
         <div v-for="(group, i) in blocks" :key="i" class="umenu-group">
           <button
             v-for="item in group"
@@ -135,7 +156,7 @@ onBeforeUnmount(() => {
             type="button"
             role="menuitem"
             class="umenu-item"
-            :class="{ 'is-danger': item.danger }"
+            :class="{ 'is-danger': item.danger, 'only-sm': item.mobileOnly }"
             @click="pick(item.id)"
           >
             <SvgIcon v-if="item.icon" :name="item.icon" />

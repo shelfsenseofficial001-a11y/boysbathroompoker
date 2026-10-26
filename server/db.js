@@ -15,7 +15,6 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    bankroll INTEGER NOT NULL DEFAULT 1000,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -50,6 +49,16 @@ if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'displa
   db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
 }
 
+// There is no chip balance on an account, and there never was one that
+// counted: `bankroll` was written when a row was made and read by nothing.
+// Chips belong to a room - the host sets one starting stack for the table and
+// it ends with the match - so a per-account figure was a number nothing used
+// and everything was tempted to. Dropped here so existing databases lose it
+// on startup, the same way display_name was added.
+if (db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'bankroll')) {
+  db.exec('ALTER TABLE users DROP COLUMN bankroll');
+}
+
 // The Supabase auth user this row belongs to, for guests who arrived with an
 // anonymous account. Null for password accounts and for SKIP_AUTH guests, so
 // the three can sit in one table. Added here so existing databases upgrade on
@@ -74,11 +83,9 @@ module.exports = {
     db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, userId);
   },
 
-  createUser(username, passwordHash, bankroll = 1000) {
-    const stmt = db.prepare(
-      'INSERT INTO users (username, password_hash, bankroll) VALUES (?, ?, ?)'
-    );
-    const info = stmt.run(username, passwordHash, bankroll);
+  createUser(username, passwordHash) {
+    const stmt = db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)');
+    const info = stmt.run(username, passwordHash);
     return info.lastInsertRowid;
   },
 
@@ -98,18 +105,14 @@ module.exports = {
   // the account name and has to be unique, so it is derived from the auth id
   // rather than from anything the browser asked for; `displayName` is the
   // name the table shows, which the player may change freely.
-  createSupabaseUser(supabaseId, username, displayName, passwordHash, bankroll = 1000) {
+  createSupabaseUser(supabaseId, username, displayName, passwordHash) {
     const info = db
       .prepare(
-        `INSERT INTO users (username, password_hash, bankroll, display_name, supabase_id)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO users (username, password_hash, display_name, supabase_id)
+         VALUES (?, ?, ?, ?)`
       )
-      .run(username, passwordHash, bankroll, displayName || null, supabaseId);
+      .run(username, passwordHash, displayName || null, supabaseId);
     return info.lastInsertRowid;
-  },
-
-  adjustBankroll(userId, delta) {
-    db.prepare('UPDATE users SET bankroll = bankroll + ? WHERE id = ?').run(delta, userId);
   },
 
   createGame(roomCode) {

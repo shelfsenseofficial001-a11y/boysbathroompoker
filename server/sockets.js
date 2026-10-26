@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const db = require('./db');
 const { verifyAccessToken, supabaseAuthEnabled } = require('./supabaseAuth');
+const { getOrCreateSupabaseUser } = require('./identity');
+const { DISPLAY_NAME_RE } = require('../shared/displayName.mjs');
 const { GameManager } = require('./game/GameManager');
 const { Table } = require('./game/Table');
 const bot = require('./game/bot');
@@ -19,36 +21,8 @@ function getOrCreateGuest(name) {
   if (existing) return existing;
   // Random unusable password so guest accounts can't be logged into normally.
   const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 4);
-  db.createUser(name, hash, 1000);
+  db.createUser(name, hash);
   return db.getUserByUsername(name);
-}
-
-// The name a Supabase guest is shown under. The browser sends its profile's
-// username, which is a convenience and not a credential: it is held to the
-// same rule as setName and falls back to something derived from the verified
-// auth id if it fails, so a hand-rolled handshake cannot plant a name here
-// that the rename path would have refused.
-const DISPLAY_NAME_RE = /^[\p{L}\p{N} _.'-]{2,20}$/u;
-
-function cleanDisplayName(name, supabaseId) {
-  const clean = String(name ?? '').trim().replace(/\s+/g, ' ');
-  if (DISPLAY_NAME_RE.test(clean)) return clean;
-  return `Guest${supabaseId.replace(/\D/g, '').slice(0, 4) || '0000'}`;
-}
-
-// A verified Supabase guest, mapped onto this server's own player row. The
-// row is the authority on the bankroll; the token only says who is asking.
-function getOrCreateSupabaseUser(supabaseId, name) {
-  const existing = db.getUserBySupabaseId(supabaseId);
-  if (existing) return existing;
-  // The account name is derived from the auth id so it is unique without
-  // asking the browser for anything; the display name is what the table
-  // shows. Random unusable password, as for SKIP_AUTH guests: a Supabase
-  // account is not something you can log into with a password here.
-  const username = `sb_${supabaseId.replace(/-/g, '').slice(0, 16)}`;
-  const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 4);
-  db.createSupabaseUser(supabaseId, username, cleanDisplayName(name, supabaseId), hash, 1000);
-  return db.getUserBySupabaseId(supabaseId);
 }
 
 function wrapSessionMiddleware(sessionMiddleware) {
@@ -77,9 +51,12 @@ function attachSockets(io, sessionMiddleware) {
     if (supabaseAuthEnabled) {
       const claims = await verifyAccessToken(socket.handshake.auth?.token);
       if (claims) {
-        const guest = getOrCreateSupabaseUser(claims.id, socket.handshake.auth?.name);
-        if (guest) {
-          socket.userId = guest.id;
+        // The name comes out of the verified token, not out of the handshake
+        // beside it. For an account the client's `name` is ignored entirely.
+        const player = getOrCreateSupabaseUser(claims);
+        if (player) {
+          socket.userId = player.id;
+          socket.healedName = player.healed ? player.display_name : null;
           return next();
         }
       }
@@ -405,6 +382,32 @@ function attachSockets(io, sessionMiddleware) {
     return manager.findRoomForUser(userId);
   }
 
+  // Carries a new name into the room a player is already sitting in. The seat
+  // is kept - it is the same player, under a name that has caught up - so a
+  // hand in progress is untouched and only what everyone reads changes.
+  //
+  // Shared by the rename a player asks for and the correction the handshake
+  // makes when it finds a generated name on a real account.
+  function carryNameIntoRoom(room, userId, clean) {
+    if (!room) return;
+    const entry = room.lobby.get(userId);
+    if (entry) entry.username = clean;
+    const seat = room.table.seats.find((s) => s && s.userId === userId);
+    if (seat) seat.username = clean;
+    if (room.hostUserId === userId) room.hostUsername = clean;
+    // Past messages are shown under whatever the player is called now, so the
+    // chat doesn't keep addressing them by a name they've dropped.
+    let renamed = false;
+    for (const m of room.chat) {
+      if (m.userId === userId && m.name !== clean) {
+        m.name = clean;
+        renamed = true;
+      }
+    }
+    if (renamed) broadcastChatHistory(room);
+    broadcastRoom(room);
+  }
+
   // Puts someone who is allowed in into the room, whether they walked into a
   // public table or the host just opened the door of a private one. Returns
   // what the joiner's client needs to know, or why they can't come in.
@@ -465,6 +468,11 @@ function attachSockets(io, sessionMiddleware) {
     if (!socketsByUser.has(userId)) socketsByUser.set(userId, new Set());
     socketsByUser.get(userId).add(socket);
 
+    // The handshake found a generated name on a real account and put it
+    // right. If they are already at a table - a reconnect mid-hand - the seat
+    // keeps its place and only the name on it changes.
+    if (socket.healedName) carryNameIntoRoom(roomFor(userId), userId, socket.healedName);
+
     // Normalize every event to (payloadObject, ackFunction) so a malformed
     // client message can't throw inside a handler and take the server down.
     socket.use((packet, next) => {
@@ -480,7 +488,7 @@ function attachSockets(io, sessionMiddleware) {
       const room = roomFor(userId);
       ack?.({
         ok: true,
-        user: { id: user.id, username: db.displayName(user), accountName: user.username, bankroll: user.bankroll },
+        user: { id: user.id, username: db.displayName(user), accountName: user.username },
         currentRoom: room ? room.code : null,
       });
     });
@@ -494,7 +502,7 @@ function attachSockets(io, sessionMiddleware) {
 
     socket.on('setName', ({ name } = {}, ack) => {
       const clean = String(name ?? '').trim().replace(/\s+/g, ' ');
-      if (!/^[\p{L}\p{N} _.'-]{2,20}$/u.test(clean)) {
+      if (!DISPLAY_NAME_RE.test(clean)) {
         return ack?.({ ok: false, error: 'Use 2-20 letters, numbers, spaces or _ . - characters.' });
       }
       // Two players answering to the same name at one table makes the action
@@ -505,25 +513,7 @@ function attachSockets(io, sessionMiddleware) {
         return ack?.({ ok: false, error: `Someone at this table is already called ${clean}.` });
       }
       db.setDisplayName(userId, clean);
-      // Carry the new name into any room this player is already sitting in.
-      if (room) {
-        const entry = room.lobby.get(userId);
-        if (entry) entry.username = clean;
-        const seat = room.table.seats.find((s) => s && s.userId === userId);
-        if (seat) seat.username = clean;
-        if (room.hostUserId === userId) room.hostUsername = clean;
-        // Past messages are shown under whatever the player is called now,
-        // so the chat doesn't keep addressing them by a name they've dropped.
-        let renamed = false;
-        for (const m of room.chat) {
-          if (m.userId === userId && m.name !== clean) {
-            m.name = clean;
-            renamed = true;
-          }
-        }
-        if (renamed) broadcastChatHistory(room);
-        broadcastRoom(room);
-      }
+      carryNameIntoRoom(room, userId, clean);
       ack?.({ ok: true, name: clean });
     });
 

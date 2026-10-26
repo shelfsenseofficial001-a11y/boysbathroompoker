@@ -9,7 +9,13 @@
        100dvh and reflow the whole table behind the chat panel. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
   <meta name="theme-color" content="#060b09" />
-  <title>Boysbathroom Poker</title>
+  <!-- The two faces the first screen is set in. They are self-hosted and
+       already `font-display: swap`, so this only stops the swap happening
+       late enough to be seen as a pop. -->
+  <link rel="preload" href="/fonts/Inter-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/BodoniModa-700-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <title>CCPoker — play-money Texas Hold’em with friends</title>
+  <meta name="description" content="Free play-money Texas Hold’em. Host a private table or join with a room code, drag chips to bet and throw your cards in to fold. Chips only — no real money, ever." />
   <!-- Fonts are served from this machine, so the game works with no internet. -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/favicon.svg" />

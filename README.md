@@ -203,3 +203,23 @@ under the SIL Open Font License 1.1; their licences sit beside them in
 - Sound effects for chip tosses, folds, and wins
 - Reconnect handling for dropped players mid-hand
 - Mobile-optimized seat layout for very small screens
+
+### Before guest play is opened to the public
+
+Anonymous sign-in is a free account per click, and nothing in front of it:
+
+- **CAPTCHA on the guest button.** Supabase supports hCaptcha and Turnstile on
+  the auth endpoints (Authentication → Settings → Enable CAPTCHA protection);
+  the token rides along as `options.captchaToken` on `signInAnonymously()`.
+  Without it, one script can mint anonymous users as fast as the network
+  allows.
+- **Rate limits.** The per-IP limit for anonymous sign-ins is set in
+  Authentication → Rate Limits and is generous by default. Worth lowering to
+  something a person could plausibly need.
+- **A sweep for abandoned guests.** A guest who never comes back is a row in
+  `auth.users` forever. They own no `profiles` row (migration 0004), so there
+  is nothing to cascade — a scheduled delete of anonymous users older than a
+  few days is enough.
+- **Think about what a guest can do.** Right now a guest can host and join
+  rooms. That is the point of the game, but it is also the thing an abusive
+  signup is for.

@@ -25,6 +25,14 @@ function clearOn(el) {
   el.addEventListener('input', off);
 }
 
+// Taking the mark off without a keystroke. For when the question changed
+// rather than the answer - swapping between the login and sign-up tabs leaves
+// the same boxes on screen holding the same text, and a border still red from
+// the other tab's complaint is reporting a message that is no longer there.
+export function clearInvalid(el) {
+  el?.classList.remove(FLAG);
+}
+
 // Restarting the animation needs the class gone for a frame - re-adding it
 // while it's already on does nothing, so a second bad value in the same field
 // would sit there silently.

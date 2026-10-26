@@ -159,6 +159,41 @@
   .topbar-auth { gap: 6px; }
 }
 
+/* Under 640 the bar is the logo and one control, and nothing else.
+ *
+ * A guest used to get both auth buttons *and* their avatar, which is the same
+ * offer made twice and the thing crowding the brand off the bar. The buttons
+ * go; the avatar menu carries "Sign up" and "Log in" in words, where there is
+ * room for the sentence. One row, nothing wrapping, nothing scrolling: the
+ * brand cannot shrink (flex-shrink: 0, set with .brand) and the group on the
+ * right cannot either, so the space between them is what gives.
+ */
+@media (max-width: 640px) {
+  /* No `overflow: hidden` here, however tempting as a scrollbar guard: the
+     avatar menu is absolutely positioned inside this bar and hangs below it,
+     so hiding the overflow would clip the menu off at the bar's own edge.
+     Nothing can overflow anyway - neither side shrinks and neither wraps. */
+  .topbar { flex-wrap: nowrap; }
+  .topbar-auth { display: none; }
+  .topbar-user { flex-shrink: 0; gap: 6px; }
+
+  /* 44x44 of tap target. The pill is 34px tall from a 26px avatar and 3px of
+     padding, which is a fine mouse target and a poor thumb one. */
+  .user-pill { min-height: 44px; min-width: 44px; justify-content: center; padding: 3px 8px 3px 3px; }
+  .user-menu .user-pill .icon { opacity: 0.65; }
+
+  /* The menu is the whole of the bar's function on a phone, so it may be as
+     wide as the screen comfortably allows. */
+  .umenu { min-width: min(260px, calc(100vw - 20px)); }
+}
+
+/* Menu items that exist only because the bar has nowhere to put them. Above
+ * 640 the buttons are back in the bar and these would be the same offer
+ * twice, so the desktop menu is exactly what it always was. */
+@media (min-width: 641px) {
+  .umenu .only-sm { display: none; }
+}
+
 /* ---------- Ultra-wide ---------- */
 /* The page screens cap themselves at --page-w, so the lobby never stretches.
  * The table is the one that spreads: its panels are capped at 300px and
