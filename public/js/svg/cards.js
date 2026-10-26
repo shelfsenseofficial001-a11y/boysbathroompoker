@@ -62,8 +62,8 @@ export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
     return `<svg viewBox="0 0 60 84" xmlns="http://www.w3.org/2000/svg" aria-label="${rank} of ${SUIT_NAME[s]}" role="img">
   <rect x=".5" y=".5" width="59" height="83" rx="5.5" fill="#fbf8f1" stroke="#cfc6b4"/>
   <rect x="2" y="2" width="56" height="80" rx="4.5" fill="none" stroke="#fff" stroke-opacity=".7"/>
-  <text x="30" y="34" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
-  ${suit(s, 19, 38, 22, color)}
+  <text x="30" y="32" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
+  ${suit(s, 19.5, 35.5, 21, color)}
 </svg>`;
   }
 
