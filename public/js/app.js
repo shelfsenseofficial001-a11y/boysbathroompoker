@@ -9,10 +9,15 @@ import { showToast } from './toast.js';
 import { icons } from './svg/icons.js';
 import { userMenuHTML, wireUserMenu } from './name.js';
 import { guardNumberFields } from './invalid.js';
+import { initTooltips } from './tooltip.js';
 import { dealFigures, followPointer } from './svg/spread.js';
 
 applyMotionClass();
 applyLiteClass();
+// Every icon-only control in the game, on every screen, says what it is on
+// hover and on focus. One listener on the document, so it covers the markup
+// each screen draws later as well.
+initTooltips();
 
 // Belt-and-braces with the CSS user-select rules: block text selection (and
 // double-click word selection) everywhere except inputs, error messages and
