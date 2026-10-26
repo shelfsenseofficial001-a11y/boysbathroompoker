@@ -1904,15 +1904,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* Fixed-height status slots: the badge and plain text occupy the same box. */
 /* overflow stays visible: the turn badge's glow ring sits outside the line
    box, and clipping it left dark square corners on the pill. */
+/* Centred by the box rather than by a 36px line box: the turn badge is a
+   pill with a glow ring outside it, and on a line box that tall it sat low
+   enough for the ring to run into the figures underneath. The row below
+   also stands off by the width of that ring, so the two never touch. */
 .status-line {
-  height: 36px; line-height: 36px; font-size: 15px; font-weight: 600; color: var(--text-1);
+  height: 36px; display: flex; align-items: center; justify-content: center;
+  line-height: 1.2; font-size: 15px; font-weight: 600; color: var(--text-1);
   white-space: nowrap; overflow: visible; text-align: center;
 }
 .status-line b { color: var(--gold-hi); }
 /* Peek sits right beside the numbers instead of being pushed to the far
    edge of the status column. */
 /* The figures and Peek share the full width of the status column. */
-.status-row { height: 34px; margin-top: 10px; display: flex; align-items: stretch; gap: 6px; }
+.status-row { height: 34px; margin-top: 13px; display: flex; align-items: stretch; gap: 6px; }
 /* Removed rather than hidden, so between hands the message can use the
    whole row and sit in the middle. */
 .peek-btn.is-hidden { display: none; }
