@@ -2117,9 +2117,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
       tableJoin: $('table-join'),
-      chat: $('chat'), chatLog: $('chat-log'), chatForm: $('chat-form'), chatInput: $('chat-input'),
-      chatJump: $('chat-jump'),
     };
+    // The panel's own elements are read back by the one function that knows
+    // what they are. Listing them here as well is what left the table
+    // without the emoji picker: the picker was added to that list and not to
+    // this copy of it, so its panel was never found and the button did
+    // nothing for anyone in a game.
+    captureChatEls();
     // The cloth needs the camera's measured shape, so it goes in once the
     // markup is in the document rather than as part of the string above.
     drawFelt();
