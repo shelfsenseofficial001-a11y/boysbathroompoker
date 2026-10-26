@@ -1949,7 +1949,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border-top: 1px solid var(--line);
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.4);
 }
-.dock-status { grid-area: status; min-width: 0; }
+/* A container, so what is inside the status column can answer to the width
+   the column actually has rather than to the width of the window. The same
+   column is 410px wide at 1399px and 304px at 823px, and it narrows again
+   whenever the dock changes shape - a viewport breakpoint would have to
+   guess at all of that. */
+/* `relative`, so the Peek button can be pinned to this column when the
+   column is too narrow to keep it in the row below. A container query cannot
+   style its own container, so this cannot live in the block that uses it. */
+.dock-status { grid-area: status; min-width: 0; position: relative; container: dock-status / inline-size; }
 /* The betting controls form the middle block: chips on top, presets, slider
    and amount beneath, fenced off from the status and action groups. */
 .dock-sizing {
@@ -2019,6 +2027,33 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .status-sub { display: flex; align-items: stretch; justify-content: center; gap: 6px; font-size: 13px; min-width: 0; flex: 2; }
 .status-sub .stat { flex: 1; justify-content: center; }
 .peek-btn { flex: 1; min-width: 0; }
+/* Too tight for three full-width pills: the figures are what the decision is
+   made on, so Peek gives up its word and its shortcut hint and keeps the eye.
+   Without this the pot ran over the button - the row divides by a 2:1 ratio
+   rather than by what is in it, and the figures have nowhere to wrap to. The
+   button keeps its name for anyone not reading it off the screen. */
+@container dock-status (max-width: 340px) {
+  .peek-btn .peek-word, .peek-btn .kbd { display: none; }
+  .peek-btn { flex: 0 0 auto; padding-inline: 10px; }
+}
+/* Narrower still and the three pills cannot share a line. The column spans
+   both of the dock's rows here and has a spare line's worth of height doing
+   nothing, but simply letting them wrap left Peek alone on a line of its own,
+   which reads as a button that fell off rather than part of the block.
+
+   So Peek goes up beside the turn badge, where the line it shares is one
+   short word and has the room for it, and the figures take the row below to
+   themselves. The badge gives up some of its letter-spacing to make way. The
+   line keeps a gap on the right so a long message - "Waiting for someone" -
+   cannot run under the button. */
+@container dock-status (max-width: 300px) {
+  .status-line { padding-right: 42px; }
+  .status-line .turn-badge { letter-spacing: 0.05em; padding-left: 10px; }
+  .peek-btn { position: absolute; top: 3px; right: 0; }
+  .status-row { flex-wrap: wrap; height: auto; row-gap: 4px; align-items: center; align-content: center; }
+  .status-sub { display: contents; }
+  .status-sub .stat { flex: 1 1 auto; padding-inline: 7px; }
+}
 /* The numbers that decide your move each get their own pill, so they read
    as figures rather than running prose. */
 .stat {

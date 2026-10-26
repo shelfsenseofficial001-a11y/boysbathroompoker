@@ -3532,7 +3532,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <div class="status-line" id="st-main"></div>
         <div class="status-row">
           <div class="status-sub" id="st-sub"></div>
-          <button class="btn btn-ghost btn-sm peek-btn" data-peek>${icons.eye}Peek<span class="kbd">P</span></button>
+          <button class="btn btn-ghost btn-sm peek-btn" data-peek aria-label="Peek at your cards">${icons.eye}<span class="peek-word">Peek</span><span class="kbd">P</span></button>
         </div>
       </div>
       <div class="dock-sizing">
