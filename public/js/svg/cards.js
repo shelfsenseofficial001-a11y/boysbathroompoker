@@ -22,22 +22,29 @@ const SUIT_NAME = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
 // Everyone plays off the same screen, so a card never has to be read from
 // the far side of a table, and at small sizes this stays legible where the
 // full face turns to mush.
-export function cardFaceSVG(code, { simple = false } = {}) {
+export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
   const r = code[0];
   const s = code[1];
-  const color = SUIT_COLOR[s];
+  const color = suitColors(deck)[s];
   const rank = RANK_LABEL[r] || r;
-  const rankSize = rank === '10' ? 13 : 15;
+  // The ten is the one rank that is two characters wide. Set in a smaller
+  // type to make it fit, it read as a lesser card than the nine beside it;
+  // it takes the same size as every other rank now and is squeezed to the
+  // width of one instead, so a board reads at one weight. textLength sets
+  // the width and lengthAdjust narrows the glyphs with the spacing, rather
+  // than only closing the gap between them.
+  const ten = rank === '10';
+  const fit = (w) => (ten ? ` textLength="${w}" lengthAdjust="spacingAndGlyphs"` : '');
   const corner = `
-    <text x="${rank === '10' ? 3.6 : 5}" y="16.5" font-family="Inter, system-ui, sans-serif" font-size="${rankSize}" font-weight="800" letter-spacing="${rank === '10' ? -1 : 0}" fill="${color}">${rank}</text>
+    <text x="5" y="16.5" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="800" fill="${color}"${fit(13)}>${rank}</text>
     ${suit(s, 4.6, 20, 8, color)}`;
 
   if (simple) {
-    const size = rank === '10' ? 30 : 36;
+    const size = 36;
     return `<svg viewBox="0 0 60 84" xmlns="http://www.w3.org/2000/svg" aria-label="${rank} of ${SUIT_NAME[s]}" role="img">
   <rect x=".5" y=".5" width="59" height="83" rx="5.5" fill="#fbf8f1" stroke="#cfc6b4"/>
   <rect x="2" y="2" width="56" height="80" rx="4.5" fill="none" stroke="#fff" stroke-opacity=".7"/>
-  <text x="30" y="40" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" letter-spacing="${rank === '10' ? -2 : 0}" fill="${color}">${rank}</text>
+  <text x="30" y="40" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
   ${suit(s, 18.5, 47, 23, color)}
 </svg>`;
   }
