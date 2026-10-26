@@ -10,6 +10,12 @@
 //              hand out many times, then bets on the maths, bluffs on
 //              purpose and occasionally traps with a monster.
 //
+// Whatever the level, a call is priced before it is judged. What a bot is
+// being asked for is weighed against the pot it would win and the stack it
+// would come out of - never against the word "all-in", which says nothing
+// about cost: a player shoving their last 12k is asking a 1M stack for about
+// one percent of it, and folding that is a bug however the hand is read.
+//
 // Simulations use Math.random: these are only the bots' own guesses, never
 // the real deal. Shuffling and dealing stay on the secure RNG in deck.js.
 const { evaluateHand, compareHands, CATEGORY } = require('./handEvaluator');
@@ -141,12 +147,56 @@ function trialsFor(opponents) {
 
 function tableContext(table, player) {
   const live = table.seats.filter((s) => s && !s.folded);
+  const toCall = Math.max(0, table.currentBet - player.betThisStreet);
+  // What the call would really cost. A bet larger than the chips behind can
+  // only win those chips: the rest of it is not a price anyone is paying, and
+  // reading it as one is what makes a deep stack flinch at a short all-in.
+  const effectiveToCall = Math.min(toCall, player.chips);
+  const pot = table.seats.filter(Boolean).reduce((s, p) => s + p.committed, 0);
+  // Two players already in for a raised price: a pot where a cheap call can
+  // still be the start of an expensive street.
+  const atPrice = live.filter((s) => s !== player && s.betThisStreet >= table.currentBet).length;
   return {
-    toCall: Math.max(0, table.currentBet - player.betThisStreet),
-    pot: table.seats.filter(Boolean).reduce((s, p) => s + p.committed, 0),
+    toCall,
+    effectiveToCall,
+    pot,
     maxTotal: player.chips + player.betThisStreet,
     opponents: Math.max(1, live.length - 1),
+    // The pot odds: the share of the final pot this call is buying.
+    price: effectiveToCall > 0 ? effectiveToCall / (pot + effectiveToCall) : 0,
+    // And what it costs as a share of everything the bot has behind.
+    costRatio: player.chips > 0 ? effectiveToCall / player.chips : 1,
+    allInToCall: toCall >= player.chips,
+    invested: player.betThisStreet > 0 || player.committed > 0,
+    // Calling would end the street: nobody live is still owed a turn.
+    closing: live.every((s) => s === player || s.allIn || s.betThisStreet >= table.currentBet),
+    reraisedMultiway: live.length - 1 >= 2 && table.currentBet > table.bigBlind && atPrice >= 2,
   };
+}
+
+// --- Price ---------------------------------------------------------------
+// A call small enough that folding costs more than being wrong does. Calling
+// a hundredth of a stack is not a read on anyone's hand, it is arithmetic,
+// and a bot that folds it looks broken however good its reasoning was after
+// that point. So this is settled before hand strength is ever consulted.
+const TRIVIAL_STACK_SHARE = 0.02;
+// Hands with so little going for them that even a free-ish look isn't worth
+// the trouble - the bottom of the deck, by the pre-flop scorer's reckoning.
+const UNPLAYABLE_PREFLOP = 0.18;
+
+function isTrivialCall(table, ctx, strength, level) {
+  if (ctx.toCall <= 0) return false;
+  const cheap = ctx.effectiveToCall <= table.bigBlind * 0.5 || ctx.costRatio <= TRIVIAL_STACK_SHARE;
+  if (!cheap) return false;
+  // The calling station doesn't need a reason; at this price, nor does it.
+  if (level === 'beginner') return true;
+  // Money already in, or the call ends the street: there is nothing left to
+  // be protected from, so nothing to fold for.
+  if (ctx.invested || ctx.closing) return true;
+  if (table.board.length === 0 && strength < UNPLAYABLE_PREFLOP) return false;
+  // Two others in for a raise, with streets still to play: cheap now, but
+  // this is the hand that goes on costing.
+  return !ctx.reraisedMultiway;
 }
 
 // Builds a legal bet/raise to roughly `fraction` of the pot.
@@ -167,13 +217,14 @@ function decideBeginner(table, player, ctx, strength, roll) {
     if (canRaise && strength > 0.85 && roll < 0.5) return sizedRaise(table, player, ctx, 0.4);
     return { type: 'check' };
   }
-  if (ctx.toCall >= player.chips) {
-    return strength > 0.62 ? { type: 'allin' } : { type: 'fold' };
+  if (isTrivialCall(table, ctx, strength, 'beginner')) return { type: 'call' };
+  if (ctx.allInToCall) {
+    // Its whole stack - but a stack it is being laid a price on.
+    return strength > 0.62 || strength > ctx.price + 0.05 ? { type: 'allin' } : { type: 'fold' };
   }
   if (canRaise && strength > 0.92 && roll < 0.35) return sizedRaise(table, player, ctx, 0.5);
   // Calls far too often — only folds the worst hands against a real bet.
-  const price = ctx.toCall / (ctx.pot + ctx.toCall);
-  if (strength < 0.18 && price > 0.3) return { type: 'fold' };
+  if (strength < 0.18 && ctx.price > 0.3) return { type: 'fold' };
   return { type: 'call' };
 }
 
@@ -185,9 +236,12 @@ function decideCasual(table, player, ctx, strength, roll) {
     }
     return { type: 'check' };
   }
-  const price = ctx.toCall / (ctx.pot + ctx.toCall);
-  if (ctx.toCall >= player.chips) {
-    return strength > 0.72 || (strength > 0.6 && roll < 0.35) ? { type: 'allin' } : { type: 'fold' };
+  if (isTrivialCall(table, ctx, strength, 'casual')) return { type: 'call' };
+  const price = ctx.price;
+  if (ctx.allInToCall) {
+    return strength > 0.72 || (strength > 0.6 && roll < 0.35) || strength > price + 0.25
+      ? { type: 'allin' }
+      : { type: 'fold' };
   }
   if (canRaise && strength > 0.82 && roll < 0.7) return sizedRaise(table, player, ctx, 0.65);
   if (strength > 0.8) return { type: 'call' };
@@ -208,13 +262,19 @@ function decideSolid(table, player, ctx, strength, roll) {
     if (canRaise && strength < 0.3 && roll < 0.15) return sizedRaise(table, player, ctx, 0.45); // bluff
     return { type: 'check' };
   }
-  const price = ctx.toCall / (ctx.pot + ctx.toCall);
-  if (ctx.toCall >= player.chips) {
-    return strength > 0.78 ? { type: 'allin' } : { type: 'fold' };
+  if (isTrivialCall(table, ctx, strength, 'solid')) return { type: 'call' };
+  const price = ctx.price;
+  if (ctx.allInToCall) {
+    return strength > 0.78 || strength > price + 0.22 ? { type: 'allin' } : { type: 'fold' };
   }
   if (canRaise && strength > 0.86 && roll < 0.75) return sizedRaise(table, player, ctx, 0.75);
   if (strength > 0.82) return { type: 'call' };
-  if (strength < entry) return { type: 'fold' };
+  // The hand it demands moves with the price it is being offered: a
+  // pot-sized bet asks for the full entry, a cheap one proportionally less.
+  // Without this the bar sits where a full-price bet put it, and a short
+  // stack gets folded on at odds nobody should refuse.
+  const bar = entry * Math.min(1, price / 0.33);
+  if (strength < bar) return { type: 'fold' };
   return strength > price + 0.15 ? { type: 'call' } : { type: 'fold' };
 }
 
@@ -233,14 +293,24 @@ function decideExpert(table, player, ctx, strength, roll) {
     return { type: 'check' };
   }
 
+  if (isTrivialCall(table, ctx, strength, 'expert')) return { type: 'call' };
+
   // Facing a bet: call only when the hand wins more often than the price.
-  const price = ctx.toCall / (ctx.pot + ctx.toCall);
-  if (ctx.toCall >= player.chips) {
-    return eq > price + 0.04 ? { type: 'allin' } : { type: 'fold' };
+  // Counting the odds means counting them on both sides. The pre-flop score
+  // is a ranking, not a probability, and holding it up against pot odds
+  // compares two unlike things - which is exactly how a 12k shove gets
+  // folded on by a stack being laid 5 to 1. So the hand is played out here
+  // too, and what comes back is the same kind of number as the price.
+  const odds = table.board.length === 0
+    ? equity(player.holeCards, table.board, ctx.opponents, trialsFor(ctx.opponents))
+    : eq;
+  const price = ctx.price;
+  if (ctx.allInToCall) {
+    return odds > price + 0.04 ? { type: 'allin' } : { type: 'fold' };
   }
-  if (canRaise && eq > 0.78 && roll < 0.8) return sizedRaise(table, player, ctx, 0.8);
-  if (eq > price + 0.08) return { type: 'call' };
-  if (eq > price && roll < 0.4) return { type: 'call' };
+  if (canRaise && odds > 0.78 && roll < 0.8) return sizedRaise(table, player, ctx, 0.8);
+  if (odds > price + 0.08) return { type: 'call' };
+  if (odds > price && roll < 0.4) return { type: 'call' };
   return { type: 'fold' };
 }
 
