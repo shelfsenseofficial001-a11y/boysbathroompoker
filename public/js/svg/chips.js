@@ -1,49 +1,63 @@
 // Inline SVG poker chips: top-down chips (tray, flying chips) and side-view
 // stacks whose columns reflect a real denomination breakdown of an amount.
-// The chips a table keeps in its tray. Small stakes need nothing above a
-// 1000; a game played in millions cannot be stacked out of them. So bigger
-// money brings bigger pieces in, and past 100K they are plaques - the flat
-// rectangular pieces a real room reaches for once a chip would have to carry
-// six figures.
-export const CHIP_DENOMINATIONS = [1, 5, 10, 25, 100, 500, 1000];
-// Added as the money at the table grows. `over` is read against the largest
-// figure in play - the deepest stack, the pot, the biggest bet - so a table
-// gains its big chips when someone could actually put one in.
-const CHIP_TIERS = [
-  { over: 10e3, inclusive: false, add: [5000, 10000] },
-  { over: 100e3, inclusive: false, add: [50000, 100000] },
-  { over: 1e6, inclusive: true, add: [500000] },
+// The seven chips a table deals out, chosen by its big blind. A room doesn't
+// stock one ladder and hand out the bottom of it to everyone: it sets a tray
+// for the level being played, starting at the half-blind piece and climbing
+// to something that can carry a deep stack in a few pieces. Past 100K those
+// pieces are plaques - the flat rectangular ones a real room reaches for once
+// a chip would have to carry six figures.
+export const CHIP_TIERS = [
+  { bb: 20, chips: [10, 20, 50, 100, 250, 500, 1000] },
+  { bb: 500, chips: [250, 500, 1000, 5000, 10000, 25000, 50000] },
+  { bb: 1000, chips: [500, 1000, 5000, 10000, 50000, 100000, 500000] },
+  { bb: 25000, chips: [12500, 25000, 50000, 100000, 250000, 500000, 1000000] },
+  { bb: 100000, chips: [50000, 100000, 250000, 500000, 1000000, 2500000, 5000000] },
 ];
-// Every denomination that exists, biggest last. An amount is always broken
-// down over the whole ladder, whatever the tray is currently offering: a pot
-// of two million reads as four plaques, not two thousand 1000-chips.
-export const ALL_DENOMINATIONS = [...CHIP_DENOMINATIONS, ...CHIP_TIERS.flatMap((t) => t.add)];
+// How many pieces a tray holds - every tier is this wide, so the betting bar
+// is the same shape at every level and nothing in it shifts between tables.
+export const TRAY_SIZE = 7;
+// Every piece that can appear in a stack on the felt: all the trays, plus the
+// small change a table playing for pennies still needs. An amount is always
+// broken down over the whole ladder, whatever tray is on offer - a pot of two
+// and a half million reads as one plaque, not two thousand 1000-chips.
+export const ALL_DENOMINATIONS = [...new Set([1, 5, 100, ...CHIP_TIERS.flatMap((t) => t.chips)])]
+  .sort((a, b) => a - b);
 // Rectangular, not round.
-export const PLAQUES = new Set([100000, 500000]);
+export const PLAQUES = new Set([100000, 250000, 500000, 1000000, 2500000, 5000000]);
 
-// The tray for a table whose largest figure in play is `scale`.
-export function chipSet(scale = 0) {
-  const v = Number(scale) || 0;
-  const out = [...CHIP_DENOMINATIONS];
-  for (const t of CHIP_TIERS) {
-    if (t.inclusive ? v >= t.over : v > t.over) out.push(...t.add);
-  }
-  return out;
+// The tray for a table played at `bigBlind`. A blind that isn't one of the
+// levels above takes the closest tier by ratio rather than by difference: a
+// 2000 blind is twice the 1000 level and a twelfth of the 25000 one, so it
+// plays with the 1000 tray. Blinds beyond either end take the end tier.
+export function chipSet(bigBlind = 0) {
+  const bb = Number(bigBlind) || 0;
+  if (!(bb > 0)) return CHIP_TIERS[0].chips.slice();
+  const off = (t) => Math.abs(Math.log(bb / t.bb));
+  return CHIP_TIERS.reduce((best, t) => (off(t) < off(best) ? t : best)).chips.slice();
 }
 
 const STYLE = {
   1: { base: '#ece9e1', edge: '#2f6fb5', text: '#1d2a3a' },
   5: { base: '#c63d36', edge: '#ffffff', text: '#ffffff' },
   10: { base: '#2f6fb5', edge: '#ffffff', text: '#ffffff' },
+  20: { base: '#e0c23a', edge: '#4a3a06', text: '#3b2a06' },
   25: { base: '#2c8a57', edge: '#ffffff', text: '#ffffff' },
+  50: { base: '#d9742a', edge: '#ffe3c2', text: '#ffffff' },
   100: { base: '#202329', edge: '#e6b450', text: '#f3d27c' },
+  250: { base: '#d1559a', edge: '#ffe2f1', text: '#ffffff' },
   500: { base: '#6e46b8', edge: '#ffffff', text: '#ffffff' },
   1000: { base: '#d9a93b', edge: '#3b2a06', text: '#3b2a06' },
   5000: { base: '#a8174e', edge: '#ffd3e2', text: '#ffffff' },
   10000: { base: '#0d7a6f', edge: '#a6f0e5', text: '#eafffb' },
+  12500: { base: '#3a5fa8', edge: '#cfe0ff', text: '#eef4ff' },
+  25000: { base: '#1f6b45', edge: '#bdf0d4', text: '#eafff3' },
   50000: { base: '#9c5a1b', edge: '#ffdcae', text: '#fff3e2' },
   100000: { base: '#f2ead6', edge: '#9a7b2a', text: '#3b2a06' },
+  250000: { base: '#7d1f45', edge: '#f0b9d0', text: '#ffe7f1' },
   500000: { base: '#15171c', edge: '#cfd4dc', text: '#eef1f6' },
+  1000000: { base: '#3b1038', edge: '#e7c67a', text: '#f7e3bb' },
+  2500000: { base: '#1b1a52', edge: '#9fb0ef', text: '#e4e9ff' },
+  5000000: { base: '#4a0f1c', edge: '#e8b08a', text: '#ffd9c4' },
 };
 
 // Greedy split into the fewest chips, highest denomination first.
@@ -60,9 +74,13 @@ export function breakdown(amount) {
   return out;
 }
 
-function label(d) {
-  if (d >= 1e6) return `${d / 1e6}M`;
-  return d >= 1000 ? `${d / 1000}K` : String(d);
+// What a chip has printed on it: 500, 12.5K, 2.5M. Kept to one decimal, so
+// an odd amount never prints a number too long to fit on the face.
+export function formatChipLabel(value) {
+  const v = Math.abs(Number(value) || 0);
+  const round = (n) => String(Math.round(n * 10) / 10);
+  if (v >= 1e6) return `${round(v / 1e6)}M`;
+  return v >= 1000 ? `${round(v / 1000)}K` : String(v);
 }
 
 // A plaque: the same 48x48 box every chip is drawn in, so it drops into the
@@ -75,8 +93,16 @@ function plaqueSVG(denom) {
   <rect x="1.5" y="13" width="45" height="21" rx="2.6" fill="${s.base}"/>
   <rect x="3.6" y="15.1" width="40.8" height="16.8" rx="1.6" fill="none" stroke="${s.edge}" stroke-width="1.1" opacity=".9"/>
   <rect x="1.5" y="13" width="45" height="21" rx="2.6" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
-  <text x="24" y="27.4" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="${s.text}">${label(denom)}</text>
+  <text x="24" y="27.4" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="${s.text}">${formatChipLabel(denom)}</text>
 </svg>`;
+}
+
+// Text on a round face has about 26 units of clear middle to sit in, so a
+// long label (12.5K, 2.5M) steps down rather than running over the rim.
+function faceSize(text) {
+  if (text.length >= 5) return 8.6;
+  if (text.length === 4) return 10;
+  return text.length === 3 ? 11 : 12.5;
 }
 
 export function chipSVG(denom) {
@@ -93,7 +119,7 @@ export function chipSVG(denom) {
   <circle cx="24" cy="24" r="15.6" fill="none" stroke="${s.edge}" stroke-width="1.1" stroke-dasharray="2.2 2.2" opacity=".85"/>
   <circle cx="24" cy="24" r="13.2" fill="${s.base}" stroke="rgba(0,0,0,.22)" stroke-width="1"/>
   <circle cx="24" cy="24" r="21.5" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
-  <text x="24" y="28.3" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${denom >= 100 ? 11 : 12.5}" font-weight="800" fill="${s.text}">${label(denom)}</text>
+  <text x="24" y="28.3" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${faceSize(formatChipLabel(denom))}" font-weight="800" fill="${s.text}">${formatChipLabel(denom)}</text>
 </svg>`;
 }
 
