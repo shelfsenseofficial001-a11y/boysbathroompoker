@@ -1954,9 +1954,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    column is 410px wide at 1399px and 304px at 823px, and it narrows again
    whenever the dock changes shape - a viewport breakpoint would have to
    guess at all of that. */
-/* `relative`, so the Peek button can be pinned to this column when the
-   column is too narrow to keep it in the row below. A container query cannot
-   style its own container, so this cannot live in the block that uses it. */
+/* A container query cannot style its own container, so the column declares
+   itself one here and the narrow layouts below query it. `relative` keeps a
+   containing block for anything the column has to pin to itself. */
 .dock-status { grid-area: status; min-width: 0; position: relative; container: dock-status / inline-size; }
 /* The betting controls form the middle block: chips on top, presets, slider
    and amount beneath, fenced off from the status and action groups. */
@@ -2015,18 +2015,36 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* Peek sits right beside the numbers instead of being pushed to the far
    edge of the status column. */
 /* The figures and Peek share the full width of the status column. */
-.status-row { height: 34px; margin-top: 13px; display: flex; align-items: stretch; gap: 6px; }
+/* A grid of equal cells rather than a flex row that wraps: the figures and
+   Peek sit in tracks of a fixed, declared width, so a long pot or a wide
+   button can never push a neighbour onto a line of its own. Peek takes one
+   track, the figures the other two - the 2:1 the flex ratio used to give. */
+.status-row {
+  height: 34px; margin-top: 13px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px; align-items: stretch;
+}
+/* Peek removed between hands: the track goes with it, so the figures keep
+   the whole row instead of leaving a third of it empty. */
+.status-row:has(.peek-btn.is-hidden) { grid-template-columns: minmax(0, 1fr); }
+.status-row:has(.peek-btn.is-hidden) .status-sub { grid-column: 1; }
 /* Removed rather than hidden, so between hands the message can use the
    whole row and sit in the middle. */
 .peek-btn.is-hidden { display: none; }
 .status-line .turn-badge { vertical-align: middle; line-height: 1.2; }
-/* flex 2 covers the two figures inside, so they end up the same width as
-   the Peek button beside them. */
-/* justify-content centres plain messages such as "Next hand shortly"; the
-   figures ignore it because they stretch to fill the row instead. */
-.status-sub { display: flex; align-items: stretch; justify-content: center; gap: 6px; font-size: 13px; min-width: 0; flex: 2; }
-.status-sub .stat { flex: 1; justify-content: center; }
-.peek-btn { flex: 1; min-width: 0; }
+/* Two of the row's three tracks, so each figure inside ends up the same
+   width as the Peek button beside them. A nested grid of equal columns: one
+   figure or two, each takes its share of the space and no pill is sized by
+   how many digits happen to be in it. A plain message such as "Next hand
+   shortly" is a single cell and centres across the whole width. */
+.status-sub {
+  grid-column: span 2;
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch; justify-items: stretch; gap: 6px; font-size: 13px; min-width: 0;
+  text-align: center;
+}
+.status-sub .stat { justify-content: center; }
+.peek-btn { min-width: 0; }
 /* Too tight for three full-width pills: the figures are what the decision is
    made on, so Peek gives up its word and its shortcut hint and keeps the eye.
    Without this the pot ran over the button - the row divides by a 2:1 ratio
@@ -2034,25 +2052,23 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    button keeps its name for anyone not reading it off the screen. */
 @container dock-status (max-width: 340px) {
   .peek-btn .peek-word, .peek-btn .kbd { display: none; }
-  .peek-btn { flex: 0 0 auto; padding-inline: 10px; }
+  .peek-btn { padding-inline: 10px; }
+  /* The button's track is sized to the eye rather than to a third of the
+     row, and the figures take everything that is left. */
+  .status-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .status-sub { grid-column: 1; }
 }
-/* Narrower still and the three pills cannot share a line. The column spans
-   both of the dock's rows here and has a spare line's worth of height doing
-   nothing, but simply letting them wrap left Peek alone on a line of its own,
-   which reads as a button that fell off rather than part of the block.
-
-   So Peek goes up beside the turn badge, where the line it shares is one
-   short word and has the room for it, and the figures take the row below to
-   themselves. The badge gives up some of its letter-spacing to make way. The
-   line keeps a gap on the right so a long message - "Waiting for someone" -
-   cannot run under the button. */
+/* Narrower still, the type comes down rather than the layout changing: Peek
+   stays in its track on the figures' line instead of being pinned up beside
+   the badge, which left it hanging over a line it shared with nothing and
+   lining up with neither the badge above nor the pills below. */
 @container dock-status (max-width: 300px) {
-  .status-line { padding-right: 42px; }
   .status-line .turn-badge { letter-spacing: 0.05em; padding-left: 10px; }
-  .peek-btn { position: absolute; top: 3px; right: 0; }
-  .status-row { flex-wrap: wrap; height: auto; row-gap: 4px; align-items: center; align-content: center; }
-  .status-sub { display: contents; }
-  .status-sub .stat { flex: 1 1 auto; padding-inline: 7px; }
+  .status-sub { gap: 5px; }
+  .status-sub .stat { padding-inline: 7px; font-size: 12px; }
+  .status-sub .stat b { font-size: 14px; }
+  .status-sub .stat-call b { font-size: 15px; }
+  .peek-btn { padding-inline: 8px; }
 }
 /* The numbers that decide your move each get their own pill, so they read
    as figures rather than running prose. */
@@ -2326,7 +2342,7 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
      and shrank as the hand went on. The pills share the width instead and
      trim their own text if they must. */
   .status-row { height: 34px; margin-top: 0; width: 100%; min-width: 0; }
-  .status-sub { flex-wrap: nowrap; gap: 5px; min-width: 0; }
+  .status-sub { gap: 5px; min-width: 0; }
   .status-row .stat { min-width: 0; overflow: hidden; padding-inline: 8px; }
   /* The actions have a row to themselves from here down, so they span it
      rather than bunching against the right edge. This belongs to the
