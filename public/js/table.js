@@ -2335,7 +2335,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // fraction of a card. The stylesheet positions the cards with it (see
   // .pod-hand) and the layout below needs the same figure to leave room for
   // them above the plate, so it's set here and handed to the CSS.
-  const POD_HAND_SHOW = 0.62;
+  // Face down there is nothing on the card to read, so it only has to be
+  // seen to be held - and standing up over half its height, it read as a
+  // hand laid out in front of the player rather than one kept against the
+  // rail. It is the showdown below that shows the card, and it alone.
+  const POD_HAND_SHOW = 0.45;
   // The same for a hand turned over at showdown. More of it shows, since it's
   // there to be read - but it stays tucked behind the plate rather than
   // standing on top of it, because on a phone two seats stacked up a rail have
