@@ -859,14 +859,26 @@ function attachSockets(io, sessionMiddleware) {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can add bots.' });
-      if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already started.' });
-      if (room.lobby.size >= room.table.maxSeats) return ack?.({ ok: false, error: 'Table is full.' });
+      if (room.isFull()) return ack?.({ ok: false, error: 'Table is full.' });
       const taken = [...room.lobby.values()].map((p) => p.username);
-      const seatedBuyIn = Math.max(1, Math.floor(Number(buyIn)) || room.lobby.get(userId)?.buyIn || 1000);
+      // A game already running: the bot sits down on the same terms as a
+      // late joiner - the host's late-join stack, out of the hand in play
+      // and dealt in from the next one.
+      const live = room.table.phase !== 'waiting';
+      const seatedBuyIn = live
+        ? room.lateJoinChips()
+        : Math.max(1, Math.floor(Number(buyIn)) || room.lobby.get(userId)?.buyIn || 1000);
       const botLevel = bot.normalizeLevel(level);
-      room.addToLobby(bot.makeBotId(), bot.pickBotName(taken, botLevel), seatedBuyIn, true, botLevel);
+      const botId = bot.makeBotId();
+      const botName = bot.pickBotName(taken, botLevel);
+      room.addToLobby(botId, botName, seatedBuyIn, true, botLevel);
+      if (live) {
+        room.table.addLatePlayer(botId, botName, seatedBuyIn, true, botLevel);
+        announce(room, `${botName} is taking a seat.`);
+      }
       ack?.({ ok: true });
       broadcastRoom(room);
+      roomsChanged(); // the open-tables list counts the seats
     });
 
     // Handing the room over. The room belongs to whoever holds it - they can
@@ -906,13 +918,23 @@ function attachSockets(io, sessionMiddleware) {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       if (room.hostUserId !== userId) return ack?.({ ok: false, error: 'Only the host can remove players.' });
-      if (room.table.phase !== 'waiting') return ack?.({ ok: false, error: 'Game already started.' });
       if (targetUserId === userId) return ack?.({ ok: false, error: 'Use Leave to exit the room.' });
-      if (!room.lobby.has(targetUserId)) return ack?.({ ok: false, error: 'Player not in this room.' });
-      const removedName = room.lobby.get(targetUserId).username;
+      const info = room.lobby.get(targetUserId);
+      const seat = room.table.seats.find((p) => p && p.userId === targetUserId && !p.left);
+      if (!info && !seat) return ack?.({ ok: false, error: 'Player not in this room.' });
+      // Mid-game this is for bots alone. Nobody is at the keyboard for one,
+      // so taking it off the table is the host's to do and nobody's loss;
+      // a player has to be voted out, which is the room's business.
+      const isBot = !!(info?.isBot || seat?.isBot);
+      if (room.table.phase !== 'waiting' && !isBot) {
+        return ack?.({ ok: false, error: 'A player can only be voted out once the game is running.' });
+      }
+      const removedName = info?.username || seat?.username || 'Player';
       room.spectators.delete(targetUserId);
       room.removeFromLobby(targetUserId);
-      room.table.removePlayer(targetUserId); // a late joiner holds a seat too
+      // Nothing in the hand: the chair goes straight back. Chips already in
+      // the middle: the seat is held, folded, until the next deal.
+      if (!room.table.releaseSeat(targetUserId)) room.table.removePlayer(targetUserId);
       // No further roomState reaches them, so without this they'd sit on a
       // waiting room they're no longer part of.
       for (const s of socketsByUser.get(targetUserId) || []) {
@@ -921,6 +943,7 @@ function attachSockets(io, sessionMiddleware) {
       announce(room, `${removedName} was removed from the room.`, targetUserId);
       ack?.({ ok: true });
       broadcastRoom(room);
+      roomsChanged();
     });
 
     socket.on('startGame', (_payload, ack) => {

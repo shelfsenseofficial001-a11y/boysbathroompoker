@@ -211,6 +211,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // The emoji picker over the composer. The set itself is fetched once and
   // kept for the visit - it's every emoji there is, so it's worth not asking
   // for twice, and worth not shipping inside the table's own script.
+  let botMenuOpen = false; // the difficulty menu on the felt's Add bot button
   let emojiOpen = false;
   let emojiGroups = null;
   let emojiLoading = null;
@@ -864,6 +865,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     el.setSelectionRange(caret, caret);
     el.focus();
     autoSizeInput();
+  }
+
+  function setBotMenu(on) {
+    botMenuOpen = on;
+    if (els?.botMenu) els.botMenu.hidden = !on;
+    els?.tableBot?.querySelector('[data-bot-menu]')?.setAttribute('aria-expanded', String(on));
   }
 
   function cancelComposer() {
@@ -2107,6 +2114,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         </div>
       </main>
       <button class="table-join" data-take-seat id="table-join" hidden>${icons.chevron}Take a seat</button>
+      <div class="table-bot-wrap" id="table-bot" hidden>
+        <div class="bot-menu" id="bot-menu" role="menu" aria-label="Bot difficulty" hidden>
+          ${BOT_LEVELS.map(
+            (l) => `<button type="button" role="menuitem" class="${levelClass(l.id)}" data-add-bot-level="${l.id}">
+              <span class="dot"></span>
+              <span class="bot-menu-text"><b>${l.label}</b><em>${esc(l.desc)}</em></span>
+            </button>`
+          ).join('')}
+        </div>
+        <button class="table-bot" data-bot-menu type="button" aria-haspopup="menu" aria-expanded="false"
+          title="Sit a bot down at this table">${icons.robot}<span>Add bot</span></button>
+      </div>
       <div class="spectators" id="spectators" hidden>
         <button class="spec-toggle" data-spec aria-expanded="false" aria-controls="spec-panel">${icons.eye}<b class="spec-count">0</b></button>
         <div class="spec-panel" id="spec-panel" role="group" aria-label="Watching" hidden></div>
@@ -2127,6 +2146,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
       tableJoin: $('table-join'),
+      tableBot: $('table-bot'),
+      botMenu: $('bot-menu'),
     };
     // The panel's own elements are read back by the one function that knows
     // what they are. Listing them here as well is what left the table
@@ -2193,6 +2214,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const open = e.target.closest('[data-seat-menu]');
       const vote = e.target.closest('[data-vote-kick]');
       const give = e.target.closest('[data-make-host]');
+      const drop = e.target.closest('[data-remove-bot]');
+      if (drop) {
+        const id = Number(drop.dataset.removeBot);
+        seatMenuFor = null;
+        drawTable(null, shown);
+        try {
+          await emitAck('removePlayer', { userId: id });
+        } catch (err) {
+          showError(err.message);
+        }
+        return;
+      }
       if (give) {
         askingTransfer = Number(give.dataset.makeHost);
         seatMenuFor = null;
@@ -2323,6 +2356,20 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // It sits on the felt rather than in the dock or the spectator panel, so
     // neither of their delegated handlers reaches it.
     els.tableJoin?.addEventListener('click', () => takeSeat());
+    // Which bot: the four the waiting room offers, in their own colours.
+    // Asking rather than seating one on the spot also means the button on
+    // the felt can't drop a player onto the table by a stray tap.
+    els.tableBot?.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-bot-menu]')) return setBotMenu(!botMenuOpen);
+      const pick = e.target.closest('[data-add-bot-level]');
+      if (!pick) return;
+      setBotMenu(false);
+      try {
+        await emitAck('addBot', { level: pick.dataset.addBotLevel });
+      } catch (err) {
+        showError(err.message);
+      }
+    });
     els.dock.addEventListener('click', onDockClick);
     els.dock.addEventListener('input', onDockInput);
     els.dock.addEventListener('pointerdown', onTrayPointerDown);
@@ -3173,6 +3220,24 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return out;
   }
 
+  // The ⋯ on a nameplate, and what it opens. Returns nothing for a seat
+  // with nothing to offer this viewer.
+  function seatMenuHTML(p, L, ctx) {
+    if (L.isMe || p.left) return '';
+    const isHost = ctx.hostUserId === user.id;
+    const items = p.isBot
+      ? isHost
+        ? `<button class="is-danger" data-remove-bot="${p.userId}">${icons.fold}Remove from table</button>`
+        : ''
+      : `${isHost ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>` : ''}
+         <button data-vote-kick="${p.userId}">Vote kick</button>`;
+    if (!items.trim()) return '';
+    if (!p.isBot && p.userId === ctx.hostUserId) return '';
+    const open = seatMenuFor === p.userId;
+    return `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${open}">⋯</button>
+      ${open ? `<div class="pod-menu">${items}</div>` : ''}`;
+  }
+
   function seatHTML(p, L, ctx) {
     const { t } = ctx;
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
@@ -3217,22 +3282,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       ${tag ? `<span class="tag ${tag.cls}">${tag.icon || ''}${esc(tag.text)}${tag.kicker ? `<span class="tag-kick">${esc(tag.kicker)}</span>` : ''}</span>` : ''}
       ${acting && !L.isMe ? `<span class="turn-marker">${icons.chevron}</span>` : ''}
       ${
-        // No menu on the host: their room can't be voted away from them.
-        !L.isMe && !p.isBot && !p.left && p.userId !== ctx.hostUserId
-          ? `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${seatMenuFor === p.userId}">⋯</button>
-             ${
-               seatMenuFor === p.userId
-                 ? `<div class="pod-menu">
-                      ${
-                        ctx.hostUserId === user.id
-                          ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>`
-                          : ''
-                      }
-                      <button data-vote-kick="${p.userId}">Vote kick</button>
-                    </div>`
-                 : ''
-             }`
-          : ''
+        // A bot's seat answers to the room's owner and to nobody else -
+        // there is no one at the keyboard to vote out, and it is their table
+        // to set. Everyone else's carries the room's own business: handing
+        // the room over, and the vote. No menu on the host: their room can't
+        // be voted away from them.
+        seatMenuHTML(p, L, ctx)
       }
       </div>
     </div>`;
@@ -3489,6 +3544,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Offered on the felt, in the corner nearest the seats, and only while
     // there's a chair going spare.
     if (els.tableJoin) els.tableJoin.hidden = !!me || (shown?.seatsFree ?? 0) < 1;
+    // The owner's, and only while there's a chair to sit one in. A bot added
+    // now is dealt in from the next hand, the same as anyone taking a seat
+    // mid-game.
+    if (els.tableBot) {
+      els.tableBot.hidden = shown?.hostUserId !== user.id || (shown?.seatsFree ?? 0) < 1;
+      if (els.tableBot.hidden && botMenuOpen) setBotMenu(false);
+    }
 
     // The turn has come round to a hand already given up on: send it now,
     // rather than making the player sit and wait to press the button again.
@@ -4071,6 +4133,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawChat({ keepUnread: true });
     }
     if (emojiOpen && outside('.emoji-wrap')) setEmojiOpen(false);
+    if (botMenuOpen && outside('.table-bot-wrap')) setBotMenu(false);
     if (specOpen && outside('.spec-panel, [data-spec]')) {
       specOpen = false;
       if (shown) drawSpectators(shown);
