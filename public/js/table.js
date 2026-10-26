@@ -3274,14 +3274,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // own hole cards, which flip face-up while I peek).
   // `simple` defaults to whatever the table's size calls for; the hand
   // history asks for it outright, since its cards are thumbnails at any size.
-  function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = miniCards } = {}) {
+  // `tucked` is for the one hand that isn't shown whole: see cardFaceSVG.
+  function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = miniCards, tucked = false } = {}) {
     if (flip) {
       return `<div class="card ${cls}" style="${style}"><div class="flip">
         <div class="back">${cardBackSVG(getSettings().cardBack)}</div>
-        <div class="face">${cardFaceSVG(code, { simple })}</div>
+        <div class="face">${cardFaceSVG(code, { simple, tucked })}</div>
       </div></div>`;
     }
-    const faceLayer = face ? `<div class="face">${cardFaceSVG(code, { simple })}</div>` : '';
+    const faceLayer = face ? `<div class="face">${cardFaceSVG(code, { simple, tucked })}</div>` : '';
     return `<div class="card ${cls}" style="${style}">${faceLayer}<div class="back">${cardBackSVG(getSettings().cardBack)}</div></div>`;
   }
 
@@ -3315,7 +3316,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // pinned to the rail in portrait carries its cards with it.
     if (p.holeCards) {
       return `<div class="hand pod-hand revealed${lost}" data-hand="${p.seat}">
-        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms` })).join('')}
+        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms`, tucked: true })).join('')}
       </div>`;
     }
     // When they're checking their hand the cards tilt up and settle — you see

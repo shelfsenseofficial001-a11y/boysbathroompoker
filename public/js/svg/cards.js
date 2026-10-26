@@ -32,15 +32,16 @@ function suit(s, x, y, size, color) {
 const SUIT_NAME = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' };
 
 // `code` is like "As", "Td", "2c". `simple` draws the plain variant: one
-// rank over one suit, with no corner indices and no pip layout. The pair
-// sits in the top two thirds of the card rather than across its middle: a
-// hand turned over at showdown is tucked behind its nameplate with only
-// POD_REVEAL_SHOW of the card above it, and a suit set at the middle was
-// covered by the plate. Everything the card says is inside that strip.
+// rank over one suit, with no corner indices and no pip layout, centred on
+// the card. `tucked` lifts that pair into the top of the card instead, for
+// the one place a plain face is not shown whole: a hand turned over at
+// showdown stands behind its player's nameplate with only POD_REVEAL_SHOW
+// of the card above it, and a suit set at the middle is covered by the
+// plate. Everywhere the whole card shows, it stays centred.
 // Everyone plays off the same screen, so a card never has to be read from
 // the far side of a table, and at small sizes this stays legible where the
 // full face turns to mush.
-export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
+export function cardFaceSVG(code, { simple = false, deck = null, tucked = false } = {}) {
   const r = code[0];
   const s = code[1];
   const color = suitColors(deck)[s];
@@ -59,11 +60,18 @@ export function cardFaceSVG(code, { simple = false, deck = null } = {}) {
 
   if (simple) {
     const size = 36;
+    // Centred: the rank's cap sits as far below the top edge as the suit
+    // does above the bottom one. Tucked: the same pair raised into the strip
+    // that shows above a nameplate, and the suit a shade smaller so it isn't
+    // drawn right up against the plate.
+    const rankY = tucked ? 32 : 40;
+    const suitY = tucked ? 35.5 : 47;
+    const suitW = tucked ? 21 : 23;
     return `<svg viewBox="0 0 60 84" xmlns="http://www.w3.org/2000/svg" aria-label="${rank} of ${SUIT_NAME[s]}" role="img">
   <rect x=".5" y=".5" width="59" height="83" rx="5.5" fill="#fbf8f1" stroke="#cfc6b4"/>
   <rect x="2" y="2" width="56" height="80" rx="4.5" fill="none" stroke="#fff" stroke-opacity=".7"/>
-  <text x="30" y="32" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
-  ${suit(s, 19.5, 35.5, 21, color)}
+  <text x="30" y="${rankY}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="${size}" font-weight="800" fill="${color}"${fit(40)}>${rank}</text>
+  ${suit(s, (60 - suitW) / 2, suitY, suitW, color)}
 </svg>`;
   }
 
