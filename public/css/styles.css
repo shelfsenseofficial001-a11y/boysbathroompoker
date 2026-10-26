@@ -1060,6 +1060,70 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-form .input::-webkit-scrollbar-thumb:hover { background: rgba(230, 180, 80, 0.65); }
 .chat-form .btn { flex: none; width: 36px; height: 36px; padding: 0; }
 
+/* ---------- The emoji picker ---------- */
+/* Anchored to its own button so the panel rises from it rather than from the
+   corner of the chat, and clipped to the panel's width on a phone, where the
+   composer is nearly the whole of it. */
+.emoji-wrap { position: relative; flex: none; display: flex; }
+.chat-emoji { color: var(--text-3); }
+.chat-emoji:hover, .chat-emoji[aria-expanded='true'] { color: var(--gold-hi); }
+.emoji-pop {
+  position: absolute; z-index: 20; bottom: calc(100% + 8px); right: -4px;
+  width: min(312px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-m);
+  box-shadow: var(--shadow-2);
+}
+.emoji-pop[hidden] { display: none; }
+/* The nine groups Unicode sorts them into, drawn as one of each group's own
+   emoji - a row of pictures reads faster here than a row of words would. */
+.emoji-tabs { display: flex; gap: 2px; }
+.emoji-tab {
+  flex: 1 1 0; min-width: 0; padding: 4px 0; cursor: pointer; font-size: 15px; line-height: 1.2;
+  border: 0; border-radius: 6px; background: transparent; opacity: 0.55;
+  transition: background 0.15s, opacity 0.15s;
+}
+.emoji-tab:hover { background: rgba(255, 255, 255, 0.07); opacity: 1; }
+.emoji-tab.is-on { background: rgba(230, 180, 80, 0.14); opacity: 1; }
+.emoji-find { position: relative; display: flex; }
+.emoji-find input {
+  width: 100%; height: 30px; padding: 0 32px 0 10px;
+  border: 1px solid var(--line-2); border-radius: var(--r-s);
+  background: rgba(255, 255, 255, 0.04); color: var(--text-1); font: 500 12.5px var(--font-ui);
+}
+.emoji-find input:focus { outline: none; border-color: rgba(230, 180, 80, 0.5); }
+/* Same reasoning as the hand history's search: the engine's own clear control
+   is a different shape in every browser and can't be styled, so it goes and
+   the round one below takes its place. */
+.emoji-find input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.emoji-x {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 19px; height: 19px; padding: 0; display: grid; place-items: center; cursor: pointer;
+  border-radius: 50%; border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.08); color: var(--text-2);
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.emoji-x[hidden] { display: none; }
+.emoji-x:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); background: rgba(230, 180, 80, 0.14); }
+.emoji-x .icon { width: 10px; height: 10px; }
+/* A fixed eight across, so the grid keeps its shape whichever group is up
+   and the whole run of 1,900 scrolls at one rhythm. */
+.emoji-grid {
+  /* minmax(0, 1fr), not 1fr: a column's automatic minimum is the widest
+     glyph in it, and an emoji drawn at 18px is wider than an eighth of the
+     panel - the grid grew past its own box and took a sideways scrollbar. */
+  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 1px;
+  height: 212px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: rgba(230, 180, 80, 0.5) rgba(255, 255, 255, 0.06);
+}
+.emoji-cell {
+  aspect-ratio: 1; display: grid; place-items: center; cursor: pointer;
+  padding: 0; border: 0; border-radius: 6px; background: transparent;
+  font-size: 18px; line-height: 1;
+}
+.emoji-cell:hover { background: rgba(255, 255, 255, 0.09); }
+.emoji-note { margin: 0; grid-column: 1 / -1; padding: 10px 4px; color: var(--text-3); font-size: 12px; }
+
 /* Anything narrower than a roomy desktop floats the side panels over the felt
    instead of giving them a column. A column means the stage shrinks as the
    panel opens and the table visibly slides across — which is what happened

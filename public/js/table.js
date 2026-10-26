@@ -202,6 +202,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let chatEditing = null; // id of my message being edited
   let chatMenuFor = null; // id whose actions menu is open
   let chatMissed = []; // messages that landed while reading back, newest last
+  // The emoji picker over the composer. The set itself is fetched once and
+  // kept for the visit - it's every emoji there is, so it's worth not asking
+  // for twice, and worth not shipping inside the table's own script.
+  let emojiOpen = false;
+  let emojiGroups = null;
+  let emojiLoading = null;
+  let emojiTab = 0;
+  let emojiQuery = '';
   let openVotes = []; // vote-kicks currently running at this table
   let seatMenuFor = null; // userId whose seat menu is open
   let dismissedGameOver = null; // key of a result the player has closed
@@ -621,6 +629,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <form class="chat-form" id="chat-form">
         <textarea class="input" id="chat-input" rows="1" maxlength="240" autocomplete="off"
           placeholder="Say something…" aria-label="Message"></textarea>
+        <div class="emoji-wrap">
+          <div class="emoji-pop" id="emoji-pop" hidden></div>
+          <button class="btn btn-ghost btn-icon chat-emoji" type="button" data-emoji-toggle
+            aria-expanded="false" aria-controls="emoji-pop" title="Emoji" aria-label="Emoji">${icons.emoji}</button>
+        </div>
         <button class="btn btn-primary btn-icon" type="submit" aria-label="Send">${icons.send}</button>
       </form>
     </aside>`;
@@ -635,6 +648,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     els.chatJump = $('chat-jump');
     els.chatForm = $('chat-form');
     els.chatInput = $('chat-input');
+    els.emojiPop = $('emoji-pop');
+    // A panel drawn fresh with the screen has nothing open in it.
+    emojiOpen = false;
   }
 
   // The box grows down the way a message does, instead of scrolling a single
@@ -713,6 +729,135 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
 
     els.chat?.addEventListener('click', onChatClick);
+    // Only the grid is redrawn as they type, so the field they're typing
+    // into survives the search.
+    els.emojiPop?.addEventListener('input', (e) => {
+      if (!e.target.matches('[data-emoji-find]')) return;
+      emojiQuery = e.target.value;
+      drawEmojiGrid();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // The emoji picker
+  // ---------------------------------------------------------------------------
+  // Every emoji there is, grouped the way Unicode groups them. The set is
+  // kept as its own file rather than in this script: it's fetched the first
+  // time somebody opens the picker and not at all for the people who never
+  // do, and the table loads no slower for carrying it.
+  const EMOJI_SRC = '/data/emoji.json';
+  const EMOJI_FOUND_MAX = 240; // drawn at once while searching
+
+  function loadEmoji() {
+    if (emojiGroups) return Promise.resolve(emojiGroups);
+    if (!emojiLoading) {
+      emojiLoading = fetch(EMOJI_SRC)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no emoji'))))
+        .then((groups) => {
+          emojiGroups = groups;
+          return groups;
+        })
+        .catch(() => {
+          emojiLoading = null; // a later open may still find the network
+          return null;
+        });
+    }
+    return emojiLoading;
+  }
+
+  const emojiTotal = () => (emojiGroups || []).reduce((n, g) => n + g.emoji.length, 0);
+
+  async function setEmojiOpen(on) {
+    if (!els?.emojiPop) return;
+    emojiOpen = on;
+    els.chat?.querySelector('[data-emoji-toggle]')?.setAttribute('aria-expanded', String(on));
+    els.emojiPop.hidden = !on;
+    if (!on) return;
+    emojiQuery = '';
+    drawEmojiPop(); // opens on whatever is known, so the panel never hangs
+    if (await loadEmoji()) {
+      if (!emojiOpen) return; // closed again while it was loading
+      drawEmojiPop();
+      // Same reasoning as the message box: on a phone, focusing a field
+      // throws the keyboard over the thing being picked from.
+      if (!narrow()) els.emojiPop.querySelector('[data-emoji-find]')?.focus();
+    }
+  }
+
+  // The frame: the groups to flick through, and the search that looks past
+  // them. Drawn once per opening, so typing never replaces the field being
+  // typed into - only the grid under it is redrawn.
+  function drawEmojiPop() {
+    if (!emojiGroups) {
+      return setHTML(
+        els.emojiPop,
+        `<p class="emoji-note">${emojiLoading ? 'Fetching the emoji…' : 'The emoji list didn’t load.'}</p>`
+      );
+    }
+    const tabs = emojiGroups
+      .map(
+        (g, i) =>
+          `<button type="button" class="emoji-tab" data-emoji-tab="${i}" title="${esc(g.name)}" aria-label="${esc(g.name)}">${g.icon}</button>`
+      )
+      .join('');
+    setHTML(
+      els.emojiPop,
+      `<div class="emoji-tabs" role="tablist">${tabs}</div>
+       <label class="emoji-find">
+         <input type="search" data-emoji-find autocomplete="off" aria-label="Search emoji"
+           placeholder="Search ${emojiTotal()} emoji">
+         <button type="button" class="emoji-x" data-emoji-clear hidden aria-label="Clear search">${icons.fold}</button>
+       </label>
+       <div class="emoji-grid" data-emoji-grid></div>`
+    );
+    drawEmojiGrid();
+  }
+
+  // What the search or the open group has to show. A search runs over every
+  // group's names at once; without one the picker is simply that group.
+  function drawEmojiGrid() {
+    const grid = els.emojiPop?.querySelector('[data-emoji-grid]');
+    if (!grid || !emojiGroups) return;
+    const q = emojiQuery.trim().toLowerCase();
+    const found = q
+      ? emojiGroups.flatMap((g) => g.emoji).filter(([, name]) => name.includes(q)).slice(0, EMOJI_FOUND_MAX)
+      : emojiGroups[emojiTab].emoji;
+    els.emojiPop.querySelectorAll('[data-emoji-tab]').forEach((b) => {
+      b.classList.toggle('is-on', !q && Number(b.dataset.emojiTab) === emojiTab);
+    });
+    // The way out of a search, there only while there is one to leave.
+    const clear = els.emojiPop.querySelector('[data-emoji-clear]');
+    if (clear) clear.hidden = !emojiQuery;
+    setHTML(
+      grid,
+      found
+        .map(
+          ([ch, name]) =>
+            `<button type="button" class="emoji-cell" data-emoji="${esc(ch)}" title="${esc(name)}" aria-label="${esc(name)}">${ch}</button>`
+        )
+        .join('') || '<p class="emoji-note">Nothing goes by that name.</p>'
+    );
+    grid.scrollTop = 0;
+  }
+
+  // Dropped in where the cursor is, replacing whatever is selected, the way
+  // typing one would. The box keeps the cursor after it so a message can be
+  // carried on without reaching for the mouse again.
+  const CHAT_MAX = 240;
+  function insertEmoji(ch) {
+    const el = els?.chatInput;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    const next = el.value.slice(0, start) + ch + el.value.slice(end);
+    // The box holds 240 characters and an emoji is two of them: a message
+    // already at the limit says so rather than silently dropping the pick.
+    if (next.length > CHAT_MAX) return flagInvalid(el);
+    el.value = next;
+    const caret = start + ch.length;
+    el.setSelectionRange(caret, caret);
+    el.focus();
+    autoSizeInput();
   }
 
   function cancelComposer() {
@@ -732,6 +877,31 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     if (e.target.closest('[data-chat-results]')) return setShowResults(!showResults);
     if (e.target.closest('[data-chat-close]')) return setChatOpen(false);
+    // The picker: its own button, the group tabs along its top, and the
+    // emoji themselves. Picking one leaves the picker up - people send more
+    // than one at a time, and closing after each would make a row of them a
+    // chore.
+    if (e.target.closest('[data-emoji-toggle]')) return setEmojiOpen(!emojiOpen);
+    if (e.target.closest('[data-emoji-clear]')) {
+      emojiQuery = '';
+      const field = els.emojiPop.querySelector('[data-emoji-find]');
+      if (field) {
+        field.value = '';
+        if (!narrow()) field.focus();
+      }
+      return drawEmojiGrid();
+    }
+    const tab = e.target.closest('[data-emoji-tab]');
+    if (tab) {
+      emojiTab = Number(tab.dataset.emojiTab);
+      // Flicking to a group is a way of saying the search is done with.
+      emojiQuery = '';
+      const find = els.emojiPop.querySelector('[data-emoji-find]');
+      if (find) find.value = '';
+      return drawEmojiGrid();
+    }
+    const pick = e.target.closest('[data-emoji]');
+    if (pick) return insertEmoji(pick.dataset.emoji);
     if (cancel) return cancelComposer();
     if (menu) {
       const id = Number(menu.dataset.msgMenu);
@@ -3868,6 +4038,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       chatMenuFor = null;
       drawChat({ keepUnread: true });
     }
+    if (emojiOpen && outside('.emoji-wrap')) setEmojiOpen(false);
     if (specOpen && outside('.spec-panel, [data-spec]')) {
       specOpen = false;
       if (shown) drawSpectators(shown);

@@ -17,6 +17,10 @@ export const icons = {
   gear: svg('<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7.1 19l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.3 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1A1.7 1.7 0 0 0 10.1 3v-.1a2 2 0 1 1 4 0V3a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1z"/>'),
   chat: svg('<path d="M20.5 11.5a7.5 7.5 0 0 1-10.8 6.7L4 19.5l1.4-5A7.5 7.5 0 1 1 20.5 11.5z"/>'),
   send: svg('<path d="M4.5 11.8 20 4.5l-7.3 15.5-2-6.2z"/>'),
+  // The way into the emoji picker: a face, drawn in the same line weight
+  // as the rest rather than an emoji of its own, which would land in
+  // whatever the reader's system draws and never match the button beside it.
+  emoji: svg('<circle cx="12" cy="12" r="9"/><path d="M8.4 14.2a4.4 4.4 0 0 0 7.2 0"/><path d="M9.2 9.4h.01M14.8 9.4h.01"/>'),
   history: svg('<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
   leave: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>'),
