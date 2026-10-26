@@ -411,15 +411,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     );
   }
 
-  function bubbleHTML(m, i) {
+  // `rows` is the list being drawn, which map passes in as the third
+  // argument. The neighbours have to come from it rather than from chatLog:
+  // with each hand's winner hidden the two lists run out of step, and a row
+  // was grouped against whatever message happened to share its index in the
+  // full log - which is how a name and face landed in the middle of a run
+  // instead of at its head.
+  function bubbleHTML(m, i, rows) {
     // The room talking: centred, plain, and nobody's to reply to.
     if (m.system) return `<li class="chat-system">${esc(m.text)}</li>`;
     const mine = m.userId === user.id;
     // Messages from one person in a row are grouped: only the first shows a
     // name and face, and the corner radii round off the outside of the run
     // so it reads as one block rather than a stack of separate boxes.
-    const prev = chatLog[i - 1];
-    const next = chatLog[i + 1];
+    const prev = rows[i - 1];
+    const next = rows[i + 1];
     const first = !prev || prev.userId !== m.userId;
     const last = !next || next.userId !== m.userId;
     const group = `${first ? ' is-first' : ''}${last ? ' is-last' : ''}`;
