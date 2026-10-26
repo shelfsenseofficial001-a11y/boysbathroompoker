@@ -151,6 +151,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let mode = null; // 'waiting' | 'table'
   let els = null; // cached skeleton elements in table mode
   let layout = null; // seat anchors for the current draw
+  // The plain card face - one big rank over one big suit, the same one the
+  // hand history is listed with - rather than the full face with its corner
+  // indices and centre pip. It follows the table standing up: a tall table is
+  // the one a phone gets, and its board is drawn at --card-board's 30px
+  // floor, where the full face is a smudge with a number somewhere in it.
+  let miniCards = false;
   let model = null; // derived betting info for the local player
   let peeking = false;
   let zoomClearTimer = null; // clears the camera's inline transition after a peek
@@ -2395,6 +2401,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // plate and the badge are read off the ones already on screen - both are
     // sized in em off a clamp, so a guess here would drift from the stylesheet.
     const cqmin = Math.min(camW, camH);
+    // Set before anything is drawn: cardHTML takes it as the default for
+    // every card on the felt.
+    miniCards = portrait;
     // Everything a seat is made of is sized in em off the plate's font, so the
     // spacing below is worked out from that font rather than read off what's
     // on screen. Reading it back made the table move whenever something came
@@ -3253,7 +3262,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   // `flip: true` builds a two-sided card that turns over in 3D (used for my
   // own hole cards, which flip face-up while I peek).
-  function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = false } = {}) {
+  // `simple` defaults to whatever the table's size calls for; the hand
+  // history asks for it outright, since its cards are thumbnails at any size.
+  function cardHTML(code, { cls = '', style = '', face = true, flip = false, simple = miniCards } = {}) {
     if (flip) {
       return `<div class="card ${cls}" style="${style}"><div class="flip">
         <div class="back">${cardBackSVG(getSettings().cardBack)}</div>
