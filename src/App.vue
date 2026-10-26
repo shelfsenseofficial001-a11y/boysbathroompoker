@@ -15,10 +15,24 @@ import { grouped } from './lib/format.js';
 import LobbyScreen from './components/lobby/LobbyScreen.vue';
 import TableScreen from './components/table/TableScreen.vue';
 import RoomGoneScreen from './components/screens/RoomGoneScreen.vue';
+import AuthModal from './components/auth/AuthModal.vue';
+import SvgIcon from './components/ui/SvgIcon.vue';
 
 const auth = useGuestAuth();
 
-const view = ref('boot'); // boot | lobby | table | gone | blocked
+const view = ref('boot'); // boot | gate | lobby | table | gone | blocked
+
+// The auth sheet. One of it, opened either by the first-visit prompt (which
+// cannot be closed without an answer) or by the top bar's buttons.
+const authOpen = ref(false);
+const authTab = ref('login');
+const authGuest = ref(false);
+
+function openAuth(mode = 'login') {
+  authTab.value = mode;
+  authGuest.value = false;
+  authOpen.value = true;
+}
 const user = ref(null); // { id, username, bankroll } - the server's own record
 const guest = ref(false);
 const roomCode = ref(null);
@@ -65,15 +79,30 @@ async function boot() {
     .then((r) => r.json())
     .catch(() => ({}));
 
-  // A guest account this server will actually accept.
+  // An account, or a guest one, that this server will actually accept.
   if (config.supabaseAuth && supabaseConfigured) {
     await auth.initPromise;
-    if (auth.accessToken.value) {
-      // A getter, not the token: the handshake is rebuilt on every reconnect
-      // and wants whatever the current one is by then.
-      setTokenSource(() => auth.accessToken.value, auth.username.value);
-      guest.value = true;
-      return enter();
+    // Already somebody - an account, or a guest from a previous visit.
+    if (auth.accessToken.value) return signedIn();
+    // They answered the prompt once before and the session has since gone.
+    // Asking again would be nagging, so put them back in as a guest.
+    if (auth.shouldResumeGuest.value) {
+      try {
+        await auth.continueAsGuest();
+        return signedIn();
+      } catch (err) {
+        bootError.value = err.message;
+      }
+    }
+    // First time here: ask before anything else happens. Nothing is signed
+    // in at this point, deliberately - minting a guest account now would
+    // answer the question for them.
+    if (auth.needsChoice.value) {
+      authGuest.value = true;
+      authTab.value = 'login';
+      authOpen.value = true;
+      view.value = 'gate';
+      return;
     }
     bootError.value = auth.error.value || '';
   }
@@ -93,6 +122,38 @@ async function boot() {
   } catch {
     view.value = 'blocked';
   }
+}
+
+// A session in hand, whichever way it arrived. The socket is handed a getter
+// rather than the token itself: the handshake is rebuilt on every reconnect
+// and wants whatever the current one is by then.
+// The user id the socket connected under, so a later sign-in can tell
+// whether it is still talking to the same player.
+let connectedAs = null;
+
+function signedIn() {
+  setTokenSource(() => auth.accessToken.value, auth.username.value);
+  connectedAs = auth.userId.value;
+  guest.value = auth.isGuest.value;
+  return enter();
+}
+
+// The sheet got an answer. A player who signed up without confirming their
+// email yet is still a guest, and still gets in.
+function onAuthed() {
+  authOpen.value = false;
+  if (!auth.accessToken.value) return; // signed up, waiting on the email
+  if (view.value === 'gate') return signedIn();
+
+  guest.value = auth.isGuest.value;
+  // Upgrading a guest attaches an email to the account they already had, so
+  // the user id - and the socket, and the seat they may be sitting in - is
+  // unchanged. Nothing to do but say so.
+  if (auth.userId.value === connectedAs) {
+    return showToast('Account created — your chips are yours for keeps.', { info: true, atPage: true });
+  }
+  // A different player entirely: the socket has to come back as them.
+  location.reload();
 }
 
 // Once identified, go straight back to your table if you were in one (after a
@@ -158,11 +219,14 @@ function onLeaveTable({ notice: message, forced }) {
   if (forced && message) showToast(message, { atPage: true, ms: 7000 });
 }
 
-// Offered from the avatar menu on every screen that has one. For a guest this
-// is not a log out so much as a new identity.
+// Offered from the avatar menu on every screen that has one. For a guest it
+// is not a log out so much as a new identity; for an account it is the real
+// thing, and the first-visit prompt is there to meet them afterwards.
 async function logout() {
-  if (supabaseConfigured) await auth.newGuest();
-  else if (guest.value) {
+  if (supabaseConfigured) {
+    if (auth.hasAccount.value) await auth.signOut();
+    else await auth.newGuest();
+  } else if (guest.value) {
     try {
       sessionStorage.removeItem('guestName');
     } catch {
@@ -217,6 +281,18 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     </div>
   </div>
 
+  <!-- The first visit. The prompt is the screen: there is nothing behind it
+       to go back to, so the page under it is the brand and nothing else. -->
+  <div v-else-if="view === 'gate'" class="screen">
+    <div class="auth-wrap">
+      <section class="panel auth-card gate-card">
+        <div class="auth-brand"><SvgIcon name="logo" /></div>
+        <h1 class="display">Boysbathroom Poker</h1>
+        <p class="lead">Play-money Texas Hold’em for you and your friends.</p>
+      </section>
+    </div>
+  </div>
+
   <LobbyScreen
     v-else-if="view === 'lobby'"
     :user="user"
@@ -224,6 +300,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     :notice="notice"
     @enter-room="onEnterRoom"
     @logout="logout"
+    @auth="openAuth"
   />
 
   <TableScreen
@@ -242,5 +319,17 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     :guest="guest"
     @home="view = 'lobby'"
     @logout="logout"
+  />
+
+  <!-- One sheet for both ways in. On the first visit it carries the guest
+       option and cannot be closed without an answer; from the top bar it is
+       an ordinary dialog. -->
+  <AuthModal
+    v-if="authOpen"
+    :show-guest="authGuest"
+    :closable="!authGuest"
+    :initial-tab="authTab"
+    @done="onAuthed"
+    @close="authOpen = false"
   />
 </template>

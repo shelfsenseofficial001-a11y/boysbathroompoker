@@ -1,7 +1,9 @@
 <script setup>
 // The lobby: host a table, join one by code, or pick one off the open list.
 // Settings sits behind the avatar menu as a page of its own.
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
+import { useGuestAuth } from '../../composables/useGuestAuth.js';
+import { supabaseConfigured } from '../../lib/supabase.js';
 import { emitAck } from '../../lib/socket.js';
 import { showToast } from '../../lib/toast.js';
 import { playEntrance } from '../../lib/motion.js';
@@ -16,14 +18,32 @@ const props = defineProps({
   guest: { type: Boolean, default: false },
   notice: { type: String, default: '' },
 });
-const emit = defineEmits(['enter-room', 'logout']);
+const emit = defineEmits(['enter-room', 'logout', 'auth']);
+
+const auth = useGuestAuth();
+// A guest has an account they never asked for; the bar offers them a real
+// one. Somebody already signed in sees their name and nothing else.
+const showAuth = computed(() => supabaseConfigured && auth.isGuest.value);
 
 // Everything that isn't "change my name" lives in the menu under the avatar,
 // so the bar carries a brand and a name and nothing else.
-const menuGroups = [
-  [{ id: 'settings', icon: 'gear', label: 'Settings' }],
-  [{ id: 'logout', icon: 'leave', label: props.guest ? 'New guest' : 'Log out', danger: true }],
-];
+const menuGroups = computed(() => {
+  const account = [];
+  if (showAuth.value) {
+    account.push({ id: 'signup', icon: 'key', label: 'Keep this account' });
+  }
+  return [
+    [{ id: 'settings', icon: 'gear', label: 'Settings' }, ...account],
+    [
+      {
+        id: 'logout',
+        icon: 'leave',
+        label: auth.hasAccount.value ? 'Log out' : props.guest ? 'New guest' : 'Log out',
+        danger: true,
+      },
+    ],
+  ];
+});
 
 const page = ref('main');
 const screen = ref(null);
@@ -44,6 +64,7 @@ async function showPage(name) {
 
 function onMenuPick(id) {
   if (id === 'logout') return emit('logout');
+  if (id === 'signup') return emit('auth', 'signup');
   if (id === 'settings') showPage('settings');
 }
 
@@ -67,7 +88,13 @@ onMounted(() => playEntrance(screen.value));
 
 <template>
   <div ref="screen" class="screen">
-    <TopBar :user="user" :menu-groups="menuGroups" @pick="onMenuPick" />
+    <TopBar
+      :user="user"
+      :menu-groups="menuGroups"
+      :show-auth="showAuth"
+      @pick="onMenuPick"
+      @auth="emit('auth', $event)"
+    />
 
     <main v-show="page === 'main'" class="page">
       <section class="hero" data-enter>

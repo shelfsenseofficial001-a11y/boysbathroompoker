@@ -150,6 +150,15 @@
   }
 }
 
+/* ---------- The top bar on a phone ---------- */
+/* Brand, two auth buttons and the avatar do not fit across 360px. Sign up is
+ * the one worth keeping - logging in is a tab inside the sheet it opens, and
+ * the avatar menu carries the same offer in words. */
+@media (max-width: 560px) {
+  .topbar-auth .btn-ghost { display: none; }
+  .topbar-auth { gap: 6px; }
+}
+
 /* ---------- Ultra-wide ---------- */
 /* The page screens cap themselves at --page-w, so the lobby never stretches.
  * The table is the one that spreads: its panels are capped at 300px and

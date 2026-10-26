@@ -3,14 +3,32 @@
 Supabase holds **who you are**. The Node server holds **what you have**. Nothing
 in the browser is allowed to be the authority on a chip.
 
-## How a guest signs in
+## How somebody signs in
 
 1. The page asks `/api/config` whether this server will accept a Supabase token.
-2. `useGuestAuth` calls `supabase.auth.signInAnonymously()` on the first visit
-   and reuses the stored session on every visit after it. There is no login
-   screen, no password and no OAuth.
-3. It reads or creates the player's row in `profiles` — `Guest4817`, 1000 chips,
-   `created_at`.
+2. `useGuestAuth` restores a stored session. It does **not** sign anybody in on
+   its own: a first-time visitor is asked how they want to play, and minting an
+   anonymous account at boot would answer that question for them before the
+   prompt could appear. The answer is remembered in `localStorage`
+   (`bbp-auth-chosen`), so it is asked once and never again.
+3. The three ways through that prompt:
+   - **Continue as guest** → `signInAnonymously()`.
+   - **Log in** → `signInWithPassword()`.
+   - **Sign up** → `signUp()`, or `updateUser({ email, password })` for someone
+     already playing as a guest.
+4. It reads or creates the player's row in `profiles` — the name chosen at
+   sign-up, or `Guest4817` for a guest; 1000 chips; `created_at`.
+
+### A guest signing up keeps their chips
+
+Attaching an email to an anonymous user keeps the **same user id**. That id is
+what `users.supabase_id` hangs off on this server, so the players row - and the
+bankroll on it - carries straight over. Signing up is an upgrade rather than a
+second account, and the socket does not even need to reconnect.
+
+With email confirmation switched on, neither call returns a new session. The
+player is told to check their email and carries on as they were; the profile
+row is created whenever the session first turns up.
 4. The socket handshake carries the access token. `server/supabaseAuth.js`
    verifies it (locally against `SUPABASE_JWT_SECRET`, or by asking the auth
    server), and only the verified `sub` claim is allowed to name a player.
@@ -31,6 +49,9 @@ These are the player's own, nobody else can see them, and a lie costs nothing:
 - Which lobby page you're on, which settings tab is open.
 - The display name — validated server-side on `setName`, and refused if someone
   at your table already answers to it.
+- Which way they chose to play (`bbp-auth-chosen`). It only decides whether the
+  first-visit prompt is shown; it grants nothing, and clearing it costs the
+  player one question.
 
 ## Must stay on the server
 

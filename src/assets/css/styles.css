@@ -559,6 +559,56 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .link { color: var(--gold); cursor: pointer; font-weight: 600; background: none; border: 0; padding: 0; font: inherit; }
 .link:hover { text-decoration: underline; }
 
+/* ---------- Logging in and signing up ---------- */
+/* The sheet these sit in is the table's own (.overlay / .sheet), so a
+   question the app asks looks like a question the game asks. The sheet
+   centres its text for the short announcements it was built for; a form
+   reads from the left. */
+.auth-form { margin-top: 18px; text-align: left; display: flex; flex-direction: column; gap: 14px; }
+.auth-form .btn { margin-top: 4px; }
+
+/* Log in / Sign up, as one control rather than two buttons: the pair is a
+   single choice, and a segmented track says so. */
+.auth-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  margin-top: 20px; padding: 4px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--r-m);
+}
+.auth-tab {
+  height: 38px; padding: 0 10px; border: 0; border-radius: var(--r-s);
+  background: none; color: var(--text-3); cursor: pointer;
+  font: 700 13px var(--font-ui); letter-spacing: 0.01em;
+  transition: background-color 0.15s, color 0.15s;
+}
+.auth-tab:hover { color: var(--text-2); }
+.auth-tab.is-on { background: var(--bg-3); color: var(--text-1); box-shadow: var(--shadow-1); }
+.auth-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+
+/* The complaint belongs to the box above it, so it sits tight under it
+   rather than in the panel's general error line. */
+.field-error { margin: 2px 0 0; font-size: var(--fs-small); color: #ff9b94; }
+
+/* "or", with a rule through it. The guest way in is an alternative to the
+   form, not a third thing stacked under it. */
+.auth-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 18px 0 14px; color: var(--text-3);
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+}
+.auth-or::before, .auth-or::after { content: ''; flex: 1; height: 1px; background: var(--line-2); }
+
+.auth-guest-note { margin: 10px 0 0; text-align: center; }
+.auth-sent { margin-top: 16px; }
+.auth-sent .help-text { text-align: center; }
+
+/* The first-visit screen behind the prompt: a brand to arrive at, and
+   nothing to do, since the prompt is the thing being answered. */
+.gate-card { text-align: center; }
+
+/* Log in / Sign up in the top bar, for a guest who hasn't kept their account
+   yet. */
+.topbar-auth { display: flex; align-items: center; gap: 8px; }
+
 /* Waiting room */
 .waiting-panel { max-width: 560px; margin: 0 auto; }
 /* The waiting room puts the table talk beside the room itself, so people can
