@@ -597,6 +597,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // at a time whichever way round they're opened.
   const narrow = () => window.matchMedia('(max-width: 1024px)').matches;
 
+  // The scrim is only ever up over a drawer, which is only what a panel is on
+  // a narrow screen. On a wide one the panels are columns beside the table
+  // and there is nothing to dim.
+  function applyScrim() {
+    const scrim = root.querySelector('[data-panel-scrim]');
+    if (!scrim) return;
+    scrim.hidden = !(narrow() && (chatOpen || historyOpen));
+  }
+
   // Remembered on this browser, like the panel's own open state.
   function setShowResults(on) {
     showResults = on;
@@ -623,6 +632,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawSpectators(shown);
     }
     applyChatOpen({ relayout: true });
+    applyScrim();
     drawVotes(); // the toast shifts aside for the panel
   }
 
@@ -631,6 +641,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     setSetting('showHistory', on);
     if (on && chatOpen && narrow()) setChatOpen(false);
     applyHistoryOpen({ relayout: true });
+    applyScrim();
   }
 
   // The panel itself. `waiting` swaps the floating column for one that sits
@@ -2160,6 +2171,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </div>
       <button class="chat-toggle${chatOpen ? '' : ' is-off'}" data-chat aria-pressed="${chatOpen}" title="Show or hide table chat" aria-label="Table chat">${icons.chat}<span class="chat-dot" aria-label="unread messages" hidden></span></button>
       ${chatAsideHTML()}
+      <!-- Behind a drawer, and only where a panel is a drawer: the felt it is
+           covering stays visible through it, and a tap anywhere on it puts
+           the panel away. -->
+      <div class="panel-scrim" data-panel-scrim hidden></div>
       </div>
       <footer class="dock" id="dock"></footer>
     </div>`;
@@ -2200,6 +2215,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     applyHistoryOpen();
     drawHistory();
     applyChatOpen();
+    applyScrim();
     drawChat();
     scrollChatToEnd();
     wireChat();
@@ -2400,6 +2416,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
     els.dock.addEventListener('click', onDockClick);
     els.dock.addEventListener('input', onDockInput);
+    // A tap on the scrim puts the drawer away, the same as its own X does.
+    root.querySelector('[data-panel-scrim]')?.addEventListener('click', () => {
+      if (chatOpen) setChatOpen(false);
+      if (historyOpen) setHistoryOpen(false);
+    });
     els.dock.addEventListener('pointerdown', onTrayPointerDown);
   }
 
@@ -2827,6 +2848,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   function onResize() {
     if (mode !== 'table' || !layout) return;
+    // Crossing the breakpoint turns a column into a drawer and back, and the
+    // scrim belongs to only one of those.
+    applyScrim();
     const portrait = els.camera.clientWidth < els.camera.clientHeight;
     // The table standing up is also what swaps the card faces, so the redraw
     // that follows the turn covers both.

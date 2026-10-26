@@ -738,13 +738,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .history {
   --panel-w: var(--hist-w);
   min-width: 0; overflow: hidden;
-  display: flex; flex-direction: column; align-items: flex-end;
+  display: flex; flex-direction: column;
   background: rgba(6, 12, 9, 0.9); border-right: 1px solid var(--line-2);
 }
-/* Each row inside keeps the panel's full width whatever the track is doing,
-   so the heading, the search and the list are revealed rather than reflowed
-   three hundred times on the way in. */
-.history > * { width: var(--panel-w); }
 /* Sits in the top-left corner under the navbar, and stays put when the panel
    opens underneath it - which is why the panel's heading is indented. */
 .history-toggle {
@@ -823,10 +819,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 /* Always scroll, never auto - same reasoning as the chat log: the groove is
    there from the first hand, so the column doesn't narrow by a scrollbar's
-   width the moment the history outgrows the panel. */
+   width the moment the history outgrows the panel.
+
+   `min-width: 0`, because the panel is narrower than any fixed figure worth
+   naming: it is min(300px, 32vw), so a floor of 252px overflowed it on any
+   window under about 790px and on every tablet, where the panel is a drawer.
+   The list was then wider than what it sat in, and the hand cards had their
+   right-hand edge cut off against it. The always-there groove is what
+   `overflow-y: scroll` buys; it never needed a width to go with it. */
 .history-list {
   flex: 1 1 auto; margin: 0; padding: 8px; list-style: none;
-  overflow-y: scroll; overscroll-behavior: contain; min-width: 252px;
+  overflow-y: scroll; overscroll-behavior: contain; min-width: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(230, 180, 80, 0.5) rgba(255, 255, 255, 0.06);
 }
@@ -902,10 +905,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   --panel-w: var(--chat-w);
   position: relative;
   min-width: 0; overflow: hidden;
-  display: flex; flex-direction: column; align-items: flex-start;
+  display: flex; flex-direction: column;
   background: rgba(6, 12, 9, 0.9); border-left: 1px solid var(--line-2);
 }
-.chat > * { width: var(--panel-w); }
 
 .chat-head {
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -932,10 +934,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .show-chat .chat-toggle { opacity: 0; pointer-events: none; }
 /* `scroll`, not `auto`: the track is there from the first message, so the
    column reads as something you scroll back through and the bubbles keep one
-   width instead of narrowing by a scrollbar once the talk fills the panel. */
+   width instead of narrowing by a scrollbar once the talk fills the panel.
+   The floor goes for the same reason as the history list's: the panel is
+   min(330px, 38vw) and a drawer is narrower still, so a 330px floor hung the
+   log and the composer out past the edge of what they sit in - which is what
+   put the heading out of line with the panel under it. */
 .chat-log {
   flex: 1 1 auto; margin: 0; padding: 10px; list-style: none;
-  overflow-y: scroll; overscroll-behavior: contain; min-width: 330px;
+  overflow-y: scroll; overscroll-behavior: contain; min-width: 0;
   display: flex; flex-direction: column; gap: 2px;
   /* The standard properties, not ::-webkit-scrollbar: scrollbar-color is
      inherited from <html>, and Chrome drops the webkit pseudo-elements for
@@ -1077,7 +1083,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .ctx-x:hover { color: var(--red); }
 .ctx-x .icon { width: 13px; height: 13px; }
 .chat-form.is-editing .input { border-color: rgba(230, 180, 80, 0.55); }
-.chat-form { flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 330px; }
+.chat-form { flex: none; display: flex; align-items: flex-end; gap: 6px; padding: 10px; border-top: 1px solid var(--line-2); min-width: 0; }
 /* A textarea rather than a single line, so a long message wraps into the box
    instead of scrolling away sideways. JS sets the height as you type; the
    max here is the same cap it stops at. */
@@ -1214,7 +1220,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   }
   .history { --panel-w: min(300px, 86vw); left: 0; right: auto; width: var(--panel-w); transform: translateX(-100%); }
   .chat { --panel-w: min(320px, 88vw); right: 0; left: auto; width: var(--panel-w); transform: translateX(100%); }
-  .history > *, .chat > * { width: auto; }
+  /* Behind the drawer and over the felt. It dims what the drawer is covering
+     rather than hiding it, so the table is still plainly there to go back
+     to, and it takes the tap that puts the drawer away. */
+  .panel-scrim {
+    position: absolute; inset: 0; z-index: 29;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s var(--ease-out);
+  }
+  .panel-scrim[hidden] { display: none; }
   .show-history .history, .show-chat .chat { transform: none; }
   .history-list, .chat-log, .chat-form { min-width: 0; }
   /* The on-screen keyboard can still change the viewport height when the
@@ -1222,6 +1236,13 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
      Scoped through .stage so it outranks the .camera block further down the
      file, which is where this rule used to lose by source order. */
   .stage .camera { transition: none; }
+}
+
+/* On a phone a drawer takes the screen: the strip of felt left beside a
+   320px panel at this width is too narrow to read anything from, and it
+   makes the drawer look like it missed its edge. */
+@media (max-width: 560px) {
+  .history, .chat { --panel-w: 100%; width: 100%; max-width: none; }
 }
 
 @media (max-width: 760px) {
