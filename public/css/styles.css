@@ -2243,6 +2243,22 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .dock-status { align-self: stretch; display: flex; flex-direction: column; justify-content: space-evenly; gap: 8px; }
   .dock-status .status-row { margin-top: 0; }
 }
+/* Between the three-column dock and the two-row one there is a band where
+   the three columns no longer fit side by side. The middle track is not a
+   flexible one: it takes its full 680px whatever is left, and the actions
+   track has a floor of 368px it will not go under, so everything that gives
+   is taken out of the status column. At 1399px that left it 265px to hold
+   282px of figures, and the Peek button ended up sitting on top of the pot.
+
+   Here all three share the shrinking instead, the middle one weighted so it
+   still takes the larger share of whatever room there is. The status column
+   keeps its 300px floor all the way down to where the dock reflows. */
+@media (max-width: 1400px) and (min-width: 1081px) {
+  .dock {
+    grid-template-columns: minmax(300px, 1fr) minmax(280px, 1.2fr) minmax(368px, 1fr);
+  }
+}
+
 /* A long name has nowhere to go in a column this narrow, so the line wraps
    onto as many as it needs instead of running out under the chips and the
    buttons. The fixed height goes with it — it only existed to stop the dock
