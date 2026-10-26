@@ -14,8 +14,8 @@ import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, ZOOM } from './settings.js';
 import { syncThemeArrows, themePickerHTML, wireThemePicker } from './themepicker.js';
 import { showToast } from './toast.js';
-import { balanceBlinds, numberFieldHTML, readField, wireSteppers } from './stepper.js';
-import { flagInvalid } from './invalid.js';
+import { balanceBlinds, numberFieldHTML, readField, wireAutoBlinds, wireSteppers } from './stepper.js';
+import { flagInvalid, groupDigits } from './invalid.js';
 
 const BETTING = ['preflop', 'flop', 'turn', 'river'];
 const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
@@ -177,6 +177,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   let renderedBoard = 0; // community cards already on the felt, for this hand
   let renderedShowdown = 0; // hand number whose showdown reveal has been drawn
   let botLevel = 'casual'; // difficulty used for the next bot the host adds
+  // The waiting room is rebuilt whole on every update, so whether the host
+  // has taken the blinds over by hand is held out here rather than in the
+  // fields themselves, and handed back to each new wiring.
+  let manualBlinds = false;
   let foldArmed = false; // Fold needs a second click to confirm
   let foldArmTimer = null;
   let queuedFold = null; // hand number a fold is lined up for, out of turn
@@ -501,7 +505,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // single tap rather than two.
     const actions = `<span class="bubble-acts">
       <button class="bubble-act" data-msg-reply="${m.id}" title="Reply" aria-label="Reply">${icons.call}</button>
-      <button class="bubble-act" data-msg-menu="${m.id}" title="More" aria-label="Message actions" aria-expanded="${open}">⋯</button>
+      <button class="bubble-act" data-msg-menu="${m.id}" title="More" aria-label="Message actions" aria-expanded="${open}">${icons.more}</button>
       ${
         open
           ? `<div class="msg-menu">
@@ -1940,9 +1944,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
                   <div class="rs-row">
                     <span class="rs-label">Blinds<small>Small / big</small></span>
                     <span class="blind-edit">
-                      <input class="input input-sm" type="number" min="1" step="1" value="${t.smallBlind}" data-blind="sb" aria-label="Small blind">
+                      <input class="input input-sm" type="text" data-numeric inputmode="numeric" autocomplete="off" min="1" step="1" value="${groupDigits(t.smallBlind)}" data-blind="sb" aria-label="Small blind">
                       <i>/</i>
-                      <input class="input input-sm" type="number" min="2" step="1" value="${t.bigBlind}" data-blind="bb" aria-label="Big blind">
+                      <input class="input input-sm" type="text" data-numeric inputmode="numeric" autocomplete="off" min="2" step="1" value="${groupDigits(t.bigBlind)}" data-blind="bb" aria-label="Big blind">
+                      <button type="button" class="auto-blinds" data-blinds-auto hidden>Auto</button>
                     </span>
                   </div>
                   <div class="rs-row">
@@ -2042,6 +2047,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           showError(err.message); // and would wipe the message if it followed
         }
       });
+    });
+    // Starting chips set the blinds until the host types their own pair. The
+    // write lands on the fields above, whose own change handler saves it.
+    wireAutoBlinds({
+      stackInput: root.querySelector('[data-start-chips]'),
+      sbInput: root.querySelector('[data-blind="sb"]'),
+      bbInput: root.querySelector('[data-blind="bb"]'),
+      resetEl: root.querySelector('[data-blinds-auto]'),
+      manual: manualBlinds,
+      onManual: (v) => (manualBlinds = v),
     });
     root.querySelector('[data-join-chips]')?.addEventListener('change', async (e) => {
       const chips = readField(e.target, 'Late-joiner chips', showError);
@@ -3248,7 +3263,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (!items.trim()) return '';
     if (!p.isBot && p.userId === ctx.hostUserId) return '';
     const open = seatMenuFor === p.userId;
-    return `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${open}">⋯</button>
+    return `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${open}">${icons.more}</button>
       ${open ? `<div class="pod-menu">${items}</div>` : ''}`;
   }
 
@@ -3498,7 +3513,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       </div>
       <div class="dock-sizing">
         <div class="tray" role="group" aria-label="Chips: drag onto the table or tap to add to your bet">
-          ${(trayDenoms = chipSet(chipScale(shown?.table))).map((d) => chipButton(d, false)).join('')}
+          ${(trayDenoms = tableChipSet()).map((d) => chipButton(d, false)).join('')}
         </div>
         <div class="sizer">
           <div class="quick">
@@ -3684,17 +3699,27 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   // --- The tray ------------------------------------------------------------
-  // The biggest figure in play at this table. A player's stack is counted
-  // with what they have already put in, so the tray doesn't lose its big
-  // chips halfway through a hand as those chips move into the pot.
-  function chipScale(t) {
-    if (!t?.seats) return 0;
-    const seats = t.seats.filter(Boolean);
-    if (!seats.length) return 0;
-    return Math.max(
-      sum(seats, (p) => p.committed || 0),
-      ...seats.map((p) => (p.chips || 0) + (p.committed || 0))
-    );
+  // The tray this table should be offering: the seven chips that go with its
+  // big blind. It follows the blind rather than the money on the felt, so the
+  // bar a player reaches for is the same all through a hand - stacks rise and
+  // fall, but the level being played does not.
+  function tableChipSet() {
+    const t = shown?.table;
+    const tier = chipSet(t?.bigBlind || 0);
+    // A chip bigger than everything you have is not a bet you could make, so
+    // it has no business in the bar. What it is measured against is the stack
+    // you brought to this hand - chips still in front of you plus whatever is
+    // already in the pot - and not what you have left to put in. That figure
+    // doesn't move while the hand is played, so the bar never loses a chip
+    // from under the pointer halfway through building a raise; the chips you
+    // can no longer cover grey out instead.
+    const me = t?.seats?.find((p) => p && p.userId === user.id && !p.left);
+    if (!me) return tier;
+    const stack = (me.chips || 0) + (me.committed || 0);
+    const within = tier.filter((d) => d <= stack);
+    // Shorter than everything in the bar: keep the smallest piece rather than
+    // leave nothing to bet with.
+    return within.length ? within : tier.slice(0, 1);
   }
 
   function chipButton(d, dealt) {
@@ -3708,7 +3733,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function syncTray() {
     const tray = els.dock?.querySelector('.tray');
     if (!tray) return;
-    const want = chipSet(chipScale(shown?.table));
+    const want = tableChipSet();
     if (want.length === trayDenoms.length && want.every((d, i) => d === trayDenoms[i])) return;
     const had = new Set(trayDenoms);
     const have = new Map([...tray.querySelectorAll('[data-chip]')].map((b) => [Number(b.dataset.chip), b]));
@@ -4338,7 +4363,27 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // stays where it's put, keeps the tighter one.
     const slop = e.pointerType === 'mouse' ? 10 : 22;
 
+    // The cards are moved by writing a transform straight onto the node, and
+    // only once a frame. A pointer reports faster than the screen refreshes -
+    // more so on a drawing tablet or a 1000Hz mouse - and every one of those
+    // reports used to be a style write and a class toggle that nothing could
+    // have seen. The newest position wins; the ones in between are dropped.
+    let pending = null; // latest delta, waiting for its frame
+    let frame = 0;
+    const paint = () => {
+      frame = 0;
+      if (!pending) return;
+      const d = pending;
+      hand.style.transform = `translate(calc(-50% + ${d.dx}px), calc(-50% + ${d.dy}px)) rotate(${d.dx * 0.08}deg)`;
+      els.foldZone.classList.toggle('is-hot', isThrow(d) && !!model?.canFold);
+    };
+    // While the pointer is captured, a move is delivered to the cards and
+    // then bubbles on to the window, so both listeners see the same event
+    // object. The second one has nothing to add.
+    let seen = null;
     const move = (ev) => {
+      if (ev === seen) return;
+      seen = ev;
       const d = delta(ev);
       if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < slop) return;
       if (!moved) {
@@ -4347,6 +4392,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         dragging = true;
         endPeek(hand); // put the cards down before sliding them
         hand.classList.add('dragging');
+        // Nothing under the cards needs to know the pointer is passing over
+        // it: the seats, the felt and the dock would each take a hover state
+        // and give it back again, several times a second, for a gesture that
+        // has nothing to do with them.
+        els.camera.classList.add('is-dragging');
         els.foldZone.classList.add('is-visible');
         els.foldLabel.textContent = model?.myTurn
           ? 'Release to fold'
@@ -4354,18 +4404,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
             ? 'Release to fold on your turn'
             : 'Nothing to fold';
       }
-      hand.style.transform = `translate(calc(-50% + ${d.dx}px), calc(-50% + ${d.dy}px)) rotate(${d.dx * 0.08}deg)`;
-      els.foldZone.classList.toggle('is-hot', isThrow(d) && !!model?.canFold);
+      pending = d;
+      if (!frame) frame = requestAnimationFrame(paint);
     };
     const finish = (ev, cancelled) => {
       detach();
       holding = false;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      pending = null;
       if (!moved) {
         endPeek(hand);
         return;
       }
       els.foldZone.classList.remove('is-visible', 'is-hot');
       hand.classList.remove('dragging');
+      els.camera.classList.remove('is-dragging');
       const d = delta(ev);
       if (!cancelled && isThrow(d) && model?.canFold) {
         // Throwing asks before mucking, same as the Fold button does. Out of
@@ -4384,14 +4438,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hand.removeEventListener('pointermove', move);
       hand.removeEventListener('pointerup', up);
       hand.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
     };
     hand.addEventListener('pointermove', move);
     hand.addEventListener('pointerup', up);
     hand.addEventListener('pointercancel', cancel);
-    // Safety net: if the cards are replaced mid-gesture, the window still
-    // hears the release so the peek can never get stuck on.
+    // Safety net, for a pointer the capture above refused and for cards
+    // replaced mid-gesture: the window hears the move wherever it goes, and
+    // the release wherever it lands, so the cards can't be left stuck to a
+    // pointer that has wandered off them or a peek stuck on.
+    window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
   }

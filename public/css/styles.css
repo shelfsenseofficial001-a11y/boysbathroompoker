@@ -666,6 +666,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    Table screen
    ========================================================================== */
 .table-screen {
+  /* The two panel columns, named here so the row's track list and the panels
+     themselves are always quoting the same figure. */
+  --hist-w: min(300px, 32vw);
+  --chat-w: min(330px, 38vw);
   height: 100vh;
   height: 100dvh;
   display: grid;
@@ -683,7 +687,22 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 /* manipulation kills the double-tap-to-zoom delay and gesture: checking is a
    double-tap on the felt, and a zoomable page turns that into a zoom. */
 .table-screen { touch-action: manipulation; }
-.table-body { position: relative; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
+/* Stage and panels are three grid tracks, and opening a panel swaps the track
+   list outright. A panel never covers the felt: it takes its own column and
+   the table keeps whatever is left.
+
+   The swap is NOT animated, and that is the point. The stage is a size
+   container and the table inside it is sized in cqmin throughout, so every
+   frame of a width that is still moving restyles several hundred nodes.
+   Carrying it across 300ms bought a slide and cost a frame budget; done in
+   one step the table and the panel arrive together, in the same frame. */
+.table-body {
+  position: relative; display: grid; min-height: 0; min-width: 0; overflow: hidden;
+  grid-template-columns: 0px minmax(0, 1fr) 0px;
+}
+.show-history .table-body { grid-template-columns: var(--hist-w) minmax(0, 1fr) 0px; }
+.show-chat .table-body { grid-template-columns: 0px minmax(0, 1fr) var(--chat-w); }
+.show-history.show-chat .table-body { grid-template-columns: var(--hist-w) minmax(0, 1fr) var(--chat-w); }
 .stage {
   position: relative;
   flex: 1 1 auto;
@@ -693,6 +712,9 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   display: grid;
   place-items: center;
   overflow: hidden;
+  /* Keeps the stage's relayout to itself while the track is moving: nothing
+     inside it can reach back out and make the row measure again. */
+  contain: layout paint;
 }
 
 /* ---------- Hand history ---------- */
@@ -714,13 +736,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    A closed panel needs no hiding: it keeps its width and leaves the row by
    its margin, which puts it just outside the row's clipped edge. */
 .history {
-  --panel-w: min(300px, 32vw);
-  flex: 0 0 auto; width: var(--panel-w); min-width: 0; overflow: hidden;
-  margin-left: calc(var(--panel-w) * -1);
-  display: flex; flex-direction: column;
+  --panel-w: var(--hist-w);
+  min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-end;
   background: rgba(6, 12, 9, 0.9); border-right: 1px solid var(--line-2);
 }
-.show-history .history { margin-left: 0; }
+/* Each row inside keeps the panel's full width whatever the track is doing,
+   so the heading, the search and the list are revealed rather than reflowed
+   three hundred times on the way in. */
+.history > * { width: var(--panel-w); }
 /* Sits in the top-left corner under the navbar, and stays put when the panel
    opens underneath it - which is why the panel's heading is indented. */
 .history-toggle {
@@ -875,14 +899,13 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .chat-dot.is-wide { padding: 0 5px; }
 /* The same as .history above, mirrored. */
 .chat {
-  --panel-w: min(330px, 38vw);
+  --panel-w: var(--chat-w);
   position: relative;
-  flex: 0 0 auto; width: var(--panel-w); min-width: 0; overflow: hidden;
-  margin-right: calc(var(--panel-w) * -1);
-  display: flex; flex-direction: column;
+  min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-start;
   background: rgba(6, 12, 9, 0.9); border-left: 1px solid var(--line-2);
 }
-.show-chat .chat { margin-right: 0; }
+.chat > * { width: var(--panel-w); }
 
 .chat-head {
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -1177,6 +1200,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @media (max-width: 1024px) {
   /* Floating over the felt here: there is no room to take a column out of a
      phone's width, so the table keeps all of it and the panel covers part. */
+  /* The panels are out of flow here, so the row has one track and no width
+     of its own to animate. */
+  .table-body { grid-template-columns: minmax(0, 1fr); }
+  .show-history .table-body, .show-chat .table-body,
+  .show-history.show-chat .table-body { grid-template-columns: minmax(0, 1fr); }
   .history, .chat {
     position: absolute; top: 0; bottom: 0; z-index: 30; margin: 0;
     background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
@@ -1186,6 +1214,7 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   }
   .history { --panel-w: min(300px, 86vw); left: 0; right: auto; width: var(--panel-w); transform: translateX(-100%); }
   .chat { --panel-w: min(320px, 88vw); right: 0; left: auto; width: var(--panel-w); transform: translateX(100%); }
+  .history > *, .chat > * { width: auto; }
   .show-history .history, .show-chat .chat { transform: none; }
   .history-list, .chat-log, .chat-form { min-width: 0; }
   /* The on-screen keyboard can still change the viewport height when the
@@ -1375,6 +1404,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    not travel. See settleIn(). */
 .is-settling, .is-settling * { transition: none !important; animation: none !important; }
 .hand.mine.dragging { transition: none; cursor: grabbing; z-index: 8; filter: drop-shadow(0 18px 18px rgba(0, 0, 0, 0.55)); }
+/* Nothing on the table answers the pointer while cards are being dragged
+   across it. The pointer is captured by the cards, so none of these would get
+   the gesture anyway - they would only take a hover state and give it back
+   again on the way past. The cards themselves are exempt, and so is the fold
+   zone, which has to know when it is being aimed at. */
+.camera.is-dragging .pod,
+.camera.is-dragging .seat-group:not(:has(.hand.mine)),
+.camera.is-dragging .felt,
+.camera.is-dragging .board { pointer-events: none; }
 .hand.mine.dragging .peek-hint { opacity: 0; }
 .hand.mine.thrown { z-index: 8; transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.3, 1), opacity 0.45s; opacity: 0.85; }
 
@@ -2300,6 +2338,16 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .blind-edit { display: inline-flex; align-items: center; gap: 6px; }
 .blind-edit input { width: 62px; height: 34px; padding: 0 6px; text-align: center; font-weight: 700; }
 .blind-edit i { font-style: normal; color: var(--text-3); }
+/* The way back to blinds that follow the stack. It only appears once the
+   owner has typed their own pair, so it says what it does and nothing else. */
+.auto-blinds {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--text-3);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.auto-blinds:hover { color: var(--gold-hi); }
+.auto-blinds[hidden] { display: none; }
+.auto-blinds-row { margin: -8px 0 14px; }
 /* What a non-host sees instead: the same facts, read-only. */
 .room-summary {
   display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 14px 0 4px; padding: 10px 14px;
@@ -2600,19 +2648,43 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   color: var(--text-2); font-size: 1em; font-weight: 700; opacity: 0.9;
   transition: color 0.15s, border-color 0.15s;
 }
+.pod-more .icon { width: 0.95em; height: 0.95em; }
 .pod:hover .pod-more, .pod-more[aria-expanded='true'] { opacity: 1; border-color: rgba(230, 180, 80, 0.5); }
 .pod-more:hover { color: var(--gold-hi); }
 /* The pod is its own stacking context at z-index 4, so a menu inside it can
    never rise above the cards at 5 however high its own z-index. The whole
    pod has to come forward while the menu is open. */
 .pod.has-menu { z-index: 30; }
+/* An open menu dims the plate it belongs to, so it reads as the one being
+   acted on. The dimming cannot go on the plate itself: opacity and filter
+   apply to everything inside an element and cannot be undone from within, so
+   a faded plate takes its own menu down with it - which is how the menu came
+   to look broken over the felt. The plate's own parts are dimmed instead,
+   one by one, and the menu is simply not one of them.
+
+   The same reason the plate must not be dimmed as a whole is why a folded,
+   away or beaten player's plate has its inherited fade lifted while its menu
+   is open; the dimming below puts the look back, this time without the menu. */
+.pod.has-menu.is-folded, .pod.has-menu.is-away, .pod.has-menu.is-loser {
+  opacity: 1; filter: none;
+}
+.pod.has-menu > :not(.pod-menu) {
+  opacity: 0.6;
+  transition: opacity 0.15s var(--ease-out);
+}
+.reduce-motion .pod.has-menu > :not(.pod-menu) { transition: none; }
 .pod-menu {
-  position: absolute; top: 100%; right: 0; z-index: 2; margin-top: 4px; padding: 4px;
+  /* Hung from the button rather than the plate's edge: the dots sit 0.25em in,
+     so the menu lines up under them instead of off the corner. */
+  position: absolute; top: 100%; right: 0.25em; z-index: 2; margin-top: 6px; padding: 5px;
   display: flex; flex-direction: column; align-items: stretch; gap: 1px;
-  background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
+  /* Flat and opaque. Over a lit felt a translucent panel reads as broken,
+     and there is nothing behind this worth seeing through it. */
+  background: #11161b; border: 1px solid #343b45; border-radius: var(--r-s);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.66), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 /* Low on the table it opens upward instead of off the felt. */
-.pod.is-low .pod-menu { top: auto; bottom: 100%; margin: 0 0 4px; }
+.pod.is-low .pod-menu { top: auto; bottom: 100%; margin: 0 0 6px; }
 .pod-menu button {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 12px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px;

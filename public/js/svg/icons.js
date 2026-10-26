@@ -27,6 +27,10 @@ export const icons = {
   history: svg(
     '<path d="M3.1 12a8.9 8.9 0 1 0 2.6-6.3L3 8.4"/><path d="M3 3.6v4.8h4.8"/><path d="M12 7.4V12l3.5 2.1"/>'
   ),
+  // The ⋯ on a nameplate. Drawn rather than typed: the character itself is a
+  // glyph, so its size, weight and baseline came from whatever font happened
+  // to render it, and it sat slightly high in its own button.
+  more: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>',
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>'),
   leave: svg('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>'),
   robot: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7.5" width="17" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="13.5" r="1.8" fill="currentColor"/><circle cx="15" cy="13.5" r="1.8" fill="currentColor"/><path d="M12 7.5V4M9.5 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="3" r="1.4" fill="currentColor"/></svg>',
