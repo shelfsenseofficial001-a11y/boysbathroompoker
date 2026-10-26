@@ -959,9 +959,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // the sheet so the choice can be seen while it's being made.
       wireThemePicker(el, redressTable);
       root.appendChild(el);
-    } else if (el !== root.lastElementChild) {
-      root.appendChild(el); // a screen rebuild put it out of order
     }
+    // Never moved once it's there. A screen rebuild wipes root, so the
+    // overlay is rebuilt from scratch anyway; the only thing that ever put
+    // it out of order was the vote host being appended after it, and moving
+    // the node for that replayed the open sheet's entrance - which is how a
+    // tutorial shown as a game started appeared to pop a second time on the
+    // next update. Stacking is settled by z-index, not by order.
     return el;
   }
 
