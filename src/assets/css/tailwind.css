@@ -1,0 +1,5 @@
+/* Utilities only - see corePlugins.preflight in tailwind.config.mjs. Loaded
+   after the hand-written stylesheets in main.js, so a utility class can
+   always win against them. */
+@tailwind components;
+@tailwind utilities;

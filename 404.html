@@ -9,8 +9,8 @@
   <link rel="apple-touch-icon" href="/favicon.svg" />
   <!-- Served from this machine, like the rest of the game: a wrong turn
        should not be the one page that needs the internet. -->
-  <link rel="stylesheet" href="/css/fonts.css" />
-  <link rel="stylesheet" href="/css/spread.css" />
+  <link rel="stylesheet" href="/src/assets/css/fonts.css" />
+  <link rel="stylesheet" href="/src/assets/css/spread.css" />
   <style>
     :root {
       --bg-0: #060b09;
@@ -96,7 +96,7 @@
   </div>
 
   <script type="module">
-    import { dealFigures, followPointer } from '/js/svg/spread.js';
+    import { dealFigures, followPointer } from '/src/lib/svg/spread.js';
 
     const spread = document.getElementById('spread');
     dealFigures(spread, '404');

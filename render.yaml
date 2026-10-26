@@ -12,7 +12,8 @@ services:
     name: boysbathroompoker
     runtime: node
     plan: free
-    buildCommand: npm ci
+    # The Vue client is built here; the Node process then serves dist/.
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     # "/" serves index.html, so a 200 here means the app is really up.
     healthCheckPath: /

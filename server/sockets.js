@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const db = require('./db');
+const { verifyAccessToken, supabaseAuthEnabled } = require('./supabaseAuth');
 const { GameManager } = require('./game/GameManager');
 const { Table } = require('./game/Table');
 const bot = require('./game/bot');
@@ -22,6 +23,34 @@ function getOrCreateGuest(name) {
   return db.getUserByUsername(name);
 }
 
+// The name a Supabase guest is shown under. The browser sends its profile's
+// username, which is a convenience and not a credential: it is held to the
+// same rule as setName and falls back to something derived from the verified
+// auth id if it fails, so a hand-rolled handshake cannot plant a name here
+// that the rename path would have refused.
+const DISPLAY_NAME_RE = /^[\p{L}\p{N} _.'-]{2,20}$/u;
+
+function cleanDisplayName(name, supabaseId) {
+  const clean = String(name ?? '').trim().replace(/\s+/g, ' ');
+  if (DISPLAY_NAME_RE.test(clean)) return clean;
+  return `Guest${supabaseId.replace(/\D/g, '').slice(0, 4) || '0000'}`;
+}
+
+// A verified Supabase guest, mapped onto this server's own player row. The
+// row is the authority on the bankroll; the token only says who is asking.
+function getOrCreateSupabaseUser(supabaseId, name) {
+  const existing = db.getUserBySupabaseId(supabaseId);
+  if (existing) return existing;
+  // The account name is derived from the auth id so it is unique without
+  // asking the browser for anything; the display name is what the table
+  // shows. Random unusable password, as for SKIP_AUTH guests: a Supabase
+  // account is not something you can log into with a password here.
+  const username = `sb_${supabaseId.replace(/-/g, '').slice(0, 16)}`;
+  const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 4);
+  db.createSupabaseUser(supabaseId, username, cleanDisplayName(name, supabaseId), hash, 1000);
+  return db.getUserBySupabaseId(supabaseId);
+}
+
 function wrapSessionMiddleware(sessionMiddleware) {
   return (socket, next) => sessionMiddleware(socket.request, {}, next);
 }
@@ -37,11 +66,23 @@ function attachSockets(io, sessionMiddleware) {
 
   io.use(wrapSessionMiddleware(sessionMiddleware));
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const userId = socket.request.session?.userId;
     if (userId) {
       socket.userId = userId;
       return next();
+    }
+    // A guest who signed in anonymously with Supabase. Verified here before
+    // it is allowed to name anybody - see server/supabaseAuth.js.
+    if (supabaseAuthEnabled) {
+      const claims = await verifyAccessToken(socket.handshake.auth?.token);
+      if (claims) {
+        const guest = getOrCreateSupabaseUser(claims.id, socket.handshake.auth?.name);
+        if (guest) {
+          socket.userId = guest.id;
+          return next();
+        }
+      }
     }
     // TEMPORARY dev mode: each tab connects as its own guest player.
     if (process.env.SKIP_AUTH === 'true') {

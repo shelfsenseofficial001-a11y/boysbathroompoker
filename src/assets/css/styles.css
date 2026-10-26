@@ -1287,6 +1287,27 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   --card-board: clamp(30px, 9.8cqmin, 72px);
   --chip: clamp(14px, 3.6cqmin, 26px);
 }
+
+/* While a peek is travelling, the camera and the vignette over it are each
+   given a layer of their own.
+
+   A peek scales the whole camera, and everything inside it goes along: 270-odd
+   elements, nearly 200 SVG nodes, and a drop-shadow filter on every card -
+   three times that at a full table. Without a hint none of it is promoted, so
+   the browser re-rasterises the lot as the scale interpolates rather than
+   scaling one finished texture. That is free on a desktop GPU and is what
+   drops frames on a phone.
+
+   The hint is deliberately not on `.camera` or `.is-peeking` outright. A
+   permanent will-change keeps the layer, and its memory, for a table that
+   isn't moving; and `is-peeking` comes off the moment the player lets go,
+   which is precisely when the camera still has its whole journey back to
+   make. So the class is put on at the start of the gesture and taken off by
+   the same timer that clears the inline transition, once the camera has
+   actually come to rest. See startPeek/endPeek in table-renderer.js. */
+.stage.is-zooming .camera { will-change: transform; }
+.stage.is-zooming::after { will-change: opacity; }
+
 @container stage (max-aspect-ratio: 5/4) {
   .camera { aspect-ratio: 0.68; width: min(calc(100cqw - 12px), calc((100cqh - 12px) * 0.68)); }
   /* A tall table's cloth is only so wide, and five cards across it left no

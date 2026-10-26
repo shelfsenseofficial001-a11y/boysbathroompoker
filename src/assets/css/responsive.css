@@ -1,0 +1,166 @@
+/* Responsive and touch corrections, loaded after styles.css.
+ *
+ * styles.css already carries the layout's own breakpoints - the dock's three
+ * arrangements, the felt's geometry, the panel columns. This file does not
+ * revisit any of that. It covers three things that stylesheet doesn't:
+ * controls too small for a thumb, the open-tables list on a phone, and what
+ * an ultra-wide screen does with the room it has spare.
+ */
+
+/* ---------- Touch targets ---------- */
+/* 44px is the floor a thumb needs. Two ways to reach it: controls that own
+ * their own row are simply made bigger, and controls whose size is part of a
+ * layout - the chip tray's chips, the pot shortcuts - keep their looks and
+ * grow only their hit area, so nothing reflows on a phone.
+ *
+ * Scoped to coarse pointers: a mouse doesn't need any of this, and a 44px
+ * .btn-sm on a desktop would be no longer small.
+ */
+@media (pointer: coarse) {
+  .btn-sm { height: 44px; padding: 0 14px; }
+  .btn-icon, .btn-icon-spacer { width: 44px; height: 44px; }
+
+  /* The number fields on the lobby and waiting-room panels. The dock's own
+   * steppers are left alone: their height is part of a layout that has
+   * already been fitted to a phone.
+   *
+   * flex: none because the stepper is a flex row whose input takes the slack
+   * - without it the buttons are shrunk back under 44px to pay for it. */
+  .panel .step-btn { flex: none; width: 44px; min-width: 44px; height: 44px; }
+  .panel .stepper .input { height: 44px; }
+
+  .set-tab { min-height: 44px; padding-block: 12px; }
+  .umenu-item { min-height: 44px; }
+  /* The way into everything about your account, and on a phone it was the
+   * smallest thing on the bar. */
+  .user-pill { min-height: 44px; }
+
+  /* Hit area only. The chip keeps its face and the shortcut its 30px box, so
+   * the tray still fits across a 360px phone.
+   *
+   * Vertical only, deliberately. Seven chips across 320px leaves 38px each,
+   * and widening the hit areas to 44 would overflow the tray - and would buy
+   * nothing, since a chip's neighbours are other chips rather than empty
+   * felt. The height is what a thumb coming down on the row needs. */
+  .chip-btn, .quick-btn { position: relative; }
+  .chip-btn::after,
+  .quick-btn::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+}
+
+/* A row that can be tapped says so when it is, since there is no hover state
+ * to tell a thumb anything. */
+@media (hover: none) {
+  .rooms tbody tr:active td { background: rgba(255, 255, 255, 0.045); }
+}
+
+/* ---------- Open tables, on a phone ---------- */
+/* Seven columns do not fit in 360px, and a table that scrolls sideways means
+ * every row has to be dragged into view to be read. Below the phone
+ * breakpoint each room becomes a block instead: the code heads it, the
+ * figures are listed under it against their own labels, and the buttons take
+ * a full row at the foot.
+ */
+@media (max-width: 560px) {
+  .rooms-wrap { overflow-x: visible; }
+  .rooms,
+  .rooms tbody,
+  .rooms tr,
+  .rooms td { display: block; width: 100%; }
+  /* The headings move onto the rows themselves, as data-label. */
+  .rooms thead { display: none; }
+
+  .rooms tbody tr {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-m);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .rooms td {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 3px 0;
+    border-bottom: 0;
+  }
+  /* styles.css centres every column but the first and last; stacked, they
+   * all read from the left. Same selector, so it wins on order alone. */
+  .rooms th:not(:first-child):not(:last-child),
+  .rooms td:not(:first-child):not(:last-child) { text-align: left; }
+
+  /* margin-right: auto rather than space-between on the row: a cell holds
+   * several nodes ("1" and "/9", "5" and "/" and "10"), and spreading them
+   * would push each to a different part of the line. This keeps the label at
+   * one edge and everything else gathered at the other. */
+  .rooms td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    margin-right: auto;
+    padding-right: 12px;
+    color: var(--text-3);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  /* The code is the card's heading, so it keeps the top line to itself. */
+  .rooms td:first-child {
+    display: block;
+    margin-bottom: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .rooms td.room-acts {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .rooms td.room-acts .btn { width: 100%; }
+  .rooms-empty td { justify-content: center; text-align: center; }
+  .rooms tbody tr.rooms-empty { background: none; border: 0; padding: 0; }
+}
+
+/* ---------- Floating controls under an open drawer ---------- */
+/* Below 1024px the side panels stop being columns and become drawers: they
+ * slide over the felt at z-index 30, under a scrim at 29. The four controls
+ * that float in the stage's corners sit at z-index 32, which puts them on
+ * top of an open drawer - the hand-history button landing on the chat's
+ * heading, the spectator count on its message box.
+ *
+ * styles.css already takes this out on the bottom-right pair when the chat
+ * is open. The same is true of every corner, and of the history drawer as
+ * well: at 560px and under a drawer is the full width of the screen, so
+ * there is no corner left for any of them to step into. The scrim is taking
+ * the taps either way, so hiding them loses nothing.
+ */
+@media (max-width: 1024px) {
+  :is(.show-history, .show-chat)
+    :is(.history-toggle, .chat-toggle, .spectators, .table-join, .table-bot-wrap) {
+    display: none;
+  }
+}
+
+/* ---------- Ultra-wide ---------- */
+/* The page screens cap themselves at --page-w, so the lobby never stretches.
+ * The table is the one that spreads: its panels are capped at 300px and
+ * 330px, which on a 1920px screen leaves every spare pixel to the felt and
+ * nothing to the chat. Past that width the panels take the extra room
+ * instead, which is where a wide screen is actually worth something - more
+ * of the conversation and more of the hand history on screen at once.
+ */
+@media (min-width: 1920px) {
+  .table-screen {
+    --hist-w: min(380px, 22vw);
+    --chat-w: min(420px, 24vw);
+  }
+}

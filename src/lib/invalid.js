@@ -106,7 +106,7 @@ function caretAfterDigits(text, count) {
 // Re-groups a field around whatever was just typed into it, leaving the caret
 // against the same digit. An empty field is left empty - it is on its way
 // somewhere, and filling in a 0 would fight the typing.
-function regroup(input) {
+export function regroup(input) {
   const before = input.value;
   const bare = stripGrouping(before);
   if (bare === '' || !/^-?\d+$/.test(bare)) return;

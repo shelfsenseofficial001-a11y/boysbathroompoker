@@ -5,21 +5,33 @@
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {
+    "dev": "vite",
+    "dev:server": "node server/index.js",
+    "build": "vite build",
     "start": "node server/index.js",
-    "dev": "node server/index.js",
     "seed": "node seed.js",
-    "test": "node --test tests/"
+    "test": "node --test \"tests/*.test.js\""
   },
   "license": "MIT",
   "engines": {
     "node": ">=22 <23"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
+    "@supabase/supabase-js": "^2.118.0",
     "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
     "socket.io": "^4.7.5",
-    "dotenv": "^16.4.5"
+    "socket.io-client": "^4.8.4",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.31",
+    "tailwindcss": "^3.4.19",
+    "vite": "^6.4.5"
   }
 }

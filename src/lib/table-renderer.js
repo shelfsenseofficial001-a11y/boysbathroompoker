@@ -4305,6 +4305,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // the table — and with no transition-property to animate, a duration on
       // its own did nothing. The zoom ignored the speed setting and snapped.
       clearTimeout(zoomClearTimer);
+      // Promote the camera before the transform that moves it, so the scale
+      // runs on a layer of its own instead of re-rastering the whole table
+      // as it interpolates. Taken off again in endPeek, once it has stopped.
+      els.stage.classList.add('is-zooming');
       cam.style.transition = `transform ${prefs.zoomSpeed}ms cubic-bezier(0.3, 0.7, 0.2, 1)`;
       cam.style.transformOrigin = `${ox}px ${oy}px`;
       cam.style.transform = `translate(0px, ${H / 2 - oy}px) scale(${scale})`;
@@ -4337,7 +4341,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (cam.style.transition) {
       zoomClearTimer = setTimeout(() => {
         cam.style.transition = '';
+        // The compositing hint goes with it, and not before: the camera is
+        // still travelling back for the whole of this wait, which is exactly
+        // when it needs its own layer. Left on permanently it would hold a
+        // full-table layer in memory for a table that isn't moving.
+        els.stage.classList.remove('is-zooming');
       }, getSettings().zoomSpeed + 60);
+    } else {
+      els.stage.classList.remove('is-zooming');
     }
   }
 
@@ -4707,4 +4718,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     else if (action.startsWith('call')) play('call');
     else if (action.includes('blind')) play('chip');
   }
+
+  // Handed back so whatever mounted this screen can tear it down even when
+  // the player never left through exit() - a component unmounting, say.
+  // cleanup() only detaches listeners and timers, so calling it twice is
+  // harmless.
+  return cleanup;
 }

@@ -1,6 +1,10 @@
-// Single shared Socket.io connection, created lazily after login.
+// Single shared Socket.io connection, created lazily once we know who we are.
+import { io } from 'socket.io-client';
+
 let socket = null;
 let guestName = null;
+let getToken = null;
+let profileName = null;
 
 // In guest mode (SKIP_AUTH) the socket identifies itself by a per-tab name
 // instead of the session cookie, so several tabs can be different players.
@@ -8,9 +12,32 @@ export function setGuestName(name) {
   guestName = name;
 }
 
+// The Supabase guest's access token. A getter rather than the token itself,
+// because the handshake is rebuilt on every reconnect and the token it needs
+// then is the refreshed one, not the one that was current at boot.
+export function setTokenSource(fn, name = null) {
+  getToken = fn;
+  profileName = name;
+}
+
 export function getSocket() {
   if (!socket) {
-    socket = guestName ? window.io({ auth: { guestName } }) : window.io();
+    socket = io({
+      // Called afresh for each connection attempt, so a reconnect after a
+      // token refresh carries the new token.
+      auth: (cb) => {
+        const payload = {};
+        const token = getToken?.();
+        if (token) {
+          payload.token = token;
+          // The name to show. Verified against the same rule as a rename on
+          // the server, which does not take it on trust.
+          if (profileName) payload.name = profileName;
+        }
+        if (guestName) payload.guestName = guestName;
+        cb(payload);
+      },
+    });
   }
   return socket;
 }
