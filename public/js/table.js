@@ -560,9 +560,22 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
   const chatShowing = () => mode === 'waiting' || chatOpen;
 
-  function applyChatOpen() {
+  // Opening a panel takes a column out of the row, so the stage - and the
+  // camera in it - changes size in one step. Nothing redraws the table on a
+  // resize unless it turns between portrait and landscape, so without this
+  // the seats keep the places they were given for the old camera while the
+  // plates inside them are resized by container queries against the new one,
+  // and they scatter on the next update from the server.
+  function relayoutForPanel() {
+    if (mode !== 'table' || !shown || !layout) return;
+    els?.camera?.getBoundingClientRect(); // settle the new size first
+    drawTable(shown, shown);
+  }
+
+  function applyChatOpen({ relayout = false } = {}) {
     if (mode === 'waiting') return; // the panel is part of the page here
     root.querySelector('.table-screen')?.classList.toggle('show-chat', chatOpen);
+    if (relayout) relayoutForPanel();
     if (els?.chat) els.chat.setAttribute('aria-hidden', String(!chatOpen));
     const btn = root.querySelector('[data-chat]');
     if (btn) {
@@ -605,7 +618,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       specOpen = false;
       drawSpectators(shown);
     }
-    applyChatOpen();
+    applyChatOpen({ relayout: true });
     drawVotes(); // the toast shifts aside for the panel
   }
 
@@ -613,7 +626,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     historyOpen = on;
     setSetting('showHistory', on);
     if (on && chatOpen && narrow()) setChatOpen(false);
-    applyHistoryOpen();
+    applyHistoryOpen({ relayout: true });
   }
 
   // The panel itself. `waiting` swaps the floating column for one that sits
@@ -3167,8 +3180,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     </li>`;
   }
 
-  function applyHistoryOpen() {
+  function applyHistoryOpen({ relayout = false } = {}) {
     root.querySelector('.table-screen')?.classList.toggle('show-history', historyOpen);
+    if (relayout) relayoutForPanel();
     if (els?.history) els.history.setAttribute('aria-hidden', String(!historyOpen));
     const btn = root.querySelector('[data-history]');
     if (btn) {

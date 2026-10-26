@@ -696,15 +696,31 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ---------- Hand history ---------- */
-/* Closed is width 0 rather than display:none, so opening and closing it
-   slides instead of snapping and the list keeps its scroll position. */
+/* A side panel is a column beside the stage, so opening one makes the table
+   smaller. That resize used to be animated, and because the stage is a size
+   container it restyled the whole table - several hundred nodes, all sized
+   in cqmin - on every frame: 24ms a frame on a nine-handed table at 1340px,
+   against 0.4ms for a change that resizes nothing. One click cost sixty of
+   those frames, which is where the lag came from.
+
+   So the column changes in ONE step, and the panel - frame and contents -
+   is there in that same frame. Every version that animated the panel in
+   left the slot empty for a moment after the table had already shrunk:
+   sliding it in from off-screen, fading it up from nothing, and even fading
+   only its contents, which left an empty dark column for a beat. Each read
+   as the table lurching with a hole beside it. Nothing about the panel is
+   animated now; the table and the panel change together, in one frame.
+
+   A closed panel needs no hiding: it keeps its width and leaves the row by
+   its margin, which puts it just outside the row's clipped edge. */
 .history {
-  flex: 0 0 auto; width: 0; min-width: 0; overflow: hidden;
+  --panel-w: min(300px, 32vw);
+  flex: 0 0 auto; width: var(--panel-w); min-width: 0; overflow: hidden;
+  margin-left: calc(var(--panel-w) * -1);
   display: flex; flex-direction: column;
-  background: rgba(6, 12, 9, 0.75); border-right: 1px solid var(--line-2);
-  transition: width 0.25s var(--ease-out);
+  background: rgba(6, 12, 9, 0.9); border-right: 1px solid var(--line-2);
 }
-.show-history .history { width: min(300px, 32vw); }
+.show-history .history { margin-left: 0; }
 /* Sits in the top-left corner under the navbar, and stays put when the panel
    opens underneath it - which is why the panel's heading is indented. */
 .history-toggle {
@@ -857,14 +873,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   font: 800 10.5px/1 var(--font-ui); font-variant-numeric: tabular-nums;
 }
 .chat-dot.is-wide { padding: 0 5px; }
+/* The same as .history above, mirrored. */
 .chat {
+  --panel-w: min(330px, 38vw);
   position: relative;
-  flex: 0 0 auto; width: 0; min-width: 0; overflow: hidden;
+  flex: 0 0 auto; width: var(--panel-w); min-width: 0; overflow: hidden;
+  margin-right: calc(var(--panel-w) * -1);
   display: flex; flex-direction: column;
-  background: rgba(6, 12, 9, 0.75); border-left: 1px solid var(--line-2);
-  transition: width 0.25s var(--ease-out);
+  background: rgba(6, 12, 9, 0.9); border-left: 1px solid var(--line-2);
 }
-.show-chat .chat { width: min(330px, 38vw); }
+.show-chat .chat { margin-right: 0; }
+
 .chat-head {
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 10px 10px 14px; font: 800 11px var(--font-ui);
@@ -1156,17 +1175,18 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
    on tablets, where there looked to be room but wasn't. Only the transform
    animates here, so the stage beside them never changes size. */
 @media (max-width: 1024px) {
+  /* Floating over the felt here: there is no room to take a column out of a
+     phone's width, so the table keeps all of it and the panel covers part. */
   .history, .chat {
-    position: absolute; top: 0; bottom: 0; z-index: 30;
+    position: absolute; top: 0; bottom: 0; z-index: 30; margin: 0;
     background: rgba(6, 12, 9, 0.97); box-shadow: var(--shadow-2);
-    transition: transform 0.25s var(--ease-out);
+    /* Over the felt here, so the table never resizes and a slide can't leave
+       a hole behind - it's what shows where the panel went. */
+    transition: opacity 0.22s var(--ease-out-expo), transform 0.26s var(--ease-out-expo);
   }
-  .history { left: 0; right: auto; width: min(300px, 86vw); transform: translateX(-100%); }
-  .chat { right: 0; left: auto; width: min(320px, 88vw); transform: translateX(100%); }
-  /* The width has to be repeated at this specificity: the desktop column
-     widths are set on .show-* and would otherwise win here. */
-  .show-history .history { width: min(300px, 86vw); transform: none; }
-  .show-chat .chat { width: min(320px, 88vw); transform: none; }
+  .history { --panel-w: min(300px, 86vw); left: 0; right: auto; width: var(--panel-w); transform: translateX(-100%); }
+  .chat { --panel-w: min(320px, 88vw); right: 0; left: auto; width: var(--panel-w); transform: translateX(100%); }
+  .show-history .history, .show-chat .chat { transform: none; }
   .history-list, .chat-log, .chat-form { min-width: 0; }
   /* The on-screen keyboard can still change the viewport height when the
      message box is tapped; without this the table slides every time it opens.
@@ -2353,10 +2373,19 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   height: 34px; padding: 0 13px 0 10px; border-radius: 999px;
   border: 1px solid var(--line-2); background: rgba(6, 12, 9, 0.9); color: var(--text-2);
   font: 700 12.5px/1 var(--font-ui);
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  /* Lifts and presses like the button it sits under, rather than only
+     changing colour. `right`/`bottom` are in here because the chat panel
+     opening shifts this button out of the corner it shares with it, and that
+     move should carry rather than jump. */
+  transition: transform 0.12s var(--ease-out), background-color 0.15s, color 0.15s,
+    border-color 0.15s, box-shadow 0.15s, right 0.25s var(--ease-out), bottom 0.25s var(--ease-out);
 }
 .table-bot .icon { width: 16px; height: 16px; }
-.table-bot:hover { color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: var(--bg-2); }
+.table-bot:hover {
+  color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.5); background: var(--bg-2);
+  transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.table-bot:active { transform: translateY(0) scale(0.97); }
 .table-join:not([hidden]) ~ .table-bot-wrap { bottom: 62px; }
 .show-chat .table-bot-wrap { right: calc(min(330px, 38vw) + 18px); }
 @media (max-width: 1024px) { .show-chat .table-bot-wrap { display: none; } }
@@ -3094,4 +3123,8 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   transition-duration: 0.01ms !important;
 }
 .reduce-motion .ring-bar { animation-duration: var(--ring-ms) !important; }
+/* The side panels hold their column open for the length of the fade, so the
+   panel is gone before the table grows. With the fade flattened to nothing
+   that delay is just a pause, so it goes too. */
+.reduce-motion .history, .reduce-motion .chat { transition-delay: 0s !important; }
 .btn.is-off { color: var(--text-3); }
