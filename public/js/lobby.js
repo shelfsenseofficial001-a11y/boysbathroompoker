@@ -5,7 +5,7 @@ import { avatarSVG } from './svg/avatars.js';
 import { icons } from './svg/icons.js';
 import { userMenuHTML, wireUserMenu } from './name.js';
 import { getSettings, setSetting, resetSettings, ZOOM } from './settings.js';
-import { numberFieldHTML, readField, wireBlindPair, wireSteppers } from './stepper.js';
+import { numberFieldHTML, readField, wireAutoBlinds, wireBlindPair, wireSteppers } from './stepper.js';
 import { flagInvalid } from './invalid.js';
 import { showToast } from './toast.js';
 import { playEntrance } from './motion.js';
@@ -53,12 +53,13 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
           <h2 class="h2">Host a game</h2>
           <p class="help-text">You’ll set every player’s starting chips in the waiting room.</p>
           <div class="field-row">
+            <div class="field"><label for="buyin-host">Your starting chips</label>${numberFieldHTML({ id: 'buyin-host', value: 1000, min: 1, step: 100, label: 'your starting chips' })}</div>
+          </div>
+          <div class="field-row">
             <div class="field"><label for="sb">Small blind</label>${numberFieldHTML({ id: 'sb', value: 5, min: 1, step: 1, label: 'small blind' })}</div>
             <div class="field"><label for="bb">Big blind</label>${numberFieldHTML({ id: 'bb', value: 10, min: 2, step: 2, label: 'big blind' })}</div>
           </div>
-          <div class="field-row">
-            <div class="field"><label for="buyin-host">Your starting chips</label>${numberFieldHTML({ id: 'buyin-host', value: 1000, min: 1, step: 100, label: 'your starting chips' })}</div>
-          </div>
+          <div class="auto-blinds-row"><button type="button" class="auto-blinds" id="blinds-auto" hidden>Reset blinds to auto</button></div>
           <label class="switch-row">
             <input type="checkbox" id="room-private">
             <span>Private room — hidden from open tables, and you let each player in</span>
@@ -327,6 +328,13 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
   // Big blind follows the small one (and back again) rather than letting a
   // host build a pair the server will refuse.
   wireBlindPair($('#sb'), $('#bb'));
+  // The blinds follow the starting chips until the host sets their own.
+  wireAutoBlinds({
+    stackInput: $('#buyin-host'),
+    sbInput: $('#sb'),
+    bbInput: $('#bb'),
+    resetEl: $('#blinds-auto'),
+  });
 
   $('#create-room').addEventListener('click', async (e) => {
     errEl.textContent = '';
@@ -342,6 +350,12 @@ export function renderLobby(root, { user, guest, onLogout, onEnterRoom, notice }
     }
     const buyIn = readField($('#buyin-host'), 'Your starting chips', fail);
     if (buyIn === null) return;
+    // A blind at or over the starting stack isn't a stake, it's an all-in
+    // before a card is dealt.
+    if (bigBlind >= buyIn) {
+      flagInvalid($('#bb'), { focus: true });
+      return fail(new Error('The big blind has to be smaller than the starting chips.'));
+    }
 
     e.currentTarget.disabled = true;
     try {

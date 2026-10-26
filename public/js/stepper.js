@@ -3,12 +3,12 @@
 // native spinners are hidden (they're tiny and ugly), so every number input
 // uses these.
 import { icons } from './svg/icons.js';
-import { flagInvalid, numberBounds, readNumber } from './invalid.js';
+import { flagInvalid, groupDigits, numberBounds, readNumber, setNumberValue } from './invalid.js';
 
 export function numberFieldHTML({ id = '', value, min = 1, max = null, step = 1, label, attrs = '', wide = true }) {
   return `<div class="stepper${wide ? ' is-wide' : ''}">
     <button type="button" class="step-btn" data-step="-1" tabindex="-1" aria-label="Decrease ${label}">${icons.minus}</button>
-    <input class="input num" type="number" ${id ? `id="${id}"` : ''} value="${value}" min="${min}"${max === null ? '' : ` max="${max}"`} step="${step}" inputmode="numeric" aria-label="${label}" ${attrs}>
+    <input class="input num" type="text" data-numeric ${id ? `id="${id}"` : ''} value="${groupDigits(value)}" min="${min}"${max === null ? '' : ` max="${max}"`} step="${step}" inputmode="numeric" autocomplete="off" aria-label="${label}" ${attrs}>
     <button type="button" class="step-btn" data-step="1" tabindex="-1" aria-label="Increase ${label}">${icons.plus}</button>
   </div>`;
 }
@@ -40,7 +40,7 @@ export function wireSteppers(root) {
     const next = Math.min(max, Math.max(min, snapped + dir * step));
     if (next === current) return;
 
-    input.value = next;
+    setNumberValue(input, next);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
@@ -61,7 +61,7 @@ export function balanceBlinds(sbInput, bbInput, edited = 'sb') {
   if (sb === null || bb === null || bb > sb) return { sb, bb };
 
   const set = (input, value) => {
-    input.value = String(value);
+    setNumberValue(input, value);
     // The waiting room saves these on change, and the lobby reads them when
     // the room is created; an assignment alone fires neither.
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -97,6 +97,79 @@ export function wireBlindPair(sbInput, bbInput) {
   };
   sbInput.addEventListener('change', on('sb'));
   bbInput.addEventListener('change', on('bb'));
+}
+
+// --- Auto blinds -----------------------------------------------------------
+// A stake follows the stack it is played for: a hundred big blinds deep is
+// the depth a cash game is built around, so the starting chips pick the
+// blinds on their own. The moment the owner types a figure of their own the
+// pair is theirs, and the stack stops touching it until they ask for auto
+// back.
+export const BB_PER_STACK = 100;
+
+const clampTo = (input, value) => {
+  const { min, max } = numberBounds(input);
+  return Math.min(max, Math.max(min, value));
+};
+
+// The pair a starting stack implies, each figure held inside what its own
+// field will accept, and the small blind always left under the big one.
+export function blindsForStack(stack, sbInput, bbInput) {
+  const s = Number(stack);
+  if (!Number.isFinite(s) || s <= 0) return null;
+  const bb = clampTo(bbInput, Math.round(s / BB_PER_STACK));
+  const sb = Math.min(clampTo(sbInput, Math.round(bb / 2)), bb - 1);
+  return { sb: Math.max(numberBounds(sbInput).min, sb), bb };
+}
+
+// Ties a starting-stack field to a pair of blind fields. `resetEl` is the way
+// back to auto and shows only once the blinds have been taken over by hand.
+// Returns a handle so a screen that rebuilds itself can read the flag back
+// out and hand it to the next wiring.
+export function wireAutoBlinds({ stackInput, sbInput, bbInput, resetEl, manual = false, onManual }) {
+  if (!stackInput || !sbInput || !bbInput) return null;
+  let own = !!manual; // the owner has taken the blinds over
+  let applying = false; // our own writes, which are not the owner typing
+
+  const paint = () => resetEl?.toggleAttribute('hidden', !own);
+
+  // Both figures are written before either is announced: a screen that saves
+  // blinds as a pair would otherwise see the new big blind against the old
+  // small one and send a pair nobody chose.
+  const apply = () => {
+    const next = blindsForStack(readNumber(stackInput), sbInput, bbInput);
+    if (!next) return;
+    applying = true;
+    try {
+      setNumberValue(sbInput, next.sb);
+      setNumberValue(bbInput, next.bb);
+      bbInput.dispatchEvent(new Event('input', { bubbles: true }));
+      bbInput.dispatchEvent(new Event('change', { bubbles: true }));
+    } finally {
+      applying = false;
+    }
+  };
+
+  const take = () => {
+    if (applying || own) return;
+    own = true;
+    paint();
+    onManual?.(true);
+  };
+
+  stackInput.addEventListener('change', () => {
+    if (!own) apply();
+  });
+  sbInput.addEventListener('input', take);
+  bbInput.addEventListener('input', take);
+  resetEl?.addEventListener('click', () => {
+    own = false;
+    paint();
+    onManual?.(false);
+    apply();
+  });
+  paint();
+  return { apply, isManual: () => own };
 }
 
 // A number field read back for submission: the value, or null having marked
