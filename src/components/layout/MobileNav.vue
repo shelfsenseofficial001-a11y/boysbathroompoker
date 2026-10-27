@@ -20,9 +20,13 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   user: { type: Object, default: null },
   links: { type: Array, default: () => [] },
+  // Which link is the page being read. Section links are not lit in here:
+  // the drawer closes the moment one is chosen, so there is never a moment
+  // where it is open and a section is on screen behind it.
+  active: { type: String, default: '' },
   loading: { type: Boolean, default: false },
 });
-const emit = defineEmits(['close', 'auth', 'guest', 'pick', 'home']);
+const emit = defineEmits(['close', 'auth', 'guest', 'pick', 'home', 'nav']);
 
 const auth = useAuth();
 const panel = ref(null);
@@ -126,16 +130,36 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <nav v-if="links.length" class="mnav-links" aria-label="Sections">
-            <a
-              v-for="link in links"
-              :key="link.href"
-              class="mnav-link"
-              :href="link.href"
-              @click="emit('close')"
-            >
-              {{ link.label }}
-            </a>
+          <nav v-if="links.length" class="mnav-links" aria-label="Pages">
+            <!-- The same list as the bar above the breakpoint, in the same
+                 order. Anything with an address stays a real link; the lobby
+                 has none and is a button. Either way the drawer closes behind
+                 it, which is what `choose` is for. -->
+            <template v-for="link in links" :key="link.id">
+              <a
+                v-if="link.href"
+                class="mnav-link"
+                :class="{ 'is-on': active === link.id }"
+                :href="link.href"
+                :aria-current="active === link.id ? 'page' : undefined"
+                @click.prevent="choose(() => emit('nav', link))"
+              >
+                {{ link.label }}
+              </a>
+              <button
+                v-else
+                type="button"
+                class="mnav-link"
+                :class="{ 'is-on': active === link.id }"
+                :aria-current="active === link.id ? 'page' : undefined"
+                @click="choose(() => emit('nav', link))"
+              >
+                {{ link.label }}
+              </button>
+              <!-- The same break as the bar, drawn the way a drawer draws
+                   one: a rule across it rather than a mark between. -->
+              <span v-if="link.endsGroup" class="mnav-sep" aria-hidden="true" />
+            </template>
           </nav>
 
           <!-- Pinned to the foot, where a thumb reaches. -->
@@ -157,7 +181,13 @@ onBeforeUnmount(() => {
                 Sign up
               </BaseButton>
               <BaseButton v-if="isGuest" size="lg" @click="choose(() => emit('auth', 'login'))">Log in</BaseButton>
-              <BaseButton size="lg" @click="choose(() => emit('pick', 'settings'))">Settings</BaseButton>
+              <!-- An account's own page. A guest has no profile, so they are
+                 offered the way to get one instead - which is the Sign up
+                 button already above this. -->
+            <BaseButton v-if="!isGuest" size="lg" @click="choose(() => emit('pick', 'profile'))">
+              Profile
+            </BaseButton>
+            <BaseButton size="lg" @click="choose(() => emit('pick', 'settings'))">Settings</BaseButton>
               <!-- The one thing in here that takes something away. A guest
                    loses the identity they have been playing under, which is
                    worth looking like a warning rather than like Settings. -->

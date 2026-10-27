@@ -67,7 +67,7 @@ export const FEATURES = [
     group: 'free',
     title: 'Play as a guest',
     description:
-      'One tap and you are at a table. No email, no password, nothing to confirm. Make an account later if you want your name to follow you between visits.',
+      'One tap and you are at a table. No email, no password, nothing to confirm. Guest games count toward your stats only if you sign up in the same session; otherwise they are gone.',
     status: 'live',
   },
 
@@ -129,7 +129,7 @@ export const FEATURES = [
     group: 'compete',
     title: 'Ranked leaderboards',
     description:
-      'Standings for people playing on an account, so a good run is worth something past the end of the hand. Guests will not be ranked, and nothing is recorded for them today.',
+      'Standings for people playing on an account, so a good run is worth something past the end of the hand. Guests will not be ranked: their games are kept for the session and no longer.',
     status: 'soon',
   },
 ];

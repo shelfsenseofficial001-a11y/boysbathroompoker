@@ -18,6 +18,7 @@ import {
   MIN_PASSWORD,
 } from '../../composables/useAuth.js';
 import { clearInvalid } from '../../lib/invalid.js';
+import { emitAck } from '../../lib/socket.js';
 import BaseModal from '../ui/BaseModal.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import TextField from '../ui/TextField.vue';
@@ -68,6 +69,29 @@ const isSignup = computed(() => tab.value === 'signup');
 // A guest signing up keeps the id their seat hangs off, so this is an
 // upgrade rather than a second account - and it is worth saying so.
 const upgrading = computed(() => isSignup.value && auth.isGuest.value);
+
+// How many matches this guest has played in this browser session, and so how
+// many are waiting to be credited to the account they are about to make.
+//
+// Asked of the server over the socket that is already open, and it answers
+// with a count and nothing else - the results themselves stay the server's
+// business until they belong to somebody. Zero, or no answer at all, simply
+// means the line below is not shown: an offer nobody can act on is worse
+// than silence.
+const pendingGames = ref(0);
+watch(
+  upgrading,
+  async (yes) => {
+    if (!yes) return (pendingGames.value = 0);
+    try {
+      const res = await emitAck('guestResultCount');
+      pendingGames.value = res?.count || 0;
+    } catch {
+      pendingGames.value = 0;
+    }
+  },
+  { immediate: true }
+);
 
 const title = computed(() => {
   if (sentTo.value) return 'Almost there';
@@ -310,6 +334,13 @@ function onDismiss() {
           :error="fieldErrors.confirm"
           :disabled="busy"
         />
+
+        <!-- What they stand to keep. Only when there is something to keep:
+             a promise about nothing reads as a promise that was not kept. -->
+        <p v-if="upgrading && pendingGames > 0" class="help-text auth-credit-note">
+          Your {{ pendingGames }} game{{ pendingGames === 1 ? '' : 's' }} this session will count
+          toward your new account's stats.
+        </p>
 
         <p v-if="formError" class="error-text selectable" role="alert">{{ formError }}</p>
 

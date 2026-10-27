@@ -8,6 +8,7 @@ const session = require('express-session');
 const { Server } = require('socket.io');
 
 const { router: authRouter, requireAuth } = require('./auth');
+const { router: playersRouter } = require('./players');
 const { attachSockets } = require('./sockets');
 const { supabaseAuthEnabled } = require('./supabaseAuth');
 
@@ -68,6 +69,9 @@ app.use(express.static(CLIENT_DIR, {
 }));
 
 app.use('/api/auth', authRouter);
+// A player's finished matches, for anyone with the link. Public and
+// rate-limited; see server/players.js for what it refuses to serve.
+app.use('/api/players', playersRouter);
 
 // What the client needs to know before it decides who it is: whether this
 // server will accept a Supabase token, and whether it will accept a per-tab
@@ -81,6 +85,22 @@ app.get('/api/config', (req, res) =>
 
 // Example of a protected REST endpoint (session-based auth, not client-trusted data).
 app.get('/api/health', requireAuth, (req, res) => res.json({ ok: true }));
+
+// A profile page, loaded cold.
+//
+// This app has a view rather than a router, and every other address it uses
+// is "/" with a query string - so until now anything else was a 404, which
+// is right for a wrong turn and wrong for a link somebody was given. A
+// profile has to survive being opened in a new tab, pasted into a message
+// and loaded from nothing, so /u/<name> serves the app shell and lets the
+// client resolve the name. A name that belongs to nobody is answered by the
+// page, which can say so in words; answering 404 here would mean serving the
+// card table's 404 document to a URL that is correctly formed.
+app.get(/^\/u\/[^/]+\/?$/, (req, res, next) => {
+  if (!clientBuilt) return next();
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(CLIENT_DIR, 'index.html'));
+});
 
 // Anything that matched neither a file nor a route above. An API caller
 // wants JSON and would choke on a page; a browser gets the card table's own

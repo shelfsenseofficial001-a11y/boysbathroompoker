@@ -9,7 +9,7 @@
 // A guest has neither. They have no profile row at all - see useAuth - so
 // there is nothing here to edit, and the only thing worth offering is the
 // way to become someone who does.
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useAuth } from '../../composables/useAuth.js';
 import { emitAck } from '../../lib/socket.js';
 import {
@@ -18,6 +18,9 @@ import {
   profileChanges,
   normalizeIngameName,
 } from '../../lib/accountRules.mjs';
+import { checkBio, normalizeBio, bioRemaining, BIO_MAX, initialsFrom } from '../../../shared/profileFields.mjs';
+import { uploadAvatar, removeAvatar, squareWebp } from '../../lib/avatar.js';
+import { avatarSVG } from '../../lib/svg/avatars.js';
 import BaseButton from '../ui/BaseButton.vue';
 import TextField from '../ui/TextField.vue';
 import PasswordInput from '../ui/PasswordInput.vue';
@@ -45,6 +48,21 @@ const savingPassword = ref(false);
 const passwordErrors = ref({});
 const passwordNote = ref('');
 
+// The picture and the sentence. A third form, kept apart from the other two
+// for the reason the first two are apart: a bio you are halfway through
+// should not be able to stop a password change, and a refused upload should
+// not swallow a bio that was fine.
+const bio = ref('');
+const savingLook = ref(false);
+const lookError = ref('');
+const lookNote = ref('');
+// What the picture will be once saved. A local object URL while a file is
+// chosen and not yet uploaded, so the preview shows the square that is
+// actually going up rather than the original photo.
+const previewUrl = ref('');
+const previewFile = ref(null);
+const fileInput = ref(null);
+
 const usernameField = ref(null);
 const ingameField = ref(null);
 const currentField = ref(null);
@@ -62,7 +80,18 @@ const FIELDS = {
 const saved = computed(() => ({
   username: auth.profile.value?.username || '',
   ingameName: auth.profile.value?.ingame_name || '',
+  bio: auth.profile.value?.bio || '',
+  avatarUrl: auth.profile.value?.avatar_url || '',
 }));
+
+// What the circle shows right now: the file being considered, else the saved
+// picture, else initials, else the generated mark every player has had all
+// along. Four steps because each one can be absent.
+const shownAvatar = computed(() => previewUrl.value || saved.value.avatarUrl || '');
+const initials = computed(() => initialsFrom(ingameName.value || saved.value.username));
+const bioLeft = computed(() => bioRemaining(bio.value));
+const bioChanged = computed(() => normalizeBio(bio.value) !== normalizeBio(saved.value.bio));
+const canSaveLook = computed(() => (bioChanged.value || !!previewFile.value) && !savingLook.value);
 
 // Filled from the profile as it arrives, and again whenever a save moves it.
 watch(
@@ -70,6 +99,9 @@ watch(
   (now) => {
     username.value = now.username;
     ingameName.value = now.ingameName;
+    // Only when nothing is being typed: a profile refreshed in the
+    // background should not overwrite a sentence halfway through.
+    if (!bioChanged.value) bio.value = now.bio;
   },
   { immediate: true }
 );
@@ -121,6 +153,82 @@ async function saveProfile() {
     savingProfile.value = false;
   }
 }
+
+// A file chosen. Nothing is uploaded yet: it is checked, squared and shown,
+// so the player sees exactly what is about to go up and can change their
+// mind without anything having left the machine.
+async function pickFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = ''; // so choosing the same file twice still fires
+  if (!file) return;
+  lookError.value = '';
+  lookNote.value = '';
+  try {
+    const blob = await squareWebp(file);
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+    previewUrl.value = URL.createObjectURL(blob);
+    previewFile.value = file;
+  } catch (err) {
+    lookError.value = err.message;
+  }
+}
+
+function clearPick() {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = '';
+  previewFile.value = null;
+}
+
+// Removing the picture, as opposed to replacing it. Saved immediately rather
+// than on the form's button: "remove" is the whole of the instruction, and a
+// Save sitting under it would leave the circle looking cleared when it is
+// not.
+async function dropAvatar() {
+  if (savingLook.value) return;
+  savingLook.value = true;
+  lookError.value = '';
+  try {
+    clearPick();
+    await auth.saveProfileExtras({ avatar_url: null });
+    await removeAvatar(auth.userId.value);
+    lookNote.value = 'Picture removed.';
+  } catch (err) {
+    lookError.value = err.message;
+  } finally {
+    savingLook.value = false;
+  }
+}
+
+async function saveLook() {
+  if (!canSaveLook.value) return;
+  lookError.value = '';
+  lookNote.value = '';
+
+  const badBio = checkBio(bio.value);
+  if (badBio) {
+    lookError.value = badBio;
+    return;
+  }
+
+  savingLook.value = true;
+  try {
+    const patch = {};
+    // The upload first. If it fails there is nothing to undo; if the row
+    // write failed after an upload, the file would be in the bucket with
+    // nothing pointing at it, which the next upload overwrites anyway.
+    if (previewFile.value) patch.avatar_url = await uploadAvatar(auth.userId.value, previewFile.value);
+    if (bioChanged.value) patch.bio = normalizeBio(bio.value);
+    await auth.saveProfileExtras(patch);
+    clearPick();
+    lookNote.value = 'Saved.';
+  } catch (err) {
+    lookError.value = err.message;
+  } finally {
+    savingLook.value = false;
+  }
+}
+
+onBeforeUnmount(clearPick);
 
 async function savePassword() {
   if (savingPassword.value) return;
@@ -209,6 +317,77 @@ async function savePassword() {
         <div class="sheet-actions">
           <BaseButton type="submit" variant="primary" :disabled="!canSaveProfile">
             {{ savingProfile ? 'Saving…' : 'Save' }}
+          </BaseButton>
+        </div>
+      </form>
+
+      <h3 class="set-lede profile-rule">Your picture and bio</h3>
+      <p class="set-note">
+        Both are shown on your profile page, which anyone with the link can read.
+      </p>
+
+      <form class="profile-form" novalidate @submit.prevent="saveLook">
+        <div class="avatar-row">
+          <span class="avatar-preview">
+            <img v-if="shownAvatar" :src="shownAvatar" alt="Your picture, as it will appear" />
+            <span v-else-if="initials" class="avatar-initials" aria-hidden="true">{{ initials }}</span>
+            <span v-else class="contents" v-html="avatarSVG(saved.username)" />
+          </span>
+          <div class="avatar-acts">
+            <!-- A plain file input, driven by the button beside it: the
+                 native control cannot be styled to match anything else on
+                 this page, and hiding it loses nothing - the button is a
+                 real button and carries the label. -->
+            <input
+              ref="fileInput"
+              type="file"
+              class="sr-only"
+              accept="image/png,image/jpeg,image/webp"
+              aria-label="Choose a picture"
+              @change="pickFile"
+            />
+            <BaseButton size="sm" :disabled="savingLook" @click="fileInput?.click()">
+              {{ shownAvatar ? 'Change picture' : 'Choose picture' }}
+            </BaseButton>
+            <BaseButton
+              v-if="previewFile || saved.avatarUrl"
+              size="sm"
+              variant="ghost"
+              :disabled="savingLook"
+              @click="previewFile ? clearPick() : dropAvatar()"
+            >
+              {{ previewFile ? 'Undo' : 'Remove' }}
+            </BaseButton>
+            <p class="avatar-hint">PNG, JPEG or WebP, up to 2 MB. Cropped to a square.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="profile-bio">Bio</label>
+          <textarea
+            id="profile-bio"
+            v-model="bio"
+            class="input bio-input"
+            rows="3"
+            :maxlength="BIO_MAX + 40"
+            :disabled="savingLook"
+            placeholder="A line about how you play."
+          />
+          <!-- Counts down rather than up, and turns when it goes under:
+               "12 left" is the number being watched, not "148 of 160".
+               The maxlength is deliberately looser than the limit, so a
+               paste that is slightly too long can be edited down rather
+               than silently truncated mid-word. -->
+          <p class="help-text bio-count" :class="{ 'is-over': bioLeft < 0 }" aria-live="polite">
+            {{ bioLeft }} left
+          </p>
+        </div>
+
+        <p v-if="lookError" class="error-text selectable" role="alert">{{ lookError }}</p>
+        <p class="ok-text" aria-live="polite">{{ lookNote }}</p>
+        <div class="sheet-actions">
+          <BaseButton type="submit" variant="primary" :disabled="!canSaveLook">
+            {{ savingLook ? 'Saving…' : 'Save' }}
           </BaseButton>
         </div>
       </form>

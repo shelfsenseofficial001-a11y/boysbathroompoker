@@ -24,10 +24,19 @@ export function userMenuHTML(user, groups = []) {
 }
 
 function menuInnerHTML(user, groups) {
+  // An item with an `href` is drawn as a real link, which is the only way
+  // middle-click, long-press and "open in new tab" work on it. The table's
+  // own menu uses that for the profile page: a player in the middle of a
+  // hand should be able to look at a profile without their seat going with
+  // them, and a link to a new tab is how that is said.
   const item = (it) =>
-    `<button type="button" role="menuitem" class="umenu-item${it.danger ? ' is-danger' : ''}" data-user-item="${esc(it.id)}">
-      ${it.icon || ''}<span>${esc(it.label)}</span>
-    </button>`;
+    it.href
+      ? `<a role="menuitem" class="umenu-item" href="${esc(it.href)}" target="_blank" rel="noopener noreferrer">
+          ${it.icon || ''}<span>${esc(it.label)}</span>
+        </a>`
+      : `<button type="button" role="menuitem" class="umenu-item${it.danger ? ' is-danger' : ''}" data-user-item="${esc(it.id)}">
+          ${it.icon || ''}<span>${esc(it.label)}</span>
+        </button>`;
   const blocks = [[{ id: 'rename', icon: icons.pencil, label: 'Change name' }], ...groups];
   return `<button class="user-pill" data-user-menu aria-haspopup="menu" aria-expanded="false" title="Your account">
       ${avatarSVG(user.username)}<span class="user-name">${esc(user.username)}</span>${icons.chevronDown}
@@ -59,6 +68,9 @@ export function wireUserMenu(root, user, { groups = [], onPick, onRenamed } = {}
   });
 
   menu.addEventListener('click', (e) => {
+    // A link item navigates by being a link. Nothing to dispatch; just put
+    // the menu away behind it.
+    if (e.target.closest('a.umenu-item')) return close();
     const btn = e.target.closest('[data-user-item]');
     if (!btn) return;
     close();

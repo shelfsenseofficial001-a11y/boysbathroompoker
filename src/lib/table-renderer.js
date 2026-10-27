@@ -1337,7 +1337,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // What sits under the avatar in the bar at the top of the table. Leaving
   // isn't in here: it stays a button of its own beside the avatar, because
   // it's the one thing on this bar people reach for in a hurry.
-  const TOPBAR_MENU = [[{ id: 'settings', icon: icons.gear, label: 'Table settings' }]];
+  // Their own page, in a new tab. A guest has no handle and so gets no item:
+  // they have no profile to look at, theirs included.
+  const TOPBAR_MENU = [
+    [
+      ...(user.handle
+        ? [{ id: 'profile', icon: icons.eye, label: 'Profile', href: `/u/${encodeURIComponent(user.handle)}` }]
+        : []),
+      { id: 'settings', icon: icons.gear, label: 'Table settings' },
+    ],
+  ];
 
   // Which section of the settings sheet is showing. Kept out here so it
   // survives a rebuild of the sheet and you come back to where you were.
@@ -3276,18 +3285,45 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // The ⋯ on a nameplate, and what it opens. Returns nothing for a seat
   // with nothing to offer this viewer.
   function seatMenuHTML(p, L, ctx) {
-    if (L.isMe || p.left) return '';
+    if (p.left) return '';
     const isHost = ctx.hostUserId === user.id;
-    const items = p.isBot
-      ? isHost
-        ? `<button class="is-danger" data-remove-bot="${p.userId}">${icons.fold}Remove from table</button>`
-        : ''
-      : `${isHost ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>` : ''}
-         <button data-vote-kick="${p.userId}">Vote kick</button>`;
+
+    // A real link, and that is the whole reason this is an <a> rather than a
+    // button that calls window.open: middle-click, long-press and "open in
+    // new tab" all work on a link and none of them work on a handler. It is
+    // also why it carries its own href rather than being wired up in the
+    // click delegate below - nothing has to run for it to be followable.
+    //
+    // `handle` is on the payload only for a human with an account (see
+    // withHandles in server/sockets.js). A bot has none and a guest has none,
+    // which is what hides this from both without asking a second question.
+    // Offline there is no socket and no payload at all, so there is no handle
+    // and no link either.
+    const profileItem = p.handle
+      ? `<a class="umenu-link" href="/u/${encodeURIComponent(p.handle)}" target="_blank" rel="noopener noreferrer">${icons.eye}View profile</a>`
+      : '';
+
+    // Your own seat offers the link and nothing else: the rest of this menu
+    // is things done to somebody, and none of them are done to yourself.
+    const others = L.isMe
+      ? ''
+      : p.isBot
+        ? isHost
+          ? `<button class="is-danger" data-remove-bot="${p.userId}">${icons.fold}Remove from table</button>`
+          : ''
+        // The host is not kicked and not made host again, but they do have a
+        // profile like anybody else - so this is now a check on the rest of
+        // the menu rather than on the whole of it.
+        : p.userId === ctx.hostUserId
+          ? ''
+          : `${isHost ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>` : ''}
+             <button data-vote-kick="${p.userId}">Vote kick</button>`;
+
+    const items = `${profileItem}${others}`;
     if (!items.trim()) return '';
-    if (!p.isBot && p.userId === ctx.hostUserId) return '';
     const open = seatMenuFor === p.userId;
-    return `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${esc(p.username)}" aria-expanded="${open}">${icons.more}</button>
+    const who = L.isMe ? 'you' : esc(p.username);
+    return `<button class="pod-more" data-seat-menu="${p.userId}" aria-label="Options for ${who}" aria-expanded="${open}">${icons.more}</button>
       ${open ? `<div class="pod-menu">${items}</div>` : ''}`;
   }
 

@@ -85,6 +85,10 @@ const blocks = computed(() => {
 });
 
 const avatar = computed(() => avatarSVG(props.user.username));
+// The picture they set, if they set one. A guest has none and an account
+// that has not chosen one has none either; both fall back to the generated
+// mark, which is the same face the seats and the chat already draw them with.
+const picture = computed(() => auth.avatarUrl.value || '');
 
 const close = () => {
   if (!open.value) return;
@@ -191,7 +195,8 @@ onBeforeUnmount(() => {
         @click.stop="open ? close() : openMenu()"
         @keydown.down.prevent="openMenu()"
       >
-        <span class="contents" v-html="avatar" />
+        <img v-if="picture" class="user-face" :src="picture" alt="" />
+        <span v-else class="contents" v-html="avatar" />
         <span class="user-name">{{ user.username }}</span>
         <SvgIcon name="chevronDown" />
       </button>
@@ -206,9 +211,18 @@ onBeforeUnmount(() => {
         @keydown="onMenuKeys"
       >
         <!-- Whose menu this is, and what kind of somebody they are. -->
+        <!-- The same face as the pill above it, at the size a face is worth
+             looking at. `alt` is empty on both: the name is right beside it,
+             and a screen reader reading the picture would say it twice. -->
         <div class="umenu-who">
-          <p class="umenu-whoname">{{ user.username }}</p>
-          <span class="umenu-badge" :class="{ 'is-guest': !auth.hasAccount.value }">{{ badge }}</span>
+          <span class="umenu-face">
+            <img v-if="picture" :src="picture" alt="" />
+            <span v-else class="contents" v-html="avatar" />
+          </span>
+          <span class="umenu-whotext">
+            <p class="umenu-whoname">{{ user.username }}</p>
+            <span class="umenu-badge" :class="{ 'is-guest': !auth.hasAccount.value }">{{ badge }}</span>
+          </span>
         </div>
         <div v-for="(group, i) in blocks" :key="i" class="umenu-group">
           <button

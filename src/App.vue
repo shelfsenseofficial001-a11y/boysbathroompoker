@@ -8,6 +8,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { api } from './lib/api.js';
 import { getSocket, setGuestName, setTokenSource, emitAck } from './lib/socket.js';
+import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
 import { showToast } from './lib/toast.js';
@@ -17,6 +18,7 @@ import TableScreen from './components/table/TableScreen.vue';
 import RoomGoneScreen from './components/screens/RoomGoneScreen.vue';
 import AuthModal from './components/auth/AuthModal.vue';
 import LandingPage from './components/landing/LandingPage.vue';
+import ProfileView from './components/profile/ProfileView.vue';
 import TopBar from './components/layout/TopBar.vue';
 import SiteFooter from './components/layout/SiteFooter.vue';
 import AuthTransition from './components/auth/AuthTransition.vue';
@@ -24,7 +26,35 @@ import SvgIcon from './components/ui/SvgIcon.vue';
 
 const auth = useAuth();
 
-const view = ref('boot'); // boot | gate | lobby | table | gone | blocked
+const view = ref('boot'); // boot | home | lobby | table | profile | gone | blocked
+
+// Whose profile is being read, from /u/<name>. The one address in this app
+// that is a path rather than a query string, because a profile is the one
+// thing here meant to be pasted into a message and opened by a stranger.
+const profileName = ref(readProfilePath());
+
+// Read on boot and on every Back. Returns the name, or null for any other
+// address - which is every other address this app uses.
+function readProfilePath() {
+  const match = /^\/u\/([^/]+)\/?$/.exec(location.pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    // A name that isn't valid percent-encoding belongs to nobody, and the
+    // page says so rather than throwing on the way in.
+    return match[1];
+  }
+}
+
+// Going to a profile, from the account menu or a seat. Pushed rather than
+// replaced: Back should return to the table or the lobby they came from.
+function openProfile(name, { push = true } = {}) {
+  if (!name) return;
+  profileName.value = name;
+  view.value = 'profile';
+  if (push) history.pushState({ profile: name }, '', `/u/${encodeURIComponent(name)}`);
+}
 
 // The auth sheet. One of it, opened either by the first-visit prompt (which
 // cannot be closed without an answer) or by the top bar's buttons.
@@ -103,15 +133,22 @@ async function onMenuPick(id) {
   if (id === 'signup') return openAuth('signup');
   if (id === 'login') return openAuth('login');
   if (id === 'lobby') return goLobby();
+  // Their own page, the same one anybody else would be given. "Edit profile"
+  // is on it, and in Settings; this is the thing being edited.
+  if (id === 'profile') {
+    const handle = auth.username.value || user.value?.handle;
+    if (!handle) return openAuth('signup');
+    return openProfile(handle);
+  }
   // Settings and Profile are both pages of the lobby, so getting there is
   // the same move twice: go to the lobby, then open the page.
-  if (id === 'settings' || id === 'profile') {
+  if (id === 'settings') {
     if (!user.value && !auth.signedIn.value) return openAuth('login');
     if (view.value !== 'lobby') {
       view.value = 'lobby';
       await nextTick();
     }
-    return lobby.value?.showPage('settings', id === 'profile' ? 'profile' : null);
+    return lobby.value?.showPage('settings', null);
   }
 }
 
@@ -173,15 +210,61 @@ const showGuestOption = computed(() => supabaseConfigured && !auth.signedIn.valu
 // The landing page is the only screen long enough to need its own contents
 // listing. The lobby is one page and the table is a game; neither has
 // anywhere for a link in the bar to go.
-const LANDING_LINKS = [
-  { href: '#how', label: 'How it works' },
-  { href: '#features', label: 'Features' },
-  { href: '#faq', label: 'FAQ' },
+// One list, on every page the shell draws. It used to be returned only for
+// the landing page, which is why the lobby's bar was a logo and an avatar
+// with nothing in between.
+//
+// `section` marks the three that point at a part of the landing page. They
+// are real anchors, so they behave like links wherever they are read; off
+// that page the bar catches the click and goes there first. `lobby` has no
+// href because it has no address - the lobby is a view this app switches to,
+// not a route - so it is a button, and honest about it.
+const BAR_LINKS = [
+  { id: 'home', label: 'Home', href: '/' },
+  // The rule after this one is where the bar stops listing places and
+  // starts listing parts of the landing page. Two kinds of destination in
+  // one row read as five of the same thing without it.
+  { id: 'lobby', label: 'Lobby', endsGroup: true },
+  { id: 'how', label: 'How it works', href: '#how', section: 'how' },
+  { id: 'features', label: 'Features', href: '#features', section: 'features' },
+  { id: 'faq', label: 'FAQ', href: '#faq', section: 'faq' },
 ];
-const barLinks = computed(() => {
-  if (view.value !== 'home' && view.value !== 'boot') return [];
-  return LANDING_LINKS;
+const barLinks = computed(() => BAR_LINKS);
+
+// Which of them is the page being read. The three section links answer this
+// for themselves - they are lit by what is on screen, not by the view - so
+// they are not named here.
+const barActive = computed(() => {
+  if (view.value === 'lobby') return 'lobby';
+  if (view.value === 'home' || view.value === 'boot') return 'home';
+  return '';
 });
+
+// A link in the bar, chosen. The two that are not plain anchors come through
+// here, and so does any anchor clicked from a page that is not the landing
+// page: the section has to exist before it can be scrolled to.
+async function onNav(link) {
+  if (link.id === 'home') return goHome();
+  // Straight through the existing guard rather than around it: signed out,
+  // this opens the auth sheet instead of navigating, which is what goLobby
+  // has always done.
+  if (link.id === 'lobby') return goLobby();
+  if (!link.section) return;
+
+  if (view.value !== 'home' && view.value !== 'boot') {
+    goHome();
+    await nextTick();
+  }
+  // `scroll-margin-top` on the sections keeps the sticky bar off whatever
+  // lands under it, and `html { scroll-behavior: smooth }` - already set,
+  // and already turned off under reduced motion - decides how it gets there.
+  document.getElementById(link.section)?.scrollIntoView({ block: 'start' });
+  try {
+    history.replaceState(null, '', `/#${link.section}`);
+  } catch {
+    // A sandboxed frame. The page has scrolled either way.
+  }
+}
 const user = ref(null); // { id, username } - the server's own record
 const guest = ref(false);
 const roomCode = ref(null);
@@ -224,6 +307,12 @@ function takeInvite() {
 }
 
 async function boot() {
+  // A profile link, opened cold. The page is shown before anything is known
+  // about the reader: it is public, it needs no session, and holding it back
+  // behind the auth handshake is what would make a shared link flash white
+  // on the way in. Identity resolves underneath it and only decides the bar.
+  if (profileName.value) view.value = 'profile';
+
   const config = await fetch('/api/config')
     .then((r) => r.json())
     .catch(() => ({}));
@@ -233,6 +322,9 @@ async function boot() {
     await auth.initPromise;
     // Already somebody - an account, or a guest whose session is still good.
     if (auth.accessToken.value) return signedIn();
+    // A signed-out visitor on a profile link stays on it. Everything below
+    // is about where to put somebody who arrived at the front door.
+    if (profileName.value) return;
 
     // Nobody. The landing page is where a signed-out visitor belongs, every
     // time: first visit, after a logout, after an expiry, after a refresh
@@ -299,22 +391,106 @@ async function signedIn() {
 
 // The sheet got an answer. A player who signed up without confirming their
 // email yet is still a guest, and still gets in.
-function onAuthed() {
+async function onAuthed() {
   authOpen.value = false;
   if (!auth.accessToken.value) return; // signed up, but held at confirmation
   // They answered the sheet from the signed-out homepage, so this is the
   // first identity of the session and the socket has yet to connect at all.
-  if (view.value === 'home') return signedIn();
+  if (view.value === 'home' || view.value === 'profile') return signedIn();
 
   guest.value = auth.isGuest.value;
   // Upgrading a guest attaches a username to the account they already had, so
   // the user id - and the socket, and the seat they may be sitting in - is
-  // unchanged. Nothing to do but say so.
-  if (auth.userId.value === connectedAs) {
-    return showToast('Account created — your chips are yours for keeps.', { info: true, atPage: true });
-  }
-  // A different player entirely: the socket has to come back as them.
+  // unchanged. What has changed is what the server should make of them, and
+  // it has no way to find that out on its own: identity is settled in the
+  // handshake, and this socket's handshake happened while they were still a
+  // guest. So it is told, with the new token, and it verifies that for
+  // itself before believing any of it.
+  if (auth.userId.value === connectedAs) return creditGuestSession();
+  // A different player entirely. Logging in to an account that already
+  // exists is not an upgrade: the guest who played those matches is not this
+  // person, so the session's results are dropped rather than handed over.
+  // Said out loud, because somebody who has just played three hands as a
+  // guest and then logged in would otherwise go looking for them.
+  await discardGuestSession();
+  // The socket has to come back as them, which takes the page with it - so
+  // the sentence is left where the next load will find it.
   location.reload();
+}
+
+// Dropped on purpose, with nothing said about it: this is the player
+// leaving a guest session, where losing the session is the thing they asked
+// for rather than a consequence to explain.
+async function forgetGuestResultsNow() {
+  try {
+    await emitAck('forgetGuestResults');
+  } catch {
+    // Never connected, or already gone. It expires on its own either way.
+  }
+  forgetGuestSession();
+}
+
+const DISCARD_KEY = 'bbp-guest-discarded';
+
+async function discardGuestSession() {
+  try {
+    const res = await emitAck('guestResultCount');
+    if (res?.count > 0) sessionStorage.setItem(DISCARD_KEY, '1');
+  } catch {
+    // Nothing to say if we can't find out whether there was anything.
+  }
+  try {
+    // The server drops the buffer itself once it sees the ids differ; this
+    // is the same instruction said plainly, for the case where the token
+    // cannot be verified at all.
+    await emitAck('forgetGuestResults');
+  } catch {
+    // It expires on its own at the end of the grace period regardless.
+  }
+  forgetGuestSession();
+}
+
+// The other half of the above, after the reload that interrupted it.
+function sayIfDiscarded() {
+  let flagged = false;
+  try {
+    flagged = sessionStorage.getItem(DISCARD_KEY) === '1';
+    if (flagged) sessionStorage.removeItem(DISCARD_KEY);
+  } catch {
+    return;
+  }
+  if (flagged) {
+    showToast("Guest games aren't added when you log in to an existing account.", { info: true });
+  }
+}
+
+// The session's matches, handed over.
+//
+// Everything that decides whether this credits anything happens on the
+// server - see the `refreshIdentity` handler in server/sockets.js. This end
+// sends a token and reports what came back, and the one number it trusts is
+// the one the server returned: a client that counted for itself would be
+// claiming a result rather than reading one.
+async function creditGuestSession() {
+  try {
+    const res = await emitAck('refreshIdentity', { token: auth.accessToken.value });
+    if (res?.credited > 0) {
+      const n = res.credited;
+      return showToast(`Added ${n} game${n === 1 ? '' : 's'} from this session to your stats.`, {
+        info: true,
+        atPage: true,
+      });
+    }
+  } catch {
+    // The account is made and they are still at their seat; only the
+    // crediting failed, and the server has kept the results for the rest of
+    // the session. Saying the account was created is both true and the part
+    // they asked for.
+  }
+  showToast('Account created — your games now count towards your stats.', {
+    info: true,
+    atPage: true,
+  });
 }
 
 // Once identified, go straight back to your table if you were in one (after a
@@ -324,6 +500,15 @@ async function enter() {
   try {
     const res = await emitAck('whoami');
     user.value = res.user;
+    // Signing in underneath a profile link leaves the reader where they
+    // are. The handshake decides the bar, not the page: a link somebody was
+    // given should not turn into the lobby because they happened to have a
+    // session.
+    if (profileName.value) {
+      view.value = 'profile';
+      if (res.currentRoom) roomCode.value = res.currentRoom;
+      return;
+    }
     const invite = takeInvite();
     if (res.currentRoom) {
       roomCode.value = res.currentRoom;
@@ -447,6 +632,10 @@ async function logout() {
       // a new identity rather than none - so it still reloads, because the
       // socket has to come back as somebody else.
       if (!auth.hasAccount.value) {
+        // Their session's matches go now rather than at the end of the
+        // grace period: they have just said they are done being this guest,
+        // and nobody else may ever be credited with what this one played.
+        await forgetGuestResultsNow();
         await auth.newGuest();
         return location.reload();
       }
@@ -495,11 +684,29 @@ const dropSocket = () => {
   }
 };
 
+// Back and forward across a profile link. The only history this app pushes,
+// so the question is only ever "is this a profile address or not".
+function onPopState() {
+  const name = readProfilePath();
+  profileName.value = name;
+  if (name) return (view.value = 'profile');
+  // Off a profile and back to whatever they were doing. A seat they still
+  // hold wins over the lobby, the same way a refresh resolves it.
+  if (view.value === 'profile') {
+    view.value = roomCode.value ? 'table' : auth.signedIn.value ? 'lobby' : 'home';
+  }
+}
+
 onMounted(() => {
+  sayIfDiscarded();
   boot();
+  window.addEventListener('popstate', onPopState);
   window.addEventListener('beforeunload', dropSocket);
 });
-onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onPopState);
+  window.removeEventListener('beforeunload', dropSocket);
+});
 </script>
 
 <template>
@@ -516,7 +723,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
       :show-auth="showAuth"
       :loading="booting"
       :links="barLinks"
+      :active="barActive"
       @pick="onMenuPick"
+      @nav="onNav"
       @auth="openAuth"
       @home="goHome"
       @guest="playAsGuest"
@@ -589,6 +798,17 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     @leave="onLeaveTable"
   />
 
+    <!-- A player's page. Its own address, and the only one here that can be
+         opened by somebody who has never seen this app before. -->
+    <ProfileView
+      v-else-if="view === 'profile'"
+      :key="profileName"
+      :username="profileName"
+      @auth="openAuth"
+      @home="goHome"
+      @edit="onMenuPick('settings')"
+    />
+
     <RoomGoneScreen
       v-else-if="view === 'gone'"
       :code="goneCode"
@@ -598,7 +818,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     />
 
     <SiteFooter
-      v-if="view === 'home' || view === 'lobby' || view === 'boot'"
+      v-if="view === 'home' || view === 'lobby' || view === 'boot' || view === 'profile'"
       :show-feature-links="view === 'home' || view === 'boot'"
       @auth="openAuth"
       @guest="playAsGuest"

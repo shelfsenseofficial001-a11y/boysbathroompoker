@@ -261,12 +261,49 @@ class GameManager {
     db.recordHand(room.gameId, summary.handNumber, summary);
   }
 
-  endGame(room) {
+  // The end of a match, as a record.
+  //
+  // Two kinds of player sit at this table and they are recorded in two
+  // different places. An account's result is written to the results table,
+  // where it is theirs for good. A guest's is handed to the caller instead,
+  // for the in-memory session buffer - a guest has no profile and no history,
+  // and writing one would be keeping a record of somebody who never asked for
+  // one and cannot read it. Bots are recorded nowhere at all.
+  //
+  // `onGuestResult` is how the buffer is reached without this file knowing
+  // about sockets: sockets.js passes it, because only sockets.js knows which
+  // browser session a given player is connected under.
+  endGame(room, { onGuestResult } = {}) {
     if (!room.gameId) return;
+
+    // Where everyone came. Worked out once, off the stacks as they stand at
+    // the end, so every seat's placement agrees with every other's. Bots are
+    // in this ordering - finishing second behind a bot is still second.
+    const standing = room.table.seats
+      .filter((p) => p && !p.left)
+      .sort((a, b) => b.chips - a.chips);
+    const placeOf = new Map(standing.map((p, i) => [p.userId, i + 1]));
+
+    // One id for one match, shared by every row it produces, so a credited
+    // guest batch cannot be written twice and a retry is a no-op.
+    const matchId = `g${room.gameId}`;
+    const endedAt = new Date().toISOString();
+
     for (const p of room.table.seats) {
       if (!p || p.isBot) continue; // bots have no account row to record against
-      const buyIn = room.lobby.get(p.userId)?.buyIn || 0;
-      db.recordGameResult(room.gameId, p.userId, buyIn, p.chips);
+      const info = room.lobby.get(p.userId);
+      const result = {
+        gameId: room.gameId,
+        matchId,
+        startStack: info?.buyIn || 0,
+        endStack: p.chips,
+        placement: placeOf.get(p.userId) || null,
+        mode: room.isPrivate ? 'Private' : 'Casual',
+        hands: room.table.handNumber || 0,
+        endedAt,
+      };
+      if (onGuestResult?.(p.userId, result)) continue; // held for the session, not stored
+      db.recordGameResult(room.gameId, p.userId, result);
     }
     db.endGame(room.gameId);
     room.gameId = null;

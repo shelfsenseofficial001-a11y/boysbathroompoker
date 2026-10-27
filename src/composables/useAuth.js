@@ -173,7 +173,7 @@ export async function usernameAvailable(username) {
 async function loadProfile(user) {
   const { data, error: readErr } = await supabase
     .from('profiles')
-    .select('id, username, ingame_name, created_at')
+    .select('id, username, ingame_name, avatar_url, bio, created_at')
     .eq('id', user.id)
     .maybeSingle();
   if (readErr) throw readErr;
@@ -191,7 +191,7 @@ async function loadProfile(user) {
     supabase
       .from('profiles')
       .insert({ id: user.id, username, ingame_name: ingame })
-      .select('id, username, ingame_name, created_at')
+      .select('id, username, ingame_name, avatar_url, bio, created_at')
       .single();
 
   let { data: made, error: writeErr } = await insert();
@@ -332,6 +332,11 @@ export function useAuth() {
     // handshake carries this only as a suggestion, and with none the server
     // names them, which is where a guest's name has always come from.
     displayName: computed(() => profile.value?.ingame_name || profile.value?.username || null),
+    // The picture on the bar, the seats and the chat. Null for a guest, and
+    // null for an account that has not set one - both draw the generated
+    // mark instead, which every player has had all along.
+    avatarUrl: computed(() => profile.value?.avatar_url || null),
+    bio: computed(() => profile.value?.bio || ''),
     isGuest,
     signedIn: computed(() => !!session.value),
     hasAccount: computed(() => !!session.value && !isGuest.value),
@@ -459,6 +464,7 @@ export function useAuth() {
     },
 
     setIngameName: renameProfile,
+    saveProfileExtras,
     changeUsername,
     changePassword,
   };
@@ -485,7 +491,7 @@ async function changeUsername(handle) {
     .from('profiles')
     .update({ username: next })
     .eq('id', session.value.user.id)
-    .select('id, username, ingame_name, created_at')
+    .select('id, username, ingame_name, avatar_url, bio, created_at')
     .single();
   // 23505 = unique violation: somebody took it between the check and here.
   if (writeErr) throw new Error(writeErr.code === '23505' ? 'Username taken' : authMessage(writeErr));
@@ -572,6 +578,36 @@ async function changePassword({ current, next }) {
 // The table's own name change goes through the socket, because the server
 // tells everyone sitting down; this keeps the profile row in step so the name
 // survives into a new tab.
+// The picture and the sentence, saved together.
+//
+// Deliberately apart from renameProfile: a name change is two writes that
+// have to agree (the row, then the token's metadata the server reads), and
+// these are one write to the row and nothing else. The server never reads a
+// bio or an avatar - they are drawn by the browser, on a page - so there is
+// no copy here to keep in step.
+//
+// `fields` may carry either or both. `avatar_url: null` is a removal and is
+// passed through as one, which is why this checks for the key rather than
+// for a truthy value.
+async function saveProfileExtras(fields) {
+  if (!supabaseConfigured || !session.value) return null;
+  if (session.value.user?.is_anonymous === true) return null;
+  const patch = {};
+  if ('avatar_url' in fields) patch.avatar_url = fields.avatar_url || null;
+  if ('bio' in fields) patch.bio = fields.bio || null;
+  if (!Object.keys(patch).length) return profile.value;
+
+  const { data, error: err } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', session.value.user.id)
+    .select('id, username, ingame_name, avatar_url, bio, created_at')
+    .single();
+  if (err) throw err;
+  profile.value = data;
+  return data;
+}
+
 async function renameProfile(name) {
   if (!supabaseConfigured || !session.value) return null;
   // A guest has no row to write to. Their name at the table is the server's,
@@ -583,7 +619,7 @@ async function renameProfile(name) {
     .from('profiles')
     .update({ ingame_name: ingame })
     .eq('id', session.value.user.id)
-    .select('id, username, ingame_name, created_at')
+    .select('id, username, ingame_name, avatar_url, bio, created_at')
     .single();
   if (err) throw err;
   profile.value = data;

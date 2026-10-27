@@ -578,10 +578,15 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   font: 700 11px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Some of these are links rather than buttons - the profile page is one, so
+   it can be opened in a tab of its own - and the two must be impossible to
+   tell apart. `text-decoration: none` and `box-sizing` are the two defaults
+   an anchor brings that a button does not. */
 .umenu-item {
   display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px;
+  box-sizing: border-box;
   border: 0; border-radius: var(--r-s); background: none; cursor: pointer; text-align: left;
-  font: 600 13.5px var(--font-ui); color: var(--text-1);
+  font: 600 13.5px var(--font-ui); color: var(--text-1); text-decoration: none;
   transition: background-color 0.15s, color 0.15s;
 }
 .umenu-item .icon { width: 16px; height: 16px; flex: none; color: var(--text-3); }
@@ -3097,13 +3102,20 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 /* Low on the table it opens upward instead of off the felt. */
 .pod.is-low .pod-menu { top: auto; bottom: 100%; margin: 0 0 6px; }
-.pod-menu button {
+/* "View profile" is a real link so it can be middle-clicked and long-pressed
+   like one, which means this menu holds two kinds of element that have to be
+   indistinguishable to look at. Styled together rather than twice. */
+.pod-menu button, .pod-menu .umenu-link {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 12px; white-space: nowrap; cursor: pointer; border: 0; border-radius: 6px;
   background: transparent; color: var(--text-1); font: 700 12px var(--font-ui); text-align: left;
+  text-decoration: none;
 }
-.pod-menu button .icon { width: 13px; height: 13px; flex: none; }
-.pod-menu button:hover { background: rgba(255, 255, 255, 0.07); }
+.pod-menu button .icon, .pod-menu .umenu-link .icon { width: 13px; height: 13px; flex: none; }
+.pod-menu button:hover, .pod-menu .umenu-link:hover { background: rgba(255, 255, 255, 0.07); }
+.pod-menu .umenu-link:focus-visible {
+  outline: none; background: rgba(255, 255, 255, 0.07); box-shadow: 0 0 0 2px var(--gold);
+}
 /* Handing the room over carries the owner's colour; voting someone out
    carries the warning one. */
 .pod-menu [data-make-host] { color: var(--gold-hi); }
@@ -4533,3 +4545,233 @@ html { scroll-behavior: smooth; }
   .page-settings .set-pane { min-height: 0; padding: 20px 18px 22px; }
   .page-settings .set-lede { font-size: 17px; }
 }
+
+/* ---------- A player's profile ---------- */
+/* Public, and openable by anybody with the link - so it is laid out for
+   somebody arriving cold rather than for somebody already inside the app.
+   One column, widest thing first. */
+.profile-page { display: flex; flex-direction: column; gap: 18px; }
+.prof-head {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: start;
+  padding: 4px 2px 2px;
+}
+.prof-avatar {
+  width: 96px; height: 96px; flex: none; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--bg-3); border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-1);
+}
+.prof-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.prof-avatar svg { width: 100%; height: 100%; display: block; }
+/* The fallback behind a picture nobody has set. Two letters is enough to
+   tell one nameplate from another, which is all this has to do. */
+.prof-initials { font: 700 34px var(--font-display); color: var(--gold); letter-spacing: 0.02em; }
+.prof-head-text { min-width: 0; }
+.prof-name { margin: 0; font-family: var(--font-display); font-size: clamp(26px, 4vw, 34px); color: var(--text-1); }
+.prof-handle { margin: 2px 0 0; font: 600 13px var(--font-ui); color: var(--gold); }
+.prof-since { margin: 6px 0 0; font-size: var(--fs-small); color: var(--text-3); }
+/* Somebody else's writing, and the line breaks they put in it. `pre-wrap`
+   keeps those without the text being HTML - it is interpolated, never
+   v-html'd, which is the rule for anything a stranger typed. */
+.prof-bio {
+  margin: 10px 0 0; max-width: 60ch; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: var(--fs-body); color: var(--text-2); line-height: 1.55;
+}
+.prof-head-acts { display: flex; flex-direction: column; gap: 8px; }
+.prof-head-acts .btn { white-space: nowrap; }
+
+.prof-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.prof-section-title { margin: 0; font: 700 11px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+.prof-section-note { margin: 0 0 0 auto; font-size: var(--fs-small); color: var(--text-3); }
+/* The one thing anybody misreads about these numbers: they are history, not
+   a balance. Said on the page rather than only in a migration comment. */
+.prof-info {
+  width: 18px; height: 18px; flex: none; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--line-2); background: var(--bg-3);
+  font: 700 11px var(--font-ui); color: var(--text-3); cursor: help;
+}
+.prof-info:focus-visible { outline: none; color: var(--text-1); box-shadow: 0 0 0 2px var(--gold); }
+.prof-error { margin: 0 0 12px; font-size: var(--fs-small); color: var(--red); }
+
+.prof-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; }
+.prof-card {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px;
+  border-radius: var(--r-m); border: 1px solid var(--line); background: rgba(255, 255, 255, 0.02);
+}
+.prof-card-value { font: 700 22px var(--font-ui); color: var(--text-1); font-variant-numeric: tabular-nums; }
+.prof-card-label { font-size: var(--fs-small); color: var(--text-3); }
+.prof-card.is-up .prof-card-value { color: var(--green); }
+.prof-card.is-down .prof-card-value { color: var(--red); }
+
+/* Won against lost, as one bar. Both halves are named in words underneath,
+   so the shape is a second way of reading it rather than the only way. */
+.prof-split { margin-top: 14px; }
+.prof-split-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--bg-3); }
+.prof-split-won { background: linear-gradient(180deg, #5ad79a, var(--green)); }
+.prof-split-lost { background: linear-gradient(180deg, #ea7a74, var(--red)); }
+.prof-split-keys { display: flex; gap: 16px; margin-top: 8px; font-size: var(--fs-small); color: var(--text-2); }
+.prof-split-key { display: inline-flex; align-items: center; gap: 6px; }
+.prof-split-key::before { content: ''; width: 8px; height: 8px; border-radius: 2px; }
+.prof-split-key.is-won::before { background: var(--green); }
+.prof-split-key.is-lost::before { background: var(--red); }
+
+.prof-graphs { display: flex; flex-direction: column; gap: 22px; }
+.prof-empty { margin: 0; font-size: var(--fs-body); color: var(--text-3); }
+
+.prof-games { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; }
+.prof-game {
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; align-items: center;
+  padding: 10px 2px; border-bottom: 1px solid var(--line); font-size: var(--fs-small);
+}
+.prof-game:last-child { border-bottom: 0; }
+.prof-game-when { color: var(--text-2); }
+.prof-game-mode { color: var(--text-3); }
+.prof-game-place { color: var(--text-2); font-weight: 700; }
+.prof-game-net { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.prof-game-net .icon { width: 12px; height: 12px; }
+.prof-game-net.is-up { color: var(--green); }
+.prof-game-net.is-down { color: var(--red); }
+
+.prof-none { text-align: center; padding: 34px 24px; }
+.prof-none-title { margin: 0 0 8px; font-family: var(--font-display); font-size: 26px; color: var(--text-1); }
+.prof-none-text { margin: 0 auto 18px; max-width: 46ch; font-size: var(--fs-body); color: var(--text-2); }
+.prof-none-acts { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.sk-avatar { width: 96px; height: 96px; border-radius: 50%; }
+
+/* On a phone the head stacks and centres: three columns across 320px gives
+   the name about eleven characters before it starts breaking mid-word. */
+@media (max-width: 620px) {
+  .prof-head { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .prof-head-text { text-align: center; }
+  .prof-bio { margin-inline: auto; text-align: left; }
+  .prof-head-acts { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  .prof-game { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .prof-game-mode, .prof-game-place { font-size: 11.5px; }
+}
+
+/* ---------- The graphs on it ---------- */
+/* Hand-drawn SVG, scaled by its viewBox, so one set of measurements serves
+   every width down to 320px. */
+.graph { margin: 0; }
+.graph-title { font: 700 13px var(--font-ui); color: var(--text-2); margin-bottom: 6px; }
+.graph-svg { width: 100%; height: auto; display: block; overflow: visible; border-radius: var(--r-s); }
+.graph-svg:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--gold); }
+.graph-grid line { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
+.graph-axis line { stroke: var(--line-2); stroke-width: 1; }
+/* Zero, where crossing it is the thing the graph is about. Brighter than a
+   gridline and dashed, so it reads as a threshold rather than as one more
+   rule among five. */
+.graph-zero { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; stroke-dasharray: 4 4; }
+.graph-tick { fill: var(--text-3); font: 600 10px var(--font-ui); font-variant-numeric: tabular-nums; }
+.graph-axis-label { fill: var(--text-3); font: 700 9px var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase; }
+/* Gold leads, because it is this table's own colour and the first series is
+   the one being asked about. The second is blue rather than red: red means
+   a loss elsewhere on this page, and a line that merely comes second should
+   not borrow that. Both are named at the end of their own line, so the pair
+   reads without telling the two colours apart. */
+.graph-series.s0 .graph-line { stroke: var(--gold); }
+.graph-series.s0 .graph-name, .graph-series.s0 .graph-dot { fill: var(--gold); }
+.graph-series.s1 .graph-line { stroke: var(--blue); }
+.graph-series.s1 .graph-name, .graph-series.s1 .graph-dot { fill: var(--blue); }
+.graph-line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.graph-name { font: 700 10px var(--font-ui); }
+.graph-dot.s0 { fill: var(--gold); }
+.graph-dot.s1 { fill: var(--blue); }
+.graph-readout line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; }
+.graph-readout-text { fill: var(--text-1); font: 600 10.5px var(--font-ui); font-variant-numeric: tabular-nums; }
+.graph-readout-game { fill: var(--text-3); font-weight: 700; }
+
+/* Drawn in once, along the length of the line itself. Once and not on a
+   loop: a record of finished matches should not look like something still
+   happening. */
+.graph-line { stroke-dasharray: 1200; animation: graphDraw 0.9s var(--ease-out) both; }
+@keyframes graphDraw { from { stroke-dashoffset: 1200; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .graph-line { animation: none; stroke-dasharray: none; }
+}
+.reduce-motion .graph-line { animation: none; stroke-dasharray: none; }
+
+/* ---------- Picture and bio, in Settings ---------- */
+/* The circle shows what is about to be saved rather than what was chosen:
+   the file is squared and re-encoded before it is previewed, so there is no
+   gap between what this looks like here and what it looks like on the page. */
+.avatar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+.avatar-preview {
+  width: 76px; height: 76px; flex: none; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center;
+  background: var(--bg-3); border: 1px solid var(--line-2);
+}
+.avatar-preview img, .avatar-preview svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-initials { font: 700 26px var(--font-display); color: var(--gold); }
+.avatar-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.avatar-hint { flex-basis: 100%; margin: 0; font-size: var(--fs-small); color: var(--text-3); }
+
+.bio-input { min-height: 84px; resize: vertical; line-height: 1.5; padding-top: 10px; padding-bottom: 10px; }
+/* Counts down, and turns when it goes under. The number being watched is how
+   much is left, not how much has been used. */
+.bio-count { font-variant-numeric: tabular-nums; }
+.bio-count.is-over { color: var(--red); }
+
+@media (max-width: 560px) {
+  .avatar-row { flex-direction: column; align-items: flex-start; }
+}
+
+/* What a guest keeps by signing up, said where the decision is made. Gold
+   on its own faint ground, so it reads as something gained rather than as
+   one more line of small print under the form. */
+.auth-credit-note {
+  margin: 0; padding: 9px 12px; border-radius: var(--r-s);
+  background: rgba(230, 180, 80, 0.1); color: var(--gold-hi);
+}
+
+/* ---------- The bar's links, on every page ---------- */
+/* The lobby has no address of its own - it is a view this app switches to -
+   so its link is a button. It has to be indistinguishable from the anchors
+   beside it, which is the whole of what this rule does. */
+.topbar-nav button.topbar-link {
+  border: 0; background: none; font: inherit; cursor: pointer;
+}
+/* The page being read, said twice over: gold, and a rule under it. Colour
+   alone would leave it unmarked for anyone who cannot tell gold from grey,
+   and `aria-current="page"` says it a third time for a screen reader. */
+.topbar-link.is-on { color: var(--gold); }
+.topbar-link.is-on::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  border-radius: 2px; background: var(--gold);
+}
+.topbar-link { position: relative; }
+
+/* Where the bar stops listing places and starts listing parts of a page.
+   A hairline rather than a bullet or a gap: the row is already spaced, and
+   anything heavier would read as a sixth item. */
+.topbar-sep {
+  width: 1px; height: 16px; flex: none; align-self: center;
+  background: var(--line-2); margin: 0 2px;
+}
+
+.mnav-link.is-on { color: var(--gold); background: rgba(230, 180, 80, 0.08); }
+/* The same break, drawn across the drawer instead of along the bar. */
+.mnav-sep { display: block; height: 1px; background: var(--line); margin: 8px 12px; }
+.mnav-links button.mnav-link {
+  border: 0; font: inherit; cursor: pointer; width: 100%; text-align: left;
+}
+
+/* The sticky bar sits over whatever an anchor lands on, so every section it
+   can reach keeps its own height clear. Set here rather than as a scroll
+   offset in script: the browser applies it to a jump, a smooth scroll and a
+   page loaded straight at /#faq alike. */
+#how, #features, #faq { scroll-margin-top: 72px; }
+
+/* ---------- The face in the account control ---------- */
+.user-face { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; display: block; }
+.umenu-who { display: flex; align-items: center; gap: 10px; }
+.umenu-whoname { margin: 0; }
+.umenu-face {
+  width: 34px; height: 34px; flex: none; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; background: var(--bg-3);
+}
+.umenu-face img, .umenu-face svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* The name and the badge stack beside the face rather than under it, which
+   is why they are wrapped: without it they would be flex children of the
+   row and sit in a line with it. */
+.umenu-whotext { min-width: 0; display: block; }

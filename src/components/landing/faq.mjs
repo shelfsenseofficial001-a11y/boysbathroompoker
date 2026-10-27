@@ -28,12 +28,19 @@ export const FAQ = [
     id: 'account',
     q: 'Do I need an account?',
     // signInAnonymously; guests have no profiles row (migration 0004).
-    a: 'No. Play as a guest and you’re at a table in seconds. Nothing is recorded for guests, and guests won’t be ranked once ranked play arrives.',
+    a: 'No. Play as a guest and you’re at a table in seconds. A guest has no profile and nothing is stored for them, though the games you play in one session are added to your stats if you sign up before that session ends.',
   },
   {
     id: 'account-perks',
     q: 'What do I get with an account?',
-    a: 'A username you log in with and an in-game name the table sees, kept between visits and devices. Stats and rankings are coming soon.',
+    a: 'A username you log in with and an in-game name the table sees, kept between visits and devices. You also get a profile page — a picture, a line about yourself, and your record across every finished match — which anyone you send the link to can read. Rankings are coming later.',
+  },
+  {
+    id: 'stats-saved',
+    q: 'Are my stats saved?',
+    // Accounts write to game_results; guests are held in the server's
+    // in-memory session buffer and credited on a same-session sign-up only.
+    a: 'If you have an account, every finished match is saved to your profile. Guest games are held only for the current session: create an account before it ends and they are added to your stats, and if the session ends first they are gone for good. Chips still never carry between tables either way — the stats are a record of how matches went, not a balance.',
   },
   {
     id: 'controls',

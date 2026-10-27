@@ -187,10 +187,58 @@ player can read their own row and no others, and the column-level grant means
 `ingame_name` is the only thing the browser may write — not `username`, which
 the login is minted from.
 
+## Profiles, stats and the two databases
+
+A profile page is two halves from two different databases, joined by one id.
+
+- **Identity** — picture, bio, names — is in Supabase's `profiles`, read
+  publicly through the `public_profiles` view (migration 0006). That view
+  names the readable columns and no others; there is no email in it, synthetic
+  or otherwise, and no `user_metadata`.
+- **The record** — how each finished match went — is in the game server's own
+  SQLite `game_results`, served by `GET /api/players/:id/stats` and `/recent`.
+  Public, rate-limited, and keyed by the same Supabase auth id.
+
+Neither half is a balance. `profiles` still holds no chips (migration 0002),
+and a result is what one match did to one stack. The arithmetic lives in
+`shared/stats.mjs` so the server and the page cannot disagree about it.
+
+Avatars are in the `avatars` storage bucket at `<auth.uid()>/avatar.webp`:
+public to read, writable only by the account whose folder it is and never by
+an anonymous one. The browser re-encodes every upload to a 256px square WebP
+before it leaves the machine, which also drops the EXIF a photo arrives with.
+
+## Guests, and what becomes of their games
+
+A guest has no `profiles` row, so a guest has no profile page — their own URL
+finds nothing, exactly as a stranger's would.
+
+Their finished matches are not written to any database. The server holds them
+in memory, keyed by `(verified user id, guestSessionId)`, where the session id
+is made once per browser session and kept in `sessionStorage` — so the
+anonymous token in `localStorage`, which outlives the tab, cannot be used to
+reclaim a session that has ended. See `server/guestBuffer.js`.
+
+They go one of two ways:
+
+- **Signing up in the same session** keeps the user id (`updateUser` on the
+  anonymous session), so the client tells the socket to refresh, the server
+  re-verifies the token itself, and — only if the id matches and the user is
+  now non-anonymous — writes the buffer under that account with
+  `was_guest = 1`. The unique `(user_id, match_id)` index makes a retry a
+  no-op.
+- **Anything else** discards them: the ten-minute grace period after the last
+  disconnect, a logout, a server restart, or logging in to an account that
+  already existed — which is a different identity, and is told so in the UI.
+
+The client never submits a result. All of it is derived server-side from a
+verified identity.
+
 ## Everything is guest-accessible
 
 Hosting, joining, spectating, chat and settings all work as a guest. An
-account means one thing: your name survives the browser forgetting you.
+account means two things: your name survives the browser forgetting you, and
+your matches are kept.
 
 Guest play needs **Anonymous sign-ins** switched on in Supabase — see the
 settings above. It is the default way in, so with it off the front door is shut.

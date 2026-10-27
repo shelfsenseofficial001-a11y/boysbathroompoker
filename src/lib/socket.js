@@ -1,5 +1,6 @@
 // Single shared Socket.io connection, created lazily once we know who we are.
 import { io } from 'socket.io-client';
+import { guestSessionId } from './guestSession.js';
 
 let socket = null;
 let guestName = null;
@@ -35,6 +36,11 @@ export function getSocket() {
           if (profileName) payload.name = profileName;
         }
         if (guestName) payload.guestName = guestName;
+        // Which browser session this is, so a guest's finished matches can be
+        // held for it and credited if they sign up before it ends. Sent on
+        // every connection attempt because the handshake is rebuilt each
+        // time, and a reconnect has to land on the same buffer it left.
+        payload.guestSessionId = guestSessionId();
         cb(payload);
       },
     });

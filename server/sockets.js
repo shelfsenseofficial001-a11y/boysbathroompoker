@@ -5,7 +5,8 @@ const bcrypt = require('bcrypt');
 const db = require('./db');
 const { verifyAccessToken, supabaseAuthEnabled } = require('./supabaseAuth');
 const { getOrCreateSupabaseUser } = require('./identity');
-const { DISPLAY_NAME_RE } = require('../shared/displayName.mjs');
+const { DISPLAY_NAME_RE, usernameFromEmail } = require('../shared/displayName.mjs');
+const { GuestBuffer } = require('./guestBuffer');
 const { GameManager } = require('./game/GameManager');
 const { Table } = require('./game/Table');
 const bot = require('./game/bot');
@@ -29,11 +30,38 @@ function wrapSessionMiddleware(sessionMiddleware) {
   return (socket, next) => sessionMiddleware(socket.request, {}, next);
 }
 
+// The browser session a socket belongs to. The tab makes this once per
+// browser session and keeps it in sessionStorage; it is half the key a
+// guest's results are held under, and it is the half that stops a reopened
+// browser - which still has the same anonymous token in localStorage - from
+// claiming a session that has already ended.
+//
+// Length-capped and character-checked because it arrives from the client and
+// ends up as a map key: an id is 1-64 of these or it is nothing.
+const GUEST_SESSION_RE = /^[A-Za-z0-9_-]{8,64}$/;
+function guestSessionIdOf(socket) {
+  const id = socket.handshake.auth?.guestSessionId;
+  return typeof id === 'string' && GUEST_SESSION_RE.test(id) ? id : null;
+}
+
+// The handle this account's profile page is reached by, kept in step on
+// every connect. Guests have none - they have no profile - and an account
+// that has just renamed itself gets the new one here before the old one is
+// read by anything.
+function rememberHandle(player, claims) {
+  const handle = claims.isAnonymous ? null : usernameFromEmail(claims.email);
+  if ((player.handle || null) !== (handle || null)) db.setHandle(player.id, handle);
+  player.handle = handle;
+}
+
 const CHAT_MAX_LEN = 240;
 const CHAT_MIN_GAP_MS = 600; // one message per user per this long
 
 function attachSockets(io, sessionMiddleware) {
   const manager = new GameManager();
+  // A guest's finished matches, held for their browser session and written
+  // to no database. See server/guestBuffer.js for why the key has two halves.
+  const guestResults = new GuestBuffer();
   const lastChatAt = new Map(); // userId -> when they last spoke
   let chatSeq = 0;
   const socketsByUser = new Map(); // userId -> Set<socket>
@@ -57,6 +85,16 @@ function attachSockets(io, sessionMiddleware) {
         if (player) {
           socket.userId = player.id;
           socket.healedName = player.healed ? player.display_name : null;
+          // Both read off the verified token and never off the handshake
+          // beside it. `isAnonymous` decides whether this player's results
+          // are stored at all; `handle` is the name their profile page is
+          // reached by, recovered from the synthetic address so a rename
+          // follows them without this server being told.
+          socket.isAnonymous = claims.isAnonymous === true;
+          socket.supabaseId = claims.id;
+          socket.guestSessionId = guestSessionIdOf(socket);
+          rememberHandle(player, claims);
+          if (socket.isAnonymous) guestResults.connected(claims.id, socket.guestSessionId);
           return next();
         }
       }
@@ -134,8 +172,50 @@ function attachSockets(io, sessionMiddleware) {
     }, TURN_MS);
   }
 
+  // Every seated account's public handle, for the "View profile" link on
+  // their seat. Null for a guest and for a bot, which is what hides the link:
+  // a guest has no profile page, and the seat menu has nowhere to point.
+  //
+  // Read once per broadcast rather than once per seat per viewer. A broadcast
+  // goes out on every action at the table and to everyone in the room, so the
+  // per-seat version of this was nine row reads multiplied by the size of the
+  // room, several times a hand, to answer a question whose answer is the same
+  // for all of them.
+  function handlesFor(room) {
+    const handles = new Map();
+    for (const p of room.table.seats) {
+      if (!p || p.isBot || handles.has(p.userId)) continue;
+      handles.set(p.userId, db.getUserById(p.userId)?.handle || null);
+    }
+    return handles;
+  }
+
+  // Offered to endGame for every human seat. Returns true when the result was
+  // taken for a guest's session buffer, which is endGame's signal not to
+  // write it anywhere. A guest whose browser sent no session id gets no
+  // buffer and no row either: their match is simply not recorded, which is
+  // the safe end of that failure rather than a row they never asked for.
+  function bufferGuestResult(userId, result) {
+    const sockets = [...(socketsByUser.get(userId) || [])];
+    if (!sockets.length) return false;
+    // Every socket, not the first one. A player with two tabs open who signs
+    // up in one of them has an upgraded socket and a stale one, and reading
+    // whichever happened to be first would decide a match's fate on the
+    // order of a Set. Still a guest only if none of their connections has
+    // become an account.
+    if (!sockets.every((s) => s.isAnonymous)) return false;
+    const socket = sockets[0];
+    guestResults.append(socket.supabaseId, socket.guestSessionId, result);
+    return true;
+  }
+
+  function endMatch(room) {
+    manager.endGame(room, { onGuestResult: bufferGuestResult });
+  }
+
   function broadcastRoom(room) {
     armTurnTimer(room);
+    const handles = handlesFor(room);
     const turn = room.turnDeadline
       ? { remainingMs: Math.max(0, room.turnDeadline - Date.now()), totalMs: TURN_MS }
       : null;
@@ -147,7 +227,7 @@ function attachSockets(io, sessionMiddleware) {
         code: room.code,
         hostUserId: room.hostUserId,
         lobby: [...room.lobby.entries()].map(([uid, info]) => ({ userId: uid, ...info })),
-        table: room.table.getPublicState(userId),
+        table: withHandles(room.table.getPublicState(userId), handles),
         // Only the people who played it are shown a game's result: someone
         // who walked in afterwards has no stake in a hand they never saw.
         gameOver: room.gameOver?.participants.includes(userId) ? room.gameOver : null,
@@ -170,6 +250,20 @@ function attachSockets(io, sessionMiddleware) {
       };
       for (const s of sockets) s.emit('roomState', payload);
     }
+  }
+
+  // The one thing the table payload gains: each human account's handle, so a
+  // seat can link to a profile. Added out here rather than inside Table,
+  // which knows about chips and cards and has no business knowing what a
+  // player is called on the web. Nothing else about the account goes with it
+  // - no id, no email, no metadata.
+  function withHandles(state, handles) {
+    return {
+      ...state,
+      seats: state.seats.map((p) =>
+        p && !p.isBot ? { ...p, handle: handles.get(p.userId) || null } : p
+      ),
+    };
   }
 
   function scheduleNextHand(room) {
@@ -227,7 +321,7 @@ function attachSockets(io, sessionMiddleware) {
         // no result at all rather than a celebration for a game they missed.
         participants: [...room.members()],
       };
-      manager.endGame(room);
+      endMatch(room);
       // A line in the chat so the result survives the table being torn down:
       // the felt and its banner are about to be replaced by the waiting room,
       // but the chat carries on and anybody scrolling back still finds it.
@@ -367,7 +461,7 @@ function attachSockets(io, sessionMiddleware) {
   function closeRoom(room, reason) {
     clearTimeout(room.turnTimer);
     clearTimeout(room.handTimer);
-    manager.endGame(room);
+    endMatch(room);
     const members = room.members();
     manager.removeRoom(room.code);
     roomsChanged();
@@ -488,9 +582,95 @@ function attachSockets(io, sessionMiddleware) {
       const room = roomFor(userId);
       ack?.({
         ok: true,
-        user: { id: user.id, username: db.displayName(user), accountName: user.username },
+        user: {
+          id: user.id,
+          username: db.displayName(user),
+          accountName: user.username,
+          // The handle their own profile page is at, so the bar can offer it
+          // without asking Supabase a second time. Null for a guest.
+          handle: user.handle || null,
+        },
         currentRoom: room ? room.code : null,
       });
+    });
+
+    // How many matches this guest has waiting, and nothing about them.
+    //
+    // A count is all the sign-up sheet needs to decide whether to offer the
+    // line about crediting, and it is all the browser is told: the results
+    // themselves are the server's business until they belong to somebody.
+    socket.on('guestResultCount', (_payload, ack) => {
+      if (!socket.isAnonymous) return ack?.({ ok: true, count: 0 });
+      ack?.({ ok: true, count: guestResults.count(socket.supabaseId, socket.guestSessionId) });
+    });
+
+    // A guest became an account, in this session, and says so.
+    //
+    // Nothing here takes the claim on trust. The token in the payload is
+    // verified from scratch, and the results are credited only when all
+    // three of these hold:
+    //
+    //   the token is good and names a non-anonymous user,
+    //   that user is the one this socket already connected as,
+    //   and a buffer exists under this socket's own browser session id.
+    //
+    // The second is what makes a login to an existing account different from
+    // an upgrade. An upgrade keeps the user id it had, so the ids match; a
+    // login is a different account, the ids differ, and the buffer is
+    // dropped rather than credited - those matches were played by somebody
+    // who no longer exists.
+    socket.on('refreshIdentity', async (payload, ack) => {
+      const claims = await verifyAccessToken(payload?.token);
+      if (!claims) return ack?.({ ok: false, error: 'That session could not be verified.' });
+
+      if (claims.id !== socket.supabaseId) {
+        // Somebody else entirely. Their guest session ends here, unclaimed.
+        guestResults.drop(socket.supabaseId, socket.guestSessionId);
+        return ack?.({ ok: true, credited: 0, reconnect: true, discarded: true });
+      }
+      if (claims.isAnonymous) {
+        // Still a guest. Nothing to credit to, and nothing is dropped: they
+        // may yet sign up before the session ends.
+        return ack?.({ ok: true, credited: 0, pending: true });
+      }
+
+      const player = getOrCreateSupabaseUser(claims);
+      if (!player) return ack?.({ ok: false, error: 'That account could not be read.' });
+      rememberHandle(player, claims);
+      // From here on they are an account, so their next match is written to
+      // the results table in the ordinary way rather than buffered. Said to
+      // every socket they hold, not just the one that asked: the others are
+      // open tabs that still believe they are a guest, and any one of them
+      // could be the one a result is read from.
+      for (const s of socketsByUser.get(userId) || []) {
+        s.isAnonymous = false;
+        s.supabaseId = claims.id;
+      }
+      guestResults.disconnected(socket.supabaseId, socket.guestSessionId);
+
+      const results = guestResults.take(claims.id, socket.guestSessionId);
+      if (!results.length) return ack?.({ ok: true, credited: 0 });
+      try {
+        const credited = db.recordGameResults(
+          player.id,
+          results.map((r) => ({ ...r, wasGuest: true }))
+        );
+        return ack?.({ ok: true, credited });
+      } catch {
+        // The write failed as a whole - the transaction saw to that - so the
+        // results go back and the session keeps them. Half a record is worse
+        // than none: nothing afterwards could tell which half it had.
+        guestResults.restore(claims.id, socket.guestSessionId, results);
+        return ack?.({ ok: false, error: 'Those games could not be added. They are still here.' });
+      }
+    });
+
+    // Leaving a guest session on purpose. The results go now rather than at
+    // the end of the grace period, because the player has just said they are
+    // done being this person.
+    socket.on('forgetGuestResults', (_payload, ack) => {
+      guestResults.drop(socket.supabaseId, socket.guestSessionId);
+      ack?.({ ok: true });
     });
 
     socket.on('listRooms', (_payload, ack) => {
@@ -1107,6 +1287,9 @@ function attachSockets(io, sessionMiddleware) {
     });
 
     socket.on('disconnect', () => {
+      // The grace period runs from the last socket to go, so a refresh -
+      // a disconnect and a connect a second apart - costs a guest nothing.
+      if (socket.isAnonymous) guestResults.disconnected(socket.supabaseId, socket.guestSessionId);
       const set = socketsByUser.get(userId);
       if (set) {
         set.delete(socket);
