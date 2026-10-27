@@ -11,6 +11,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useAuth } from '../../composables/useAuth.js';
 import { avatarSVG } from '../../lib/svg/avatars.js';
 import { emitAck } from '../../lib/socket.js';
+import { motionReduced } from '../../lib/motion.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 
 const props = defineProps({
@@ -20,6 +21,12 @@ const props = defineProps({
 const emit = defineEmits(['pick', 'renamed']);
 
 const open = ref(false);
+// Held true for the length of the fade out, so the menu is still in the
+// document while it plays. `hidden` is what takes it away, so it has to wait
+// for both. See .umenu-closing in styles.css for the other half.
+const closing = ref(false);
+let closeTimer = null;
+const CLOSE_MS = 130;
 const editing = ref(false);
 const draft = ref('');
 const saving = ref(false);
@@ -48,6 +55,8 @@ function moveFocus(step) {
 }
 
 async function openMenu() {
+  clearTimeout(closeTimer);
+  closing.value = false;
   open.value = true;
   await nextTick();
   items()[0]?.focus();
@@ -78,8 +87,15 @@ const blocks = computed(() => {
 const avatar = computed(() => avatarSVG(props.user.username));
 
 const close = () => {
+  if (!open.value) return;
   open.value = false;
+  // The trigger takes focus back at once: the menu on its way out is a
+  // picture, and nothing in it is still reachable.
   pill.value?.focus();
+  if (motionReduced()) return;
+  closing.value = true;
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => (closing.value = false), CLOSE_MS);
 };
 
 async function startEditing() {
@@ -144,6 +160,7 @@ onMounted(() => {
   document.addEventListener('keydown', onKeydown);
 });
 onBeforeUnmount(() => {
+  clearTimeout(closeTimer);
   document.removeEventListener('click', onDocumentClick);
   document.removeEventListener('keydown', onKeydown);
 });
@@ -181,9 +198,11 @@ onBeforeUnmount(() => {
       <div
         ref="menu"
         class="umenu"
+        :class="{ 'is-closing': closing }"
+        :inert="closing || undefined"
         role="menu"
         aria-label="Your account"
-        :hidden="!open"
+        :hidden="!open && !closing"
         @keydown="onMenuKeys"
       >
         <!-- Whose menu this is, and what kind of somebody they are. -->

@@ -19,6 +19,10 @@
 @media (pointer: coarse) {
   .btn-sm { height: 44px; padding: 0 14px; }
   .btn-icon, .btn-icon-spacer { width: 44px; height: 44px; }
+  /* The difficulty picker is a button in everything but name, and it sits in
+   * a row beside one: it was the only control left at 34px, standing a
+   * notch shorter than the Add bot button next to it. */
+  .picker-btn { height: 44px; }
 
   /* The number fields on the lobby and waiting-room panels. The dock's own
    * steppers are left alone: their height is part of a layout that has
@@ -177,6 +181,22 @@
   .topbar-auth { display: none; }
   .topbar-user { flex-shrink: 0; gap: 6px; }
 
+  /* The room bar carries a chip the page bar does not, and at this width the
+   * wordmark is what that chip costs. Hiding it frees about 90px - enough
+   * for the code and its two copy buttons to sit between the mark and the
+   * avatar instead of underneath them. The mark itself never goes.
+   *
+   * Scoped with :has to the bar that has the chip: the landing and lobby bar
+   * is the mark and a burger, which leaves the wordmark plenty of room. */
+  .topbar:has(.topbar-meta) .brand-name { display: none; }
+  /* The chip is the one thing here allowed to give, and `min-width: 0` is
+   * what lets it: without it the chip keeps its full width and spills out of
+   * the box on both sides, over the brand on one and the avatar on the
+   * other, which is what it was doing. */
+  .topbar-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .meta-chip { min-width: 0; }
+  .meta-chip .code { overflow: hidden; text-overflow: ellipsis; }
+
   /* 44x44 of tap target. The pill is 34px tall from a 26px avatar and 3px of
      padding, which is a fine mouse target and a poor thumb one. */
   .user-pill { min-height: 44px; min-width: 44px; justify-content: center; padding: 3px 8px 3px 3px; }
@@ -185,6 +205,28 @@
   /* The menu is the whole of the bar's function on a phone, so it may be as
      wide as the screen comfortably allows. */
   .umenu { min-width: min(260px, calc(100vw - 20px)); }
+}
+
+/* The waiting room's header row, once it has wrapped.
+ *
+ * On a wide screen the seat count sits left and the bot controls right, held
+ * there by `margin-left: auto`. On a phone the two no longer fit on one
+ * line, and that same auto margin then pins the controls to the right edge
+ * of a line of their own - a ragged indent with nothing in it, which is what
+ * the row was doing. Wrapped, they take the full width instead and split it
+ * between them, so the picker and the button line up with everything else in
+ * the panel and are both wide enough to hit. */
+@media (max-width: 560px) {
+  .meta-row .add-bot { margin-left: 0; width: 100%; }
+  .meta-row .add-bot > * { flex: 1 1 0; min-width: 0; }
+  .meta-row .add-bot .btn { justify-content: center; }
+}
+
+/* The narrowest phones still in use. "Room" in front of the code is the last
+ * word the bar can spare: five capitals in a chip with a copy button beside
+ * them are not mistakable for anything else. */
+@media (max-width: 420px) {
+  .topbar .hide-xs { display: none; }
 }
 
 /* Menu items that exist only because the bar has nowhere to put them. Above

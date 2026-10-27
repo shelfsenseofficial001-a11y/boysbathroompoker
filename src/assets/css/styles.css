@@ -352,24 +352,40 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border: 1px solid rgba(230, 180, 80, 0.5);
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.55);
 }
-/* Dealt out: the three slide apart and settle, one after another. */
-.is-in .transit-card { animation: dealOut 0.62s var(--ease-out) both; }
-.is-in .transit-card:nth-child(2) { animation-delay: 0.09s; }
-.is-in .transit-card:nth-child(3) { animation-delay: 0.18s; }
+/* The screen stays up for as long as the work does, so the cards keep
+   dealing for as long as the screen does: one pass is a flourish, and a
+   flourish that ends leaves three cards sitting still in front of somebody
+   who is still waiting. The loop is the spinner - it says the same thing a
+   spinner says, in the only vocabulary this app has. */
+/* Dealt out: the three slide apart, settle, and are picked up for the next
+   pass, one after another. */
+/* The three are a third of a cycle apart rather than a tenth: each one is
+   off the table for about 0.39s, and spacing them out that far is what keeps
+   those gaps from ever lining up. All three blinking out together would read
+   as the screen dropping, not as a hand being dealt. */
+.is-in .transit-card { animation: dealOut 1.5s var(--ease-out) infinite both; }
+.is-in .transit-card:nth-child(2) { animation-delay: 0.5s; }
+.is-in .transit-card:nth-child(3) { animation-delay: 1s; }
 @keyframes dealOut {
-  from { translate: 0 -28px; rotate: -14deg; opacity: 0; }
-  to { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
+  0% { translate: 0 -28px; rotate: -14deg; opacity: 0; }
+  14% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
+  74% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
+  88% { translate: var(--x, 0) -10px; rotate: var(--r, 0deg); opacity: 0; }
+  100% { translate: 0 -28px; rotate: -14deg; opacity: 0; }
 }
 .is-in .transit-card:nth-child(1) { --x: -42px; --r: -9deg; }
 .is-in .transit-card:nth-child(3) { --x: 42px; --r: 9deg; }
-/* Gathered in: the fan closes, squares up and lifts away. */
-.is-out .transit-card { animation: gatherIn 0.74s var(--ease-in-out, ease-in-out) both; }
-.is-out .transit-card:nth-child(2) { animation-delay: 0.06s; }
-.is-out .transit-card:nth-child(3) { animation-delay: 0.12s; }
+/* Gathered in: the fan closes, squares up, lifts away, and is spread again
+   for the next pass. */
+.is-out .transit-card { animation: gatherIn 1.5s var(--ease-in-out, ease-in-out) infinite both; }
+.is-out .transit-card:nth-child(2) { animation-delay: 0.5s; }
+.is-out .transit-card:nth-child(3) { animation-delay: 1s; }
 @keyframes gatherIn {
   0% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
-  55% { translate: 0 0; rotate: 0deg; opacity: 1; }
-  100% { translate: 0 -26px; rotate: 0deg; opacity: 0; }
+  34% { translate: 0 0; rotate: 0deg; opacity: 1; }
+  48% { translate: 0 -26px; rotate: 0deg; opacity: 0; }
+  74% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 0; }
+  100% { translate: var(--x, 0) 0; rotate: var(--r, 0deg); opacity: 1; }
 }
 .is-out .transit-card:nth-child(1) { --x: -42px; --r: -9deg; }
 .is-out .transit-card:nth-child(3) { --x: 42px; --r: 9deg; }
@@ -490,6 +506,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   border-color: var(--red); background: rgba(124, 32, 28, 0.75); color: #ffd2cf;
 }
 .meta-chip b.code { color: var(--gold); letter-spacing: 0.12em; }
+/* One height across the room bar. The code chip sets it - it is the widest
+   thing up there and the one that cannot be made shorter without crushing
+   the copy buttons inside it - and the avatar and the way out are cut to
+   match, so the three read as one row of controls rather than three sizes.
+   32px is exactly the pill's 26px avatar plus its own padding and border,
+   so nothing inside has to shrink to fit.
+   Scoped to the bar that has the chip: the landing and lobby bar has no
+   chip to line up with, and keeps the 44px targets set for a thumb. */
+.topbar:has(.topbar-meta) .user-pill,
+.topbar:has(.topbar-meta) [data-leave] { height: 32px; min-height: 32px; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
 .user-pill {
   display: flex; align-items: center; gap: 8px; font: 600 13px var(--font-ui); color: var(--text-2);
@@ -513,6 +539,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   animation: menuIn 0.16s var(--ease-out) both;
 }
 @keyframes menuIn { from { opacity: 0; translate: 0 -6px; } }
+/* ...and back up under the pill. Shorter than the way in: a menu you have
+   finished with should get out of the way faster than it arrived. */
+.umenu.is-closing { animation: menuOut 0.13s var(--ease-out) both; pointer-events: none; }
+@keyframes menuOut { to { opacity: 0; translate: 0 -6px; } }
 /* A rule between blocks, never above the first one. */
 .umenu-group + .umenu-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 /* Whose menu this is, and what kind of somebody they are. No email: the
@@ -523,17 +553,23 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
   margin: 0 0 5px; font: 700 14px var(--font-ui); color: var(--text-1);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* No outline. The fill is a gradient instead - lighter along the top edge,
+   a shade deeper at the foot - so the pill reads as a small raised thing
+   catching the light rather than as a box someone drew a line around. */
 .umenu-badge {
-  display: inline-block; padding: 2px 8px; border-radius: 999px;
-  background: rgba(60, 194, 127, 0.14); border: 1px solid rgba(60, 194, 127, 0.4);
-  color: var(--green); font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+  display: inline-block; padding: 3px 9px; border-radius: 999px; border: 0;
+  background: linear-gradient(180deg, rgba(60, 194, 127, 0.3), rgba(60, 194, 127, 0.11));
+  color: #7ad9a6; font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
 }
 .umenu-badge.is-guest {
-  background: rgba(230, 180, 80, 0.14); border-color: rgba(230, 180, 80, 0.4); color: var(--gold);
+  background: linear-gradient(180deg, rgba(230, 180, 80, 0.32), rgba(230, 180, 80, 0.11));
+  color: var(--gold-hi);
 }
 .umenu-item:focus-visible { outline: none; background: rgba(255, 255, 255, 0.07); box-shadow: 0 0 0 2px var(--gold); }
-/* The pill is a touch target as well as a control. */
-.user-pill { min-height: 44px; }
+/* The pill sits in a row with the bar's buttons, so it stands exactly as
+   tall as they do - 34px, which its 26px avatar and 3px of padding already
+   come to. A thumb gets its 44px from the coarse-pointer rules instead. */
+.user-pill { min-height: 34px; }
 
 /* Whose menu this is. Only drawn at the widths where the pill beside the
    avatar has had to drop the name. */
@@ -3647,9 +3683,9 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* A tag in words. Colour alone says nothing to a reader who cannot see it,
    and this pairing holds AA against the panel behind it. */
 .lp-soon {
-  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px;
-  background: rgba(74, 168, 232, 0.16); border: 1px solid rgba(74, 168, 232, 0.45);
-  color: #a8d6f7; font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+  display: inline-block; margin-left: 8px; padding: 3px 9px; border-radius: 999px; border: 0;
+  background: linear-gradient(180deg, rgba(74, 168, 232, 0.3), rgba(74, 168, 232, 0.11));
+  color: #bfe2fa; font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
   vertical-align: middle; white-space: nowrap;
 }
 .lp-feat.is-soon { border-style: dashed; }
@@ -3700,7 +3736,7 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .fv-micro { fill: var(--text-3); font: 700 8px var(--font-ui); letter-spacing: 0.1em; text-anchor: middle; }
 .fv-avatar { fill: rgba(255, 255, 255, 0.05); stroke: var(--line-2); }
 .fv-avatar-head { fill: var(--text-3); }
-.fv-tag { fill: rgba(230, 180, 80, 0.16); stroke: rgba(230, 180, 80, 0.4); }
+.fv-tag { fill: rgba(230, 180, 80, 0.26); stroke: none; }
 .fv-tag-text { fill: var(--gold); font: 800 9px var(--font-ui); letter-spacing: 0.12em; text-anchor: middle; }
 .fv-faded { opacity: 0.3; }
 .fv-bar { fill: var(--text-3); }
@@ -3938,12 +3974,23 @@ html { scroll-behavior: smooth; }
 }
 @keyframes mnavFade { from { opacity: 0; } }
 @keyframes mnavIn { from { translate: 100% 0; } }
+/* ...and back off the edge it came from. A drawer that is simply gone leaves
+   the page looking as though it had been cut, and gives no sense of where
+   the thing went - it went back to the button that opened it. */
+.drawer-leave-active .mnav { animation: mnavOut 0.2s var(--ease-in, ease-in) both; }
+.drawer-leave-active .mnav-backdrop { animation: mnavFadeOut 0.2s var(--ease-out) both; }
+@keyframes mnavOut { to { translate: 100% 0; } }
+@keyframes mnavFadeOut { to { opacity: 0; } }
 /* Information, not decoration - but a drawer that simply appears is just as
    clear, and that is what reduced motion asks for. */
+/* The leave is flattened to nothing, so the drawer has to go at once rather
+   than sit there for the length of a slide nobody is watching. */
 @media (prefers-reduced-motion: reduce) {
   .mnav, .mnav-backdrop { animation: none; }
+  .drawer-leave-active { display: none; }
 }
 .reduce-motion .mnav, .reduce-motion .mnav-backdrop { animation: none; }
+.reduce-motion .drawer-leave-active { display: none; }
 
 .mnav-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -3994,9 +4041,9 @@ html { scroll-behavior: smooth; }
 }
 .lp-eyebrow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .lp-dev-badge {
-  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
-  background: rgba(74, 168, 232, 0.14); border: 1px solid rgba(74, 168, 232, 0.42);
-  color: #a8d6f7; font: 700 10.5px var(--font-ui); letter-spacing: 0.06em;
+  display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 999px; border: 0;
+  background: linear-gradient(180deg, rgba(74, 168, 232, 0.3), rgba(74, 168, 232, 0.11));
+  color: #bfe2fa; font: 700 10.5px var(--font-ui); letter-spacing: 0.06em;
 }
 
 .lp-h1 {
@@ -4156,8 +4203,9 @@ html { scroll-behavior: smooth; }
   background: rgba(6, 11, 9, 0.78); border: 1px solid var(--line);
 }
 .demo-phase {
-  padding: 3px 9px; border-radius: 999px; background: rgba(230, 180, 80, 0.16);
-  color: var(--gold); font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(230, 180, 80, 0.32), rgba(230, 180, 80, 0.12));
+  color: var(--gold-hi); font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
 }
 .demo-said { font: 700 12.5px var(--font-ui); color: var(--text-1); text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
 
@@ -4276,9 +4324,9 @@ html { scroll-behavior: smooth; }
 }
 .fprev-body { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
 .fprev-tag {
-  position: absolute; top: 10px; right: 10px; z-index: 2; padding: 2px 8px; border-radius: 999px;
-  background: rgba(74, 168, 232, 0.16); border: 1px solid rgba(74, 168, 232, 0.45);
-  color: #a8d6f7; font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+  position: absolute; top: 10px; right: 10px; z-index: 2; padding: 3px 9px; border-radius: 999px; border: 0;
+  background: linear-gradient(180deg, rgba(74, 168, 232, 0.32), rgba(74, 168, 232, 0.12));
+  color: #bfe2fa; font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
 }
 .fprev-card { display: block; width: var(--card); }
 .fprev-card svg { width: 100%; height: auto; display: block; border-radius: 4px; box-shadow: 0 3px 8px rgba(0,0,0,0.45); }

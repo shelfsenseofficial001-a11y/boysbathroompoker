@@ -1765,12 +1765,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // The table itself is full-bleed, so its bar stays full width too.
   function topbarHTML(t, { page = false } = {}) {
     return `<header class="topbar${page ? ' topbar-page' : ''}">
-      <div class="brand">${icons.logo}<span>CC<em>Poker</em></span></div>
+      <div class="brand">${icons.logo}<span class="brand-name">CC<em>Poker</em></span></div>
       <div class="topbar-meta">
       <span class="room-kind hide-sm${shown?.isPrivate ? ' is-private' : ''}" title="${
         shown?.isPrivate ? 'Hidden from open tables — the host lets each player in' : 'Listed in open tables for anyone to join'
       }">${shown?.isPrivate ? icons.key : icons.eye}${shown?.isPrivate ? 'Private' : 'Public'}</span>
-        <span class="meta-chip">Room <b class="code selectable">${esc(roomCode)}</b>
+        <span class="meta-chip"><span class="hide-xs">Room</span> <b class="code selectable">${esc(roomCode)}</b>
           <button class="code-copy" data-copy-code="link" title="Copy invite link" aria-label="Copy invite link">${icons.copy}</button>
           <button class="code-copy" data-copy-code="code" title="Copy room code" aria-label="Copy room code">${icons.key}</button>
         </span>

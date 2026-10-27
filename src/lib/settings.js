@@ -13,9 +13,10 @@ export const ZOOM = {
 };
 
 const DEFAULTS = {
-  // Off by default: holding your cards to look at them, and the tell that
-  // gives the table, is how the game is meant to be played.
-  autoReveal: false,
+  // On by default: a player who has just sat down wants to see what they
+  // were dealt, not to discover that the cards have to be held first. The
+  // hold-to-peek play is still there for anyone who turns this off.
+  autoReveal: true,
   // Hand history sidebar, remembered between visits.
   showHistory: false,
   // Table chat sidebar, also remembered between visits.
@@ -59,7 +60,7 @@ export function getSettings() {
     // Unreadable or unavailable storage: fall back to the defaults.
   }
   cache = {
-    autoReveal: stored.autoReveal === true,
+    autoReveal: stored.autoReveal !== false,
     showHistory: stored.showHistory === true,
     showChat: stored.showChat === true,
     showResults: stored.showResults !== false,

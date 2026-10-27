@@ -7,6 +7,7 @@
 // it inside a transformed ancestor would position it against that ancestor
 // instead of the viewport.
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { motionReduced } from '../../lib/motion.js';
 import SvgIcon from './SvgIcon.vue';
 
 const props = defineProps({
@@ -22,7 +23,28 @@ const props = defineProps({
 const emit = defineEmits(['close', 'dismiss']);
 
 const sheet = ref(null);
+const closing = ref(false);
 let returnFocusTo = null;
+let leaveTimer = null;
+
+// The way out, played rather than cut.
+//
+// The caller owns whether this dialog exists at all - it is behind a `v-if`
+// up there - so a transition on the way out cannot be left to Vue: by the
+// time the parent has flipped the flag there is nothing left to animate.
+// Instead every way out of this sheet comes through here, which dresses it
+// in .is-closing (the keyframes are in styles.css, beside the ones it came
+// in on) and tells the caller once the animation is spent.
+//
+// Under reduced motion the exit is flattened to nothing, so the wait would
+// be a stall with nothing on screen to justify it: the event goes at once.
+const LEAVE_MS = 240;
+function leave(event) {
+  if (closing.value) return;
+  if (motionReduced()) return emit(event);
+  closing.value = true;
+  leaveTimer = setTimeout(() => emit(event), LEAVE_MS);
+}
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -35,7 +57,7 @@ const focusable = () => [...(sheet.value?.querySelectorAll(FOCUSABLE) || [])].fi
 function onKeydown(e) {
   if (e.key === 'Escape') {
     e.preventDefault();
-    return props.closable ? emit('close') : emit('dismiss');
+    return leave(props.closable ? 'close' : 'dismiss');
   }
   if (e.key !== 'Tab') return;
   const items = focusable();
@@ -54,7 +76,7 @@ function onKeydown(e) {
 
 function onBackdrop(e) {
   if (e.target !== e.currentTarget) return;
-  return props.closable ? emit('close') : emit('dismiss');
+  return leave(props.closable ? 'close' : 'dismiss');
 }
 
 onMounted(async () => {
@@ -65,6 +87,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  clearTimeout(leaveTimer);
   document.removeEventListener('keydown', onKeydown, true);
   // Back where they were, so closing a dialog doesn't drop the cursor at the
   // top of the page.
@@ -78,10 +101,11 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="overlay" @mousedown="onBackdrop">
+    <div class="overlay" :class="{ 'is-closing': closing }" @mousedown="onBackdrop">
       <div
         ref="sheet"
         class="sheet"
+        :class="{ 'is-closing': closing }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="labelledBy"
@@ -91,7 +115,7 @@ onBeforeUnmount(() => {
           type="button"
           class="sheet-x"
           aria-label="Close"
-          @click="emit('close')"
+          @click="leave('close')"
         >
           <SvgIcon name="close" />
         </button>

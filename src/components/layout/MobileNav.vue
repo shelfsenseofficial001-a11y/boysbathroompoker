@@ -102,74 +102,80 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="mnav-wrap">
-      <div class="mnav-backdrop" @click="emit('close')" />
-      <aside
-        ref="panel"
-        id="mobile-nav"
-        class="mnav"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Menu"
-      >
-        <header class="mnav-head">
-          <a class="brand" href="/" aria-label="CCPoker home" @click.prevent="choose(() => emit('home'))">
-            <SvgIcon name="logo" /><span class="brand-name">CC<em>Poker</em></span>
-          </a>
-          <button ref="closeBtn" type="button" class="mnav-x" aria-label="Close menu" @click="emit('close')">
-            <SvgIcon name="close" />
-          </button>
-        </header>
+    <!-- The drawer slides back out the way it came in. Vue is told the
+         duration outright because the animations live on the panel and the
+         backdrop rather than on the wrapper it is watching, so there is
+         nothing on that wrapper for it to time itself from. -->
+    <Transition name="drawer" :duration="220">
+      <div v-if="open" class="mnav-wrap">
+        <div class="mnav-backdrop" @click="emit('close')" />
+        <aside
+          ref="panel"
+          id="mobile-nav"
+          class="mnav"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+        >
+          <header class="mnav-head">
+            <a class="brand" href="/" aria-label="CCPoker home" @click.prevent="choose(() => emit('home'))">
+              <SvgIcon name="logo" /><span class="brand-name">CC<em>Poker</em></span>
+            </a>
+            <button ref="closeBtn" type="button" class="mnav-x" aria-label="Close menu" @click="emit('close')">
+              <SvgIcon name="close" />
+            </button>
+          </header>
 
-        <nav v-if="links.length" class="mnav-links" aria-label="Sections">
-          <a
-            v-for="link in links"
-            :key="link.href"
-            class="mnav-link"
-            :href="link.href"
-            @click="emit('close')"
-          >
-            {{ link.label }}
-          </a>
-        </nav>
+          <nav v-if="links.length" class="mnav-links" aria-label="Sections">
+            <a
+              v-for="link in links"
+              :key="link.href"
+              class="mnav-link"
+              :href="link.href"
+              @click="emit('close')"
+            >
+              {{ link.label }}
+            </a>
+          </nav>
 
-        <!-- Pinned to the foot, where a thumb reaches. -->
-        <div class="mnav-foot">
-          <!-- The session has not resolved. Hold the space rather than guess
-               and have the block change shape underneath them. -->
-          <template v-if="loading">
-            <span class="sk sk-line" /><span class="sk sk-line sk-short" />
-          </template>
+          <!-- Pinned to the foot, where a thumb reaches. -->
+          <div class="mnav-foot">
+            <!-- The session has not resolved. Hold the space rather than guess
+                 and have the block change shape underneath them. -->
+            <template v-if="loading">
+              <span class="sk sk-line" /><span class="sk sk-line sk-short" />
+            </template>
 
-          <template v-else-if="signedIn">
-            <div class="mnav-who">
-              <span v-if="avatar" class="contents" v-html="avatar" />
-              <span class="mnav-name">{{ user?.username || auth.displayName.value }}</span>
-            </div>
-            <!-- A guest has an account they never asked for; keeping it is
-                 the one thing worth offering them here. -->
-            <BaseButton v-if="isGuest" variant="primary" size="lg" @click="choose(() => emit('auth', 'signup'))">
-              Sign up
-            </BaseButton>
-            <BaseButton v-if="isGuest" size="lg" @click="choose(() => emit('auth', 'login'))">Log in</BaseButton>
-            <BaseButton size="lg" @click="choose(() => emit('pick', 'settings'))">Settings</BaseButton>
-            <!-- The one thing in here that takes something away. A guest
-                 loses the identity they have been playing under, which is
-                 worth looking like a warning rather than like Settings. -->
-            <BaseButton variant="danger" size="lg" @click="choose(() => emit('pick', 'logout'))">
-              {{ auth.hasAccount.value ? 'Log out' : 'New guest' }}
-            </BaseButton>
-          </template>
+            <template v-else-if="signedIn">
+              <div class="mnav-who">
+                <span v-if="avatar" class="contents" v-html="avatar" />
+                <span class="mnav-name">{{ user?.username || auth.displayName.value }}</span>
+              </div>
+              <!-- A guest has an account they never asked for; keeping it is
+                   the one thing worth offering them here. -->
+              <BaseButton v-if="isGuest" variant="primary" size="lg" @click="choose(() => emit('auth', 'signup'))">
+                Sign up
+              </BaseButton>
+              <BaseButton v-if="isGuest" size="lg" @click="choose(() => emit('auth', 'login'))">Log in</BaseButton>
+              <BaseButton size="lg" @click="choose(() => emit('pick', 'settings'))">Settings</BaseButton>
+              <!-- The one thing in here that takes something away. A guest
+                   loses the identity they have been playing under, which is
+                   worth looking like a warning rather than like Settings. -->
+              <BaseButton variant="danger" size="lg" @click="choose(() => emit('pick', 'logout'))">
+                {{ auth.hasAccount.value ? 'Log out' : 'New guest' }}
+              </BaseButton>
+            </template>
 
-          <template v-else>
-            <BaseButton variant="primary" size="lg" @click="choose(() => emit('auth', 'signup'))">Sign up</BaseButton>
-            <BaseButton size="lg" @click="choose(() => emit('auth', 'login'))">Log in</BaseButton>
-            <BaseButton size="lg" @click="choose(() => emit('guest'))">
-              <SvgIcon name="eye" />Play as guest
-            </BaseButton>
-          </template>
-        </div>
-      </aside>
-    </div>
+            <template v-else>
+              <BaseButton variant="primary" size="lg" @click="choose(() => emit('auth', 'signup'))">Sign up</BaseButton>
+              <BaseButton size="lg" @click="choose(() => emit('auth', 'login'))">Log in</BaseButton>
+              <BaseButton size="lg" @click="choose(() => emit('guest'))">
+                <SvgIcon name="eye" />Play as guest
+              </BaseButton>
+            </template>
+          </div>
+        </aside>
+      </div>
+    </Transition>
   </Teleport>
 </template>
