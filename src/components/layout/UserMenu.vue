@@ -27,6 +27,38 @@ const error = ref('');
 const wrap = ref(null);
 const pill = ref(null);
 const nameInput = ref(null);
+const menu = ref(null);
+
+// Guest or account, said in a word. Never an email: the address an account
+// authenticates by is synthetic, derived from the username, and showing it
+// would be showing somebody a thing they never typed and cannot change.
+const badge = computed(() => (auth.hasAccount.value ? 'Player' : 'Guest'));
+
+// --- Keyboard ------------------------------------------------------------
+// A menu is a list, so it behaves like one: arrows walk it, Home and End
+// jump, and the trigger takes focus back when it closes.
+const items = () => Array.from(menu.value?.querySelectorAll('.umenu-item') || []);
+
+function moveFocus(step) {
+  const list = items();
+  if (!list.length) return;
+  const at = list.indexOf(document.activeElement);
+  const next = at === -1 ? 0 : (at + step + list.length) % list.length;
+  list[next].focus();
+}
+
+async function openMenu() {
+  open.value = true;
+  await nextTick();
+  items()[0]?.focus();
+}
+
+function onMenuKeys(e) {
+  if (e.key === 'ArrowDown') return e.preventDefault(), moveFocus(1);
+  if (e.key === 'ArrowUp') return e.preventDefault(), moveFocus(-1);
+  if (e.key === 'Home') return e.preventDefault(), items()[0]?.focus();
+  if (e.key === 'End') return e.preventDefault(), items().at(-1)?.focus();
+}
 
 const auth = useAuth();
 
@@ -47,6 +79,7 @@ const avatar = computed(() => avatarSVG(props.user.username));
 
 const close = () => {
   open.value = false;
+  pill.value?.focus();
 };
 
 async function startEditing() {
@@ -138,17 +171,26 @@ onBeforeUnmount(() => {
         aria-haspopup="menu"
         :aria-expanded="String(open)"
         title="Your account"
-        @click.stop="open = !open"
+        @click.stop="open ? close() : openMenu()"
+        @keydown.down.prevent="openMenu()"
       >
         <span class="contents" v-html="avatar" />
         <span class="user-name">{{ user.username }}</span>
         <SvgIcon name="chevronDown" />
       </button>
-      <div class="umenu" role="menu" aria-label="Your account" :hidden="!open">
-        <!-- Who this menu belongs to. The pill shows the name beside the
-             avatar when there is room for it; under 900px there isn't, and
-             this is where it goes instead. -->
-        <p class="umenu-head only-sm">{{ user.username }}</p>
+      <div
+        ref="menu"
+        class="umenu"
+        role="menu"
+        aria-label="Your account"
+        :hidden="!open"
+        @keydown="onMenuKeys"
+      >
+        <!-- Whose menu this is, and what kind of somebody they are. -->
+        <div class="umenu-who">
+          <p class="umenu-whoname">{{ user.username }}</p>
+          <span class="umenu-badge" :class="{ 'is-guest': !auth.hasAccount.value }">{{ badge }}</span>
+        </div>
         <div v-for="(group, i) in blocks" :key="i" class="umenu-group">
           <button
             v-for="item in group"

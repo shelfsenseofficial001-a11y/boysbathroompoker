@@ -5,7 +5,7 @@
 // Everything here is the player's own and none of it is sent to the server -
 // two people at one table can sit at different-looking felts without
 // disagreeing about the game.
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useSettings, ZOOM } from '../../composables/useSettings.js';
 import { motionReduced, toggleMotion } from '../../lib/motion.js';
 import { soundMuted, toggleSound } from '../../lib/sound.js';
@@ -30,6 +30,19 @@ const tab = ref('look');
 const animations = ref(!motionReduced());
 const sounds = ref(!soundMuted());
 
+// On a phone the sections are a strip that scrolls sideways, and the one
+// you are on can be past the edge of it - opened from the account menu at
+// Profile, say, or chosen and then scrolled away from. Bring it into view
+// whenever it changes, so the strip always shows where you are.
+const navEl = ref(null);
+watch(tab, async () => {
+  await nextTick();
+  navEl.value?.querySelector('.set-tab.is-on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+});
+
+// Opened straight at a section, from the account menu.
+defineExpose({ showTab: (id) => { tab.value = id; } });
+
 function onMotion() {
   toggleMotion();
   animations.value = !motionReduced();
@@ -39,24 +52,27 @@ function onSound() {
   sounds.value = !soundMuted();
 }
 
-// Grouped, because the second group is about you rather than about the
-// table. Each group keeps its own heading; the items are the same shape and
-// the same button as they always were.
+// Two groups, sorted by what a player is looking for rather than by where
+// a setting happens to be stored. There was a third, "This device", for
+// motion and sound - true, since those live in this browser, but nobody goes
+// looking for a setting by asking where it is saved. They are about how the
+// game feels, so they sit with the rest of the game.
+//
+// Account first: it is who you are, and the one group whose contents differ
+// between a guest and somebody signed in. Each item carries a line saying
+// what is inside, so the list can be read rather than clicked through.
 const GROUPS = [
   {
-    head: 'Table',
-    tabs: [
-      { id: 'look', icon: 'sparkle', label: 'Appearance' },
-      { id: 'cards', icon: 'eye', label: 'Your cards' },
-    ],
-  },
-  {
     head: 'Account',
-    tabs: [{ id: 'profile', icon: 'key', label: 'Profile' }],
+    tabs: [{ id: 'profile', icon: 'key', label: 'Profile', hint: 'Name and password' }],
   },
   {
-    head: 'This device',
-    tabs: [{ id: 'feel', icon: 'sliders', label: 'Motion & sound' }],
+    head: 'Game',
+    tabs: [
+      { id: 'look', icon: 'sparkle', label: 'Appearance', hint: 'Felt and card backs' },
+      { id: 'cards', icon: 'eye', label: 'Cards & peeking', hint: 'How you look at your hand' },
+      { id: 'feel', icon: 'sliders', label: 'Motion & sound', hint: 'Animations and sounds' },
+    ],
   },
 ];
 
@@ -71,14 +87,16 @@ const pct = (value, { min, max }) => `${((value - min) / (max - min)) * 100}%`;
 <template>
   <main class="page page-settings">
     <div class="settings-head">
-      <BaseButton variant="ghost" size="sm" @click="$emit('back')">
-        <SvgIcon name="arrowLeft" /><span>Back</span>
+      <!-- Just the arrow, in a circle. The word is the accessible name, so a
+           screen reader still hears "Back" where the eye sees an arrow. -->
+      <BaseButton variant="ghost" icon class="settings-back" aria-label="Back" title="Back" @click="$emit('back')">
+        <SvgIcon name="arrowLeft" />
       </BaseButton>
       <h1 class="h1">Settings</h1>
     </div>
     <div class="panel">
       <div class="set-split">
-        <nav class="set-nav" role="tablist" aria-label="Settings sections">
+        <nav ref="navEl" class="set-nav" role="tablist" aria-label="Settings sections">
           <template v-for="group in GROUPS" :key="group.head">
             <span class="set-nav-head">{{ group.head }}</span>
             <button
@@ -92,7 +110,11 @@ const pct = (value, { min, max }) => `${((value - min) / (max - min)) * 100}%`;
               :title="t.label"
               @click="tab = t.id"
             >
-              <SvgIcon :name="t.icon" /><span>{{ t.label }}</span>
+              <SvgIcon :name="t.icon" />
+              <span class="set-tab-label">
+                {{ t.label }}
+                <small class="set-tab-hint">{{ t.hint }}</small>
+              </span>
             </button>
           </template>
         </nav>
@@ -172,7 +194,6 @@ const pct = (value, { min, max }) => `${((value - min) / (max - min)) * 100}%`;
             <h3 class="set-lede">Motion and sound</h3>
             <p class="set-note">
               Turn either off if the table feels busy, or to save a slower device some work.
-              Kept on this device, like the rest of these.
             </p>
             <label class="switch-row">
               <input type="checkbox" :checked="animations" @change="onMotion" />

@@ -510,6 +510,26 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 @keyframes menuIn { from { opacity: 0; translate: 0 -6px; } }
 /* A rule between blocks, never above the first one. */
 .umenu-group + .umenu-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+/* Whose menu this is, and what kind of somebody they are. No email: the
+   address an account authenticates by is synthetic and derived from the
+   username, so showing it would show somebody a thing they never typed. */
+.umenu-who { padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.umenu-whoname {
+  margin: 0 0 5px; font: 700 14px var(--font-ui); color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.umenu-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: rgba(60, 194, 127, 0.14); border: 1px solid rgba(60, 194, 127, 0.4);
+  color: var(--green); font: 700 10px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.umenu-badge.is-guest {
+  background: rgba(230, 180, 80, 0.14); border-color: rgba(230, 180, 80, 0.4); color: var(--gold);
+}
+.umenu-item:focus-visible { outline: none; background: rgba(255, 255, 255, 0.07); box-shadow: 0 0 0 2px var(--gold); }
+/* The pill is a touch target as well as a control. */
+.user-pill { min-height: 44px; }
+
 /* Whose menu this is. Only drawn at the widths where the pill beside the
    avatar has had to drop the name. */
 .umenu-head {
@@ -545,11 +565,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
      icon in - so hiding the text took the logo with it and the bar lost its
      brand entirely below 900px. The wordmark has a class of its own now, and
      the mark is never part of what gets hidden. */
-  .brand-name, .user-pill .user-name { display: none; }
+  .user-pill .user-name { display: none; }
 }
 @media (max-width: 720px) {
   .topbar { padding: 0 10px; height: 50px; }
-  .brand-name, .user-pill .user-name, .topbar .hide-sm { display: none; }
+  .user-pill .user-name, .topbar .hide-sm { display: none; }
 }
 
 /* ---------- Pages (auth, lobby, waiting room) ---------- */
@@ -3295,9 +3315,16 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .set-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
 
 /* The lobby's settings page: a way back, a title, and the same two columns. */
+/* The way back and the page's name on one line. It reads as a row now that
+   the button is a small circle rather than a pill with a word in it - the
+   arrow sits beside the title the way a back arrow does in an app bar. */
 .settings-head { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
 .settings-head .h1 { margin: 0; font-size: 26px; }
 .settings-head .btn .icon { width: 15px; height: 15px; }
+/* The way back, as a circle with an arrow in it. 44px across: the smallest a
+   thumb target should be, and still a third the width of the pill it was. */
+.settings-back.btn-icon { width: 44px; height: 44px; border-radius: 50%; }
+.settings-back .icon { width: 17px; height: 17px; }
 .page-settings .set-nav { min-width: 0; }
 
 /* Too narrow for a column down the side: the sections become a row of chips
@@ -3313,15 +3340,20 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   /* The tabs share the strip between them rather than bunching up at the
      left and leaving a gap at the end of it. */
   .set-tab { width: auto; flex: 1 1 0; min-width: 0; justify-content: center; padding: 9px 8px; }
-  .set-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .set-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .set-pane { min-height: 0; }
 }
-/* Narrower still and three names can't share a line without being cut to
+/* Narrower still and four names can't share a line without being cut to
    nothing, so the icon carries it alone - the panel's own heading underneath
-   says which section you are on. */
+   says which section you are on.
+   `.set-tab span` used to live here, and it matched two spans: the label,
+   which it meant, and the `<span class="contents">` SvgIcon wraps every icon
+   in - so hiding the text took the icon with it and left four empty pills.
+   The label has a class of its own now. */
 @media (max-width: 480px) {
   .set-nav { overflow-x: visible; }
-  .set-tab span { display: none; }
+  .set-tab-label { display: none; }
+  .set-tab { justify-content: center; }
   .set-tab .icon { width: 18px; height: 18px; opacity: 1; }
 }
 /* The line under a switch saying what it actually does. */
@@ -3761,6 +3793,37 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    mistake in different clothes: the whole page was waiting on an answer that
    only one corner of it needed. */
 .app-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+/* The bar stays put. The landing page is long, and the two ways in were at
+   the top of it - scroll past the hero and there was no way to log in
+   without scrolling back. Scoped to the shell's own bar: the table has its
+   own, and the felt is not a page that scrolls. */
+.app-shell > .topbar { position: sticky; top: 0; }
+
+/* The middle of the bar: where this page can take you. It sits between the
+   mark and the account, takes the slack so neither of those has to move, and
+   is the first thing dropped when the bar runs out of width. */
+.topbar-nav { display: none; flex: 1; justify-content: center; gap: 4px; min-width: 0; }
+.topbar-link {
+  display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
+  border-radius: 999px; white-space: nowrap;
+  font: 600 13.5px var(--font-ui); color: var(--text-2); text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
+}
+.topbar-link:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.05); }
+.topbar-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Room for them only once the bar has width to spare. Below this the logo
+   and the account control have it all, which is the mobile rule already. */
+@media (min-width: 860px) {
+  .topbar-nav { display: flex; }
+}
+/* The bar is sticky, so an anchor would otherwise land underneath it. */
+:target { scroll-margin-top: 72px; }
+.lp-group, .lp-steps { scroll-margin-top: 72px; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+.reduce-motion { scroll-behavior: auto; }
 .app-shell > .landing,
 .app-shell > .lobby-screen,
 .app-shell > .gone-screen,
@@ -3804,4 +3867,612 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ---------- The mobile bar, and the drawer behind it ----------
+   One breakpoint governs both: above it the bar lays its contents out, below
+   it the bar is the mark and a button and the drawer carries the rest. The
+   two are deliberately the same number - a width where the links have gone
+   but the hamburger has not yet arrived is a width with unreachable nav. */
+.topbar-burger {
+  display: grid; place-items: center;
+  width: 44px; height: 44px; flex: none;
+  background: none; border: 1px solid transparent; border-radius: var(--r-s);
+  color: var(--text-2); cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+.topbar-burger:hover { color: var(--text-1); background: var(--bg-2); border-color: var(--line-2); }
+.topbar-burger:focus-visible { outline: none; color: var(--text-1); box-shadow: 0 0 0 2px var(--gold); }
+.burger-bars { display: grid; gap: 4px; width: 18px; }
+.burger-bars i {
+  display: block; height: 2px; border-radius: 2px; background: currentColor;
+  transition: translate 0.2s var(--ease-out), rotate 0.2s var(--ease-out), opacity 0.15s;
+}
+/* Into an X. The middle bar goes, the outer two meet in the middle and turn. */
+.burger-bars.is-x i:nth-child(1) { translate: 0 6px; rotate: 45deg; }
+.burger-bars.is-x i:nth-child(2) { opacity: 0; }
+.burger-bars.is-x i:nth-child(3) { translate: 0 -6px; rotate: -45deg; }
+
+@media (min-width: 860px) {
+  .topbar-burger { display: none; }
+}
+/* Below the breakpoint the bar holds the mark and the button, and nothing
+   else: the auth buttons and the avatar menu are in the drawer. */
+@media (max-width: 859px) {
+  /* The whole right-hand group goes, not just its contents: the bar is laid
+     out with space-between, so an emptied-but-present `.topbar-user` still
+     counts as a child and the burger gets spaced into the middle between it
+     and the mark. `margin-left: auto` then holds the button against the
+     right edge whatever else is or is not in the bar. */
+  .topbar-user { display: none; }
+  .topbar-burger { margin-left: auto; }
+}
+
+/* The drawer itself. Above the bar (50), below the auth sheet (200). */
+.mnav-wrap { position: fixed; inset: 0; z-index: 120; }
+.mnav-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(3, 7, 5, 0.66);
+  animation: mnavFade 0.2s var(--ease-out) both;
+}
+.mnav {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: min(85vw, 320px);
+  display: flex; flex-direction: column;
+  background: var(--bg-1); border-left: 1px solid var(--line-2);
+  box-shadow: var(--shadow-2);
+  /* Notched phones: the drawer runs to the edge, its contents do not. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
+  /* Taller than the screen in landscape, so it scrolls rather than clips. */
+  overflow-y: auto; overscroll-behavior: contain;
+  animation: mnavIn 0.2s var(--ease-out) both;
+}
+@keyframes mnavFade { from { opacity: 0; } }
+@keyframes mnavIn { from { translate: 100% 0; } }
+/* Information, not decoration - but a drawer that simply appears is just as
+   clear, and that is what reduced motion asks for. */
+@media (prefers-reduced-motion: reduce) {
+  .mnav, .mnav-backdrop { animation: none; }
+}
+.reduce-motion .mnav, .reduce-motion .mnav-backdrop { animation: none; }
+
+.mnav-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.mnav-head .brand { font-size: 17px; }
+.mnav-x {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+  background: none; border: 0; border-radius: var(--r-s);
+  color: var(--text-2); cursor: pointer;
+}
+.mnav-x:hover { color: var(--text-1); background: var(--bg-2); }
+.mnav-x:focus-visible { outline: none; color: var(--text-1); box-shadow: 0 0 0 2px var(--gold); }
+
+.mnav-links { display: flex; flex-direction: column; padding: 10px 10px 0; }
+.mnav-link {
+  display: flex; align-items: center; min-height: 48px; padding: 0 12px;
+  border-radius: var(--r-s);
+  font: 600 15px var(--font-ui); color: var(--text-2); text-decoration: none;
+}
+.mnav-link:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.05); }
+.mnav-link:focus-visible { outline: none; color: var(--text-1); box-shadow: 0 0 0 2px var(--gold); }
+
+/* Pinned to the foot: `margin-top: auto` puts it at the bottom of a short
+   drawer and leaves it after the links in a tall one. */
+.mnav-foot {
+  margin-top: auto; display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; border-top: 1px solid var(--line);
+}
+.mnav-foot .btn { width: 100%; }
+.mnav-who { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.mnav-who svg { width: 30px; height: 30px; flex: none; }
+.mnav-name {
+  font: 700 15px var(--font-ui); color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* =========================================================================
+   Landing page, second pass.
+   Large Didone headlines, small-caps eyebrows, one gold-marked word per
+   headline, soft bordered cards, generous space. Later in the file than the
+   first pass on purpose, so where the two name the same class this wins.
+   ========================================================================= */
+
+.lp-eyebrow {
+  margin: 0; font: 800 11px var(--font-ui); letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--gold);
+}
+.lp-eyebrow-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.lp-dev-badge {
+  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
+  background: rgba(74, 168, 232, 0.14); border: 1px solid rgba(74, 168, 232, 0.42);
+  color: #a8d6f7; font: 700 10.5px var(--font-ui); letter-spacing: 0.06em;
+}
+
+.lp-h1 {
+  margin: 16px 0 18px;
+  font: 700 clamp(40px, 7.2vw, 72px) / 1.02 var(--font-display);
+  letter-spacing: -0.01em; color: var(--text-1);
+}
+.lp-section-h {
+  margin: 10px 0 14px;
+  font: 700 clamp(30px, 5vw, 50px) / 1.06 var(--font-display);
+  letter-spacing: -0.005em; color: var(--text-1);
+}
+/* The one highlighted word: a gold band behind its lower half, like a
+   marker stroke. Inherits the type, so it is a word and not a badge. */
+.lp-mark {
+  background: linear-gradient(transparent 58%, rgba(230, 180, 80, 0.42) 58%, rgba(230, 180, 80, 0.42) 92%, transparent 92%);
+  color: inherit; padding: 0 0.06em;
+}
+.lp-hero-lead { max-width: 44ch; font-size: clamp(16px, 2vw, 18px); line-height: 1.6; color: var(--text-2); }
+
+/* ---------- Hero ---------- */
+.lp-hero {
+  display: grid; gap: 40px; align-items: center;
+  padding: clamp(32px, 6vw, 72px) 0 clamp(40px, 6vw, 72px);
+  /* One column until there is room for two. Stated rather than left to the
+     default, because the first pass split the hero at 760px and that rule is
+     still in the file - it gave a tablet a cramped side-by-side with the
+     table on the wrong side. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.lp-hero .lp-cta { margin-top: 28px; }
+.lp-trust {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 22px 0 0; padding: 0; list-style: none;
+  color: var(--text-2); font: 500 13.5px var(--font-ui);
+}
+.lp-trust li { display: inline-flex; align-items: center; gap: 8px; }
+.lp-tick {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(60, 194, 127, 0.16); color: var(--green); font: 800 11px var(--font-ui);
+}
+/* `display: block` on purpose: the first pass made this a centring flex
+   box, which shrank the table to its content and left it half its column. */
+.lp-hero-art { position: relative; display: block; }
+.lp-hero-art .demo { width: 100%; }
+@media (min-width: 960px) {
+  /* Words on the left, the table on the right: the reading order and the
+     visual order now agree, which is one less thing for the page to explain. */
+  .lp-hero { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 56px; }
+}
+
+/* The two accents on the table. */
+.lp-float {
+  position: absolute; z-index: 3;
+  background: var(--bg-2); border: 1px solid var(--line-2); box-shadow: var(--shadow-2);
+}
+.lp-float-toast {
+  top: -14px; right: 8px; display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 9px 9px; border-radius: var(--r-m);
+}
+.lp-float-ic {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-s);
+  background: rgba(230, 180, 80, 0.16); color: var(--gold);
+}
+.lp-float-say { display: flex; flex-direction: column; font: 700 13.5px var(--font-ui); color: var(--text-1); }
+.lp-float-say small { font: 800 9px var(--font-ui); letter-spacing: 0.14em; color: var(--text-3); }
+.lp-float-pill {
+  bottom: -14px; left: 14px; padding: 8px 14px; border-radius: 999px;
+  font: 700 12px var(--font-ui); color: var(--gold);
+}
+@media (max-width: 480px) {
+  .lp-float-toast { right: 0; }
+  .lp-float-pill { left: 6px; }
+}
+
+/* ---------- Demo table ----------
+   Real art at a fixed aspect, scaled to its column. Every moving part is
+   transform or opacity, so the loop never asks for layout. */
+.demo {
+  position: relative; margin: 0;
+  --card: clamp(30px, 6.4vw, 46px);
+  /* A picture of the game, not a control. */
+  pointer-events: none; user-select: none; -webkit-user-select: none;
+}
+.demo-stage {
+  /* No box: the felt sits straight on the page, the way the table is the
+     whole screen in the game itself. Not clipped either, so a card dealt
+     from the deck is seen arriving rather than appearing at the rim. */
+  position: relative; aspect-ratio: 16 / 11; width: 100%;
+}
+/* The space the table will occupy, held while its chunk loads - empty, so
+   nothing is drawn only to be replaced. */
+.demo-placeholder { aspect-ratio: 16 / 11.6; }
+.demo-felt { position: absolute; inset: 6%; }
+.demo-felt svg { width: 100%; height: 100%; display: block; }
+
+.demo-card { display: block; width: var(--card); }
+.demo-card svg { width: 100%; height: auto; display: block; border-radius: 4px; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45); }
+.demo-slot {
+  aspect-ratio: 60 / 84; border-radius: 4px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.demo-board {
+  position: absolute; left: 50%; top: 40%; translate: -50% -50%;
+  display: flex; gap: calc(var(--card) * 0.12);
+}
+.demo-pot {
+  position: absolute; left: 50%; top: 61%; translate: -50% -50%;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: opacity 0.3s;
+}
+.demo-pot.is-empty { opacity: 0; }
+.demo-pot-chips svg { height: calc(var(--card) * 0.62); width: auto; display: block; }
+.demo-pot-amt { font: 800 11px var(--font-ui); color: var(--gold-hi); text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+
+.demo-dealer { position: absolute; width: calc(var(--card) * 0.42); translate: -50% -50%; }
+.demo-dealer svg { width: 100%; height: auto; display: block; }
+
+.demo-seat {
+  position: absolute; translate: -50% -50%;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: opacity 0.4s;
+}
+.demo-seat.is-folded .demo-plate { opacity: 0.45; }
+/* The seat at the top of the table sits on the rim with its cards toward the
+   middle. With the hand drawn above the plate, as for every other seat, the
+   cards ran off the top of the stage and were cut in half. */
+.demo-seat.at-b2 { flex-direction: column-reverse; translate: -50% 0; }
+.demo-hand { display: flex; gap: 2px; }
+.demo-hand .demo-card { width: calc(var(--card) * 0.82); }
+.demo-hand .demo-card:nth-child(2) { margin-left: calc(var(--card) * -0.3); rotate: 7deg; }
+.demo-hand .demo-card:nth-child(1) { rotate: -5deg; }
+.demo-plate {
+  display: flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px;
+  border-radius: 999px; background: rgba(6, 11, 9, 0.88); border: 1px solid var(--line-2);
+  transition: border-color 0.25s, box-shadow 0.25s, opacity 0.3s;
+}
+.demo-seat.is-turn .demo-plate { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(230, 180, 80, 0.22); }
+.demo-seat.is-winner .demo-plate { border-color: var(--green); box-shadow: 0 0 0 3px rgba(60, 194, 127, 0.3); }
+.demo-avatar svg { width: 20px; height: 20px; display: block; }
+.demo-name { font: 700 11px var(--font-ui); color: var(--text-1); }
+.demo-chips { font: 700 10.5px var(--font-ui); color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.demo-bet svg { height: calc(var(--card) * 0.4); width: auto; display: block; }
+/* The bot seats on the left and right sit their chips inward. */
+.demo-seat.at-b1 .demo-bet { position: absolute; left: 100%; top: 50%; }
+.demo-seat.at-b3 .demo-bet { position: absolute; right: 100%; top: 50%; }
+
+/* Only the seats that read at a glance survive a phone's width. */
+@media (max-width: 400px) {
+  .demo-name { display: none; }
+}
+
+.demo-caption {
+  position: absolute; left: 2%; top: 2%; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px 4px 4px; border-radius: 999px;
+  background: rgba(6, 11, 9, 0.78); border: 1px solid var(--line);
+}
+.demo-phase {
+  padding: 3px 9px; border-radius: 999px; background: rgba(230, 180, 80, 0.16);
+  color: var(--gold); font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
+}
+.demo-said { font: 700 12.5px var(--font-ui); color: var(--text-1); text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+
+/* The real action buttons, shown not used. */
+.demo-acts { display: flex; gap: 8px; margin-top: 12px; pointer-events: none; }
+.demo-acts .act { flex: 1; min-width: 0; height: 40px; font-size: 13px; transition: transform 0.2s, box-shadow 0.2s, filter 0.2s; }
+.demo-acts .act .icon { width: 15px; height: 15px; }
+.demo-acts .act.is-lit { transform: translateY(-2px); filter: brightness(1.15); }
+.demo-tag {
+  margin-top: 10px; text-align: center;
+  font: 800 10px var(--font-ui); letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-3);
+}
+
+/* --- The moments ------------------------------------------------------- */
+/* Dealt: from the deck at the top of the table, out to the seat. */
+.demo-deal { animation: demoDeal 0.5s var(--ease-out) both; animation-delay: calc(var(--i) * 0.12s); }
+@keyframes demoDeal { from { translate: 0 -120px; opacity: 0; scale: 0.6; } }
+/* Turned over. */
+.demo-flip { animation: demoFlip 0.45s var(--ease-out) both; transform-origin: 50% 50%; }
+@keyframes demoFlip { from { transform: rotateY(90deg); opacity: 0.2; } }
+/* Folded: thrown in toward the muck. */
+.demo-hand.is-mucked { animation: demoMuck 0.6s var(--ease-out) forwards; }
+@keyframes demoMuck { to { translate: 0 -55%; opacity: 0; scale: 0.7; } }
+
+/* The gesture overlay: rings, a path, and the finger. */
+.demo-gesture { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.demo-ring {
+  position: absolute; width: 34px; height: 34px; margin: -17px; border-radius: 50%;
+  border: 2px solid var(--green); opacity: 0;
+  animation: demoRing 1.1s var(--ease-out) 0.15s 2;
+}
+.demo-ring-2 { animation-delay: 0.35s; }
+@keyframes demoRing { 0% { opacity: 0.95; scale: 0.4; } 100% { opacity: 0; scale: 2; } }
+.demo-path { position: absolute; inset: 0; width: 100%; height: 100%; }
+.demo-path line {
+  stroke: rgba(230, 180, 80, 0.7); stroke-width: 2; stroke-dasharray: 5 6; fill: none;
+  stroke-dashoffset: 60; animation: demoDash 1.6s linear both;
+}
+@keyframes demoDash { to { stroke-dashoffset: 0; } }
+/* The finger: a soft disc with a ring, moving from where the gesture starts
+   to where it ends. A tap holds still and presses twice. */
+.demo-pointer {
+  position: absolute; left: var(--fx); top: var(--fy);
+  width: 26px; height: 26px; margin: -13px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82); box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0,0,0,0.5);
+  animation: demoMove 1.6s var(--ease-out) 0.2s both;
+}
+.is-tap .demo-pointer { animation: demoPress 0.5s var(--ease-out) 0.1s 2 both; }
+@keyframes demoMove { to { left: var(--tx); top: var(--ty); } }
+@keyframes demoPress { 50% { scale: 0.8; } }
+
+/* Still, or switched off: the frame holds and nothing plays. */
+.demo.is-still *, .demo.is-still { animation: none !important; transition: none !important; }
+
+/* ---------- Features ---------- */
+.lp-features { padding: clamp(48px, 8vw, 96px) 0 0; }
+.lp-features-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 34px; }
+.lp-features-lede { max-width: 52ch; margin: 0; }
+
+/* The page's one switch. A button with role="switch", so it announces its
+   state, and a track that is plainly on or off. */
+.lp-anim-switch {
+  display: inline-flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 8px 6px 16px;
+  border-radius: 999px; background: var(--bg-1); border: 1px solid var(--line-2); cursor: pointer;
+  font: 700 13.5px var(--font-ui); color: var(--text-1);
+}
+.lp-anim-switch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--gold); }
+.lp-anim-track {
+  position: relative; width: 40px; height: 24px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12); transition: background-color 0.2s;
+}
+.lp-anim-track i {
+  position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--text-2); transition: translate 0.2s var(--ease-out), background-color 0.2s;
+}
+.lp-anim-switch[aria-checked='true'] .lp-anim-track { background: var(--green); }
+.lp-anim-switch[aria-checked='true'] .lp-anim-track i { translate: 16px 0; background: #fff; }
+
+.lp-grid {
+  display: grid; gap: 18px; margin: 0; padding: 0; list-style: none;
+  /* An explicit track, not the implicit `auto` one. A one-column grid with
+     no template sizes its column to the widest child's min-content, so a
+     single preview with fixed-width contents pushed every card past the
+     edge of a 320px screen. `minmax(0, 1fr)` lets the column be narrower
+     than its contents and makes the contents give way instead. */
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 760px) { .lp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lp-card {
+  min-width: 0;
+  display: flex; flex-direction: column; border-radius: var(--r-l);
+  background: var(--bg-1); border: 1px solid var(--line);
+  transition: transform 0.25s var(--ease-out), border-color 0.25s, box-shadow 0.25s;
+  scroll-margin-top: 72px;
+}
+.lp-card:hover { transform: translateY(-3px); border-color: var(--line-2); box-shadow: var(--shadow-2); }
+.lp-card.is-soon { border-style: dashed; }
+.lp-card-panel {
+  margin: 14px 14px 0; border-radius: var(--r-m); overflow: hidden;
+  background: radial-gradient(120% 120% at 50% 0%, #102a20, #0a1611);
+  border: 1px solid var(--line);
+}
+.lp-card-say { padding: 20px 22px 24px; text-align: center; }
+.lp-card-t { margin: 0 0 8px; font: 700 18px var(--font-ui); color: var(--text-1); }
+.lp-card-say p { margin: 0 auto; max-width: 42ch; color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
+@media (prefers-reduced-motion: reduce) { .lp-card, .lp-card:hover { transition: none; transform: none; } }
+
+/* ---------- Feature previews ----------
+   The real interface in miniature. Each one plays a single small loop, only
+   while on screen and only while the switch above is on. */
+.fprev {
+  min-width: 0; overflow: hidden;
+  position: relative; display: grid; place-items: center;
+  height: 190px; padding: 18px;
+  --card: 40px;
+}
+.fprev-body { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.fprev-tag {
+  position: absolute; top: 10px; right: 10px; z-index: 2; padding: 2px 8px; border-radius: 999px;
+  background: rgba(74, 168, 232, 0.16); border: 1px solid rgba(74, 168, 232, 0.45);
+  color: #a8d6f7; font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+}
+.fprev-card { display: block; width: var(--card); }
+.fprev-card svg { width: 100%; height: auto; display: block; border-radius: 4px; box-shadow: 0 3px 8px rgba(0,0,0,0.45); }
+.fprev-stack svg { height: 56px; width: auto; display: block; }
+.fprev-figure { display: flex; align-items: baseline; gap: 6px; }
+.fprev-figure b { font: 700 26px var(--font-display); color: var(--gold-hi); }
+.fprev-figure span { font: 600 13px var(--font-ui); color: var(--text-2); }
+.fprev-pill {
+  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-2);
+  font: 700 11.5px var(--font-ui); color: var(--text-2);
+}
+.fprev-form { max-width: 260px; }
+.fprev-form .field { width: 100%; }
+.fprev-input { display: grid; place-items: center; height: 40px; font-weight: 700; }
+.fprev-refill svg { height: 44px; width: auto; display: block; }
+.fprev-menu { position: static; display: block; width: min(240px, 100%); animation: none; }
+.fprev-menu .umenu-item { pointer-events: none; }
+.fprev-whorow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fprev-whorow .umenu-whoname { margin: 0; }
+.fprev-avatar svg { width: 30px; height: 30px; display: block; }
+.fprev-felt {
+  position: relative; height: 100%; width: 100%; justify-content: center;
+  border-radius: 999px; background: radial-gradient(70% 80% at 50% 45%, #17402f, #0d2219);
+}
+.fprev-board { display: flex; gap: 5px; }
+.fprev-act { position: absolute; bottom: 8px; height: 34px; padding: 0 14px; font-size: 12.5px; pointer-events: none; }
+.fprev-act .icon { width: 14px; height: 14px; }
+.fprev-ring {
+  position: absolute; left: 50%; top: 44%; width: 30px; height: 30px; margin: -15px;
+  border-radius: 50%; border: 2px solid var(--green); opacity: 0;
+}
+.fprev-hand { display: flex; }
+.fprev-hand .fprev-card:nth-child(2) { margin-left: -14px; rotate: 7deg; }
+.fprev-hand .fprev-card:nth-child(1) { rotate: -5deg; }
+.fprev-muck {
+  position: absolute; top: 14px; padding: 3px 10px; border-radius: 999px;
+  border: 1px dashed rgba(255,255,255,0.2); font: 700 10px var(--font-ui); color: var(--text-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.fprev-pot { position: absolute; top: 22px; display: flex; flex-direction: column; align-items: center; }
+.fprev-pot .pot-label { font: 800 9px var(--font-ui); letter-spacing: 0.14em; color: var(--text-3); text-transform: uppercase; }
+.fprev-pot .pot-amt { font: 800 15px var(--font-ui); color: var(--gold-hi); }
+.fprev-mine { position: absolute; bottom: 52px; }
+.fprev-chip { position: absolute; bottom: 62px; width: 26px; opacity: 0; }
+.fprev-chip svg { width: 100%; height: auto; display: block; }
+.fprev-room {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 10px 12px; border-radius: var(--r-s); background: var(--bg-2); border: 1px solid var(--line-2);
+}
+.fprev-code { font: 800 15px var(--font-ui); letter-spacing: 0.16em; color: var(--text-1); }
+.fprev-room-kind { font: 700 11px var(--font-ui); color: var(--green); }
+.fprev-switch { pointer-events: none; font-size: 12.5px; }
+.fprev-avatars { display: flex; align-items: center; gap: 6px; }
+.fprev-avatars .fprev-avatar svg { width: 38px; height: 38px; }
+.fprev-add {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  border: 1.5px dashed rgba(230, 180, 80, 0.55); color: var(--gold);
+}
+.fprev-add .icon { width: 16px; height: 16px; }
+.fprev-btn { pointer-events: none; }
+.fprev-list { gap: 6px; max-width: 280px; }
+.fprev-row { width: 100%; padding: 6px 10px; gap: 10px; }
+.fprev-row .avatar-sm { width: 26px; height: 26px; }
+.fprev-row .avatar-sm .icon { width: 15px; height: 15px; }
+.fprev-rowname { flex: 1; font: 700 12.5px var(--font-ui); color: var(--text-1); text-align: left; }
+.fprev-meter { width: 70px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.fprev-meter i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+.fprev-rank { width: 14px; font: 800 12px var(--font-ui); color: var(--text-3); }
+.fprev-blank { width: 64px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+
+/* The loops. Each starts only once `.is-live` is on the panel. */
+.fprev.is-live .fprev-ring { animation: fpRing 2.2s var(--ease-out) infinite; }
+.fprev.is-live .fprev-ring-2 { animation-delay: 0.28s; }
+@keyframes fpRing { 0% { opacity: 0.9; scale: 0.45; } 40%, 100% { opacity: 0; scale: 2.2; } }
+.fprev.is-live .fprev-toss { animation: fpToss 2.8s var(--ease-out) infinite; }
+@keyframes fpToss { 0%, 15% { translate: 0 0; opacity: 1; } 65%, 100% { translate: 0 -78px; opacity: 0; scale: 0.7; } }
+.fprev.is-live .fprev-fly { animation: fpFly 2.6s var(--ease-out) infinite; }
+@keyframes fpFly { 0%, 10% { translate: 0 0; opacity: 0; } 22% { opacity: 1; } 70%, 100% { translate: 0 -78px; opacity: 0; } }
+.fprev.is-live .fprev-refill { animation: fpRefill 2.8s var(--ease-out) infinite; }
+@keyframes fpRefill { 0%, 100% { opacity: 0.25; translate: 0 6px; } 30%, 80% { opacity: 1; translate: 0 0; } }
+.fprev.is-live .fprev-row.is-bot { animation: fpRow 3s var(--ease-out) infinite; animation-delay: calc(var(--i) * 0.18s); }
+@keyframes fpRow { 0%, 100% { opacity: 0.55; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .fprev * { animation: none !important; }
+  .fprev-ring { opacity: 0.6; }
+  .fprev-chip { opacity: 1; translate: 0 -78px; }
+}
+.reduce-motion .fprev * { animation: none !important; }
+
+/* ---------- FAQ ---------- */
+.faq {
+  display: grid; gap: 28px; padding: clamp(56px, 9vw, 104px) 0 0;
+  scroll-margin-top: 72px;
+}
+@media (min-width: 900px) { .faq { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; } }
+.faq-intro .lead { max-width: 38ch; }
+.faq-dev-note {
+  margin: 18px 0 0; padding: 12px 14px; border-radius: var(--r-s); max-width: 44ch;
+  background: rgba(74, 168, 232, 0.08); border: 1px solid rgba(74, 168, 232, 0.28);
+  color: var(--text-2); font-size: 13.5px; line-height: 1.55;
+}
+.faq-list { border-top: 1px solid var(--line); }
+.faq-item { border-bottom: 1px solid var(--line); }
+.faq-item.is-notice { background: rgba(74, 168, 232, 0.05); }
+.faq-q-wrap { margin: 0; }
+.faq-q {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  width: 100%; min-height: 64px; padding: 16px 4px;
+  background: none; border: 0; cursor: pointer; text-align: left;
+  font: 700 16px/1.35 var(--font-ui); color: var(--text-1);
+}
+.faq-q:hover { color: var(--gold-hi); }
+.faq-q:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--gold); border-radius: var(--r-s); }
+/* A plus that turns into a cross: the vertical bar folds down to the
+   horizontal as the item opens, and the disc fills. */
+.faq-toggle {
+  position: relative; flex: none; width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid var(--line-2); transition: background-color 0.2s, border-color 0.2s, rotate 0.25s var(--ease-out);
+}
+.faq-toggle i { position: absolute; left: 50%; top: 50%; width: 12px; height: 2px; margin: -1px 0 0 -6px; border-radius: 2px; background: var(--text-1); }
+.faq-toggle i:nth-child(2) { rotate: 90deg; }
+.faq-item.is-open .faq-toggle { rotate: 45deg; background: var(--gold); border-color: var(--gold); }
+.faq-item.is-open .faq-toggle i { background: #2a1c05; }
+.faq-a { padding: 0 4px 20px; }
+.faq-a p { margin: 0; max-width: 62ch; color: var(--text-2); font-size: 15px; line-height: 1.65; }
+.faq-item.is-open .faq-a { animation: faqOpen 0.25s var(--ease-out); }
+@keyframes faqOpen { from { opacity: 0; translate: 0 -6px; } }
+@media (prefers-reduced-motion: reduce) {
+  .faq-toggle { transition: none; }
+  .faq-item.is-open .faq-a { animation: none; }
+}
+.reduce-motion .faq-item.is-open .faq-a { animation: none; }
+
+.lp-steps .lp-step p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
+.lp-steps { padding-top: clamp(32px, 6vw, 64px); }
+
+/* ---------- The lobby's settings page, flattened ----------
+   It was three boxes deep - the page's panel, then a bordered tray for the
+   nav, then another bordered box for the content - each with its own
+   padding, so the settings themselves sat a long way in from the edge they
+   belonged to. Now there is one container: the nav is a column inside it,
+   divided off by a single rule, and the content is the rest of it.
+
+   Scoped to .page-settings throughout. The table's own settings sheet, drawn
+   by the renderer, uses the same .set-* classes and is left as it is. */
+.page-settings .panel { padding: 0; overflow: hidden; }
+.page-settings .set-split { grid-template-columns: 232px minmax(0, 1fr); gap: 0; align-items: stretch; }
+.page-settings .set-nav {
+  gap: 2px; padding: 16px 12px;
+  background: rgba(0, 0, 0, 0.14); border: 0; border-radius: 0;
+  border-right: 1px solid var(--line);
+}
+.page-settings .set-nav-head { padding: 14px 10px 6px; }
+.page-settings .set-nav-head:first-child { padding-top: 4px; }
+
+/* Each item: an icon, a name, and a line saying what is inside. */
+.page-settings .set-tab { align-items: flex-start; gap: 11px; padding: 10px 12px; border-radius: var(--r-s); }
+.page-settings .set-tab .icon { width: 17px; height: 17px; margin-top: 1px; }
+.page-settings .set-tab-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; }
+.set-tab-hint { font: 500 11.5px var(--font-ui); color: var(--text-3); }
+.page-settings .set-tab.is-on .set-tab-hint { color: rgba(247, 213, 138, 0.7); }
+
+.page-settings .set-pane {
+  min-height: 340px; padding: 26px 30px 30px;
+  background: none; border: 0; border-radius: 0;
+}
+.page-settings .set-panel { gap: 18px; }
+.page-settings .set-lede { font-size: 19px; }
+.page-settings .set-lede + .set-note { margin-top: -12px; }
+.page-settings .set-note { font-size: 13.5px; max-width: 60ch; }
+
+/* Switches as a list: one row each, a rule between them, and the whole row
+   is the control - easier to hit, and easier to read down. */
+.page-settings .switch-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  margin: 0; padding: 14px 0; border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+.page-settings .switch-row:last-of-type { border-bottom: 1px solid var(--line); }
+.page-settings .switch-row > span { order: -1; font: 600 14.5px var(--font-ui); color: var(--text-1); }
+.page-settings .switch-row small { font-weight: 500; }
+.page-settings .switch-row input[type='checkbox'] { margin: 0; flex: none; }
+
+/* Narrower: the nav becomes a strip across the top, divided from the content
+   by a rule underneath rather than one down the side. */
+@media (max-width: 640px) {
+  .page-settings .set-split { grid-template-columns: minmax(0, 1fr); }
+  /* Icons only, four equal shares across the strip. The heading of the
+     panel underneath says which section you are on. */
+  .page-settings .set-nav { padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .page-settings .set-tab {
+    flex: 1 1 0; min-width: 0; min-height: 44px; align-items: center; justify-content: center; padding: 10px 6px;
+  }
+  .page-settings .set-tab .icon { width: 19px; height: 19px; margin: 0; }
+  /* The name is hidden from the eye and kept for the ear: `display: none`
+     would take the button's accessible name with it, and a screen reader
+     would announce four unnamed buttons. */
+  .page-settings .set-tab-label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+  .page-settings .set-tab { position: relative; }
+  .set-tab-hint { display: none; }
+  .page-settings .set-pane { min-height: 0; padding: 20px 18px 22px; }
+  .page-settings .set-lede { font-size: 17px; }
 }

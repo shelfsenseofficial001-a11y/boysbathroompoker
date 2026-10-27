@@ -19,7 +19,10 @@ const props = defineProps({
   variant: {
     type: String,
     default: 'default',
-    validator: (v) => ['default', 'primary', 'ghost'].includes(v),
+    // `danger` is the one that takes something away - signing out, leaving a
+    // seat. It already exists as .btn-danger for the table's own confirm
+    // sheets; this lets a component ask for it by name rather than by class.
+    validator: (v) => ['default', 'primary', 'ghost', 'danger'].includes(v),
   },
   // .btn-sm (34px), the default (42px), .btn-lg (52px, full width).
   size: {

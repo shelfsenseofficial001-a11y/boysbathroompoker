@@ -1,21 +1,33 @@
 <script setup>
-// The front door for somebody who has never been here.
+// The front page, for everybody: a visitor, a guest, or somebody with an
+// account. What changes between them is the two buttons, not the page.
 //
-// Everything on it is driven by features.js - order, headings, tags, which
-// sections exist at all - so shipping a feature is one word changed there
-// rather than a hunt through this file.
+// Driven by data throughout - features.js for the feature grid and the three
+// steps, faq.mjs for the questions - so shipping a feature is one word
+// changed there rather than a hunt through this file.
 //
 // The page is careful about one thing above all: it never says a feature
-// works when it does not. Unbuilt work is shown, because it is worth knowing
-// where this is going, but it is tagged in words, written in the future
-// tense, and not clickable. The hero's buttons and the three steps describe
+// works when it does not. Unbuilt work is shown, tagged in words and written
+// in the future tense. The hero, its buttons and the three steps describe
 // only what works today.
-import { computed, onMounted } from 'vue';
-import { GROUPS, STEPS, byGroup, hasUnbuilt } from './features.js';
+import { computed, onMounted, defineAsyncComponent, h } from 'vue';
+import { FEATURES, STEPS, hasUnbuilt } from './features.js';
 import { useAuth } from '../../composables/useAuth.js';
+import { useAnimations } from '../../composables/useAnimations.js';
 import FeatureVisual from './FeatureVisual.vue';
+import FaqSection from './FaqSection.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
+
+// The demo table is the heaviest thing on the page and the only part of it
+// that runs a loop, so it is split into its own chunk. The hero's words and
+// buttons are in this one and render on the first frame; the table's frame
+// holds its shape until the real thing arrives, so nothing jumps.
+const DemoTable = defineAsyncComponent({
+  loader: () => import('./DemoTable.vue'),
+  loadingComponent: { render: () => h('div', { class: 'demo demo-placeholder', 'aria-hidden': 'true' }) },
+  delay: 0,
+});
 
 const props = defineProps({
   user: { type: Object, default: null },
@@ -26,16 +38,11 @@ const emit = defineEmits(['guest', 'auth', 'lobby', 'settings']);
 
 const auth = useAuth();
 const signedIn = computed(() => !!props.user || auth.signedIn.value);
-
-// Sections alternate which side the drawing sits on, so four groups of the
-// same shape do not read as one long list.
-const sections = computed(() =>
-  GROUPS.map((group, i) => ({ ...group, items: byGroup(group.id), flip: i % 2 === 1 }))
-);
+const { enabled: animOn, toggle: toggleAnim } = useAnimations();
 
 const TITLE = 'CCPoker — play-money Texas Hold’em with friends';
 const META =
-  'Free play-money Texas Hold’em. Host a private table or join with a room code, ' +
+  'Free play-money No-Limit Texas Hold’em. Host a private table or join with a room code, ' +
   'drag chips to bet and throw your cards in to fold. Chips only — no real money, ever.';
 
 onMounted(() => {
@@ -48,26 +55,39 @@ onMounted(() => {
   }
   tag.setAttribute('content', META);
 });
+
+const TRUST = ['No real money', 'Fresh chips every table', 'Play as a guest'];
+
+// The section anchors the bar links to. Kept as a lookup rather than
+// written into the grid, so the grid stays a plain list of features.
+const ANCHOR = { 'no-money': 'free', 'double-tap-check': 'hands-on', rooms: 'your-way', leaderboards: 'compete' };
 </script>
 
 <template>
   <div class="landing">
     <main class="landing-main">
-      <!-- ---------- Hero ---------- -->
+      <!-- ---------- Hero ----------
+           Words on the left, the table on the right - and the words first
+           in the document too, so a phone reads the headline and the
+           buttons before the table. -->
       <section class="lp-hero" aria-labelledby="lp-hero-h">
         <div class="lp-hero-say">
-          <p class="eyebrow">Play-money Texas Hold’em</p>
-          <h1 id="lp-hero-h" class="display lp-h1">
-            Poker with your friends. Chips only, no real money, ever.
+          <div class="lp-eyebrow-row">
+            <p class="lp-eyebrow">Play-money Texas Hold’em</p>
+            <span class="lp-dev-badge">Early access · In development</span>
+          </div>
+          <h1 id="lp-hero-h" class="lp-h1">
+            Poker with friends, for <mark class="lp-mark">chips</mark> only.
           </h1>
-          <p class="lead">
-            Host a table in one tap, send the code, and play it out. The chips are counters for
-            keeping score and nothing else.
+          <p class="lead lp-hero-lead">
+            Host a table in one tap, send the code, and play it out with your hands — drag chips
+            in to bet, throw your cards in to fold. No real money, ever.
           </p>
 
           <div class="lp-cta">
             <template v-if="signedIn">
               <BaseButton variant="primary" size="lg" @click="emit('lobby')">Go to lobby</BaseButton>
+              <BaseButton size="lg" @click="emit('settings')">Open settings</BaseButton>
             </template>
             <template v-else>
               <BaseButton variant="primary" size="lg" :disabled="busy" @click="emit('guest')">
@@ -76,84 +96,84 @@ onMounted(() => {
               <BaseButton size="lg" @click="emit('auth', 'signup')">Sign up</BaseButton>
             </template>
           </div>
-          <p class="lp-support">No deposits. No cashouts. Just chips.</p>
           <p v-if="error" class="error-text" role="alert">{{ error }}</p>
+
+          <ul class="lp-trust">
+            <li v-for="t in TRUST" :key="t"><span class="lp-tick" aria-hidden="true">&#10003;</span>{{ t }}</li>
+          </ul>
         </div>
 
-        <!-- A table, drawn rather than rendered: this is a picture of the
-             idea, and it never touches the real table code. -->
-        <div class="lp-hero-art" aria-hidden="true">
-          <svg viewBox="0 0 320 240" class="lp-table">
-            <ellipse cx="160" cy="124" rx="140" ry="92" class="lp-felt-rim" />
-            <ellipse cx="160" cy="120" rx="130" ry="84" class="lp-felt" />
-            <ellipse cx="160" cy="120" rx="104" ry="62" class="lp-felt-line" />
-            <g class="lp-board">
-              <rect v-for="n in 5" :key="n" :x="86 + (n - 1) * 30" y="100" width="24" height="34"
-                rx="4" class="lp-card" />
-            </g>
-            <g class="lp-potchips">
-              <ellipse v-for="n in 4" :key="n" cx="160" :cy="160 - (n - 1) * 6" rx="22" ry="7"
-                class="lp-chip" :class="{ 'lp-chip-gold': n === 4 }" />
-            </g>
-            <g class="lp-hole">
-              <rect x="40" y="166" width="26" height="36" rx="4" class="lp-card lp-card-mine"
-                transform="rotate(-10 53 184)" />
-              <rect x="62" y="166" width="26" height="36" rx="4" class="lp-card lp-card-mine"
-                transform="rotate(7 75 184)" />
-            </g>
-            <g class="lp-seats">
-              <circle v-for="n in 5" :key="n" :cx="160 + Math.cos((n / 5) * Math.PI * 2 - 1.57) * 128"
-                :cy="120 + Math.sin((n / 5) * Math.PI * 2 - 1.57) * 80" r="13" class="lp-seat" />
-            </g>
-          </svg>
+        <div class="lp-hero-art">
+          <DemoTable />
         </div>
       </section>
 
       <!-- ---------- How it works ---------- -->
-      <section class="lp-steps" aria-labelledby="lp-steps-h">
-        <h2 id="lp-steps-h" class="h2">How it works</h2>
+      <section id="how" class="lp-steps" aria-labelledby="lp-steps-h">
+        <p class="lp-eyebrow">How it works</p>
+        <h2 id="lp-steps-h" class="lp-section-h">Three steps to the <mark class="lp-mark">felt.</mark></h2>
         <ol class="lp-step-row">
           <li v-for="step in STEPS" :key="step.n" class="lp-step">
             <span class="lp-step-n" aria-hidden="true">{{ step.n }}</span>
             <h3 class="lp-step-t">{{ step.title }}</h3>
-            <p class="set-note">{{ step.description }}</p>
+            <p>{{ step.description }}</p>
           </li>
         </ol>
       </section>
 
       <!-- ---------- Features ---------- -->
-      <p v-if="hasUnbuilt" class="lp-dev-note">Some features are still in development.</p>
+      <section id="features" class="lp-features" aria-labelledby="lp-feat-h">
+        <div class="lp-features-head">
+          <div>
+            <p class="lp-eyebrow">Features</p>
+            <h2 id="lp-feat-h" class="lp-section-h">
+              Everything at the table.<br />Nothing at <mark class="lp-mark">stake.</mark>
+            </h2>
+            <p class="lead lp-features-lede">
+              A table you play with your hands, rooms for strangers or friends, and bots to
+              practise on.<template v-if="hasUnbuilt"> Some features are still in development.</template>
+            </p>
+          </div>
+          <!-- One switch for every moving thing on this page: the demo table
+               and the loop on each card below. -->
+          <button
+            type="button"
+            role="switch"
+            class="lp-anim-switch"
+            :aria-checked="String(animOn)"
+            @click="toggleAnim"
+          >
+            <span>Animations</span>
+            <span class="lp-anim-track" aria-hidden="true"><i /></span>
+          </button>
+        </div>
 
-      <section
-        v-for="section in sections"
-        :id="section.id"
-        :key="section.id"
-        class="lp-group"
-        :class="{ 'is-flipped': section.flip }"
-        :aria-labelledby="`lp-${section.id}-h`"
-      >
-        <h2 :id="`lp-${section.id}-h`" class="h2 lp-group-h">{{ section.title }}</h2>
-        <p class="lead lp-group-lede">{{ section.lede }}</p>
-
-        <ul class="lp-feats">
-          <li v-for="feature in section.items" :key="feature.id" class="lp-feat"
-            :class="{ 'is-soon': feature.status === 'soon' }">
-            <FeatureVisual :id="feature.id" class="lp-feat-art" />
-            <div class="lp-feat-say">
-              <h3 class="lp-feat-t">
-                {{ feature.title }}
-                <!-- Words, not a colour: a tag nobody can read is not a tag. -->
-                <span v-if="feature.status === 'soon'" class="lp-soon">Coming soon</span>
+        <ul class="lp-grid">
+          <li
+            v-for="f in FEATURES"
+            :id="ANCHOR[f.id]"
+            :key="f.id"
+            class="lp-card"
+            :class="{ 'is-soon': f.status === 'soon' }"
+          >
+            <div class="lp-card-panel"><FeatureVisual :id="f.id" :soon="f.status === 'soon'" /></div>
+            <div class="lp-card-say">
+              <h3 class="lp-card-t">
+                {{ f.title }}
+                <span v-if="f.status === 'soon'" class="lp-soon">Coming soon</span>
               </h3>
-              <p class="set-note">{{ feature.description }}</p>
+              <p>{{ f.description }}</p>
             </div>
           </li>
         </ul>
       </section>
 
+      <!-- ---------- FAQ ---------- -->
+      <FaqSection />
+
       <!-- ---------- Closing ---------- -->
       <section class="lp-close" aria-labelledby="lp-close-h">
-        <h2 id="lp-close-h" class="h2">Pull up a chair.</h2>
+        <h2 id="lp-close-h" class="lp-section-h">Pull up a <mark class="lp-mark">chair.</mark></h2>
         <p class="lead">It takes one tap, and it costs nothing, because there is nothing to pay.</p>
         <div class="lp-cta lp-cta-mid">
           <template v-if="signedIn">

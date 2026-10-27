@@ -41,6 +41,9 @@ const ingameName = ref('');
 const password = ref('');
 const confirm = ref('');
 const busy = ref(false);
+// Told apart from `busy` so the guest button can say what it is doing
+// without the form's own button changing its label too.
+const guesting = ref(false);
 const formError = ref('');
 const sentTo = ref(''); // set if an account somehow lands on a confirmation
 const fieldErrors = ref({});
@@ -170,13 +173,17 @@ async function continueAsGuest() {
   if (busy.value) return;
   formError.value = '';
   busy.value = true;
+  guesting.value = true;
   try {
     await auth.continueAsGuest();
     emit('done');
-  } catch (err) {
-    formError.value = err.message;
+  } catch {
+    // The sheet stays open and the reason stays general: whatever went wrong,
+    // it is nothing the player typed and nothing they can act on.
+    formError.value = 'Guest access is unavailable right now';
   } finally {
     busy.value = false;
+    guesting.value = false;
   }
 }
 
@@ -200,10 +207,15 @@ watch(
   (next) => switchTo(next === 'signup' ? 'signup' : 'login')
 );
 
-// Escape or the backdrop on the first-visit prompt. There is nothing to
-// close to, so it resolves to the choice most people want.
+// Escape or the backdrop. On the first-visit prompt there is nothing to
+// close to - the sheet is the only thing on screen that can be answered - so
+// it resolves to the choice most people want. Anywhere else it just closes.
+//
+// Keyed on `closable` rather than on `showGuest`: the guest button is offered
+// on every sheet now, and Escape on an ordinary sheet should not quietly sign
+// somebody in as a guest.
 function onDismiss() {
-  if (props.showGuest) return continueAsGuest();
+  if (!props.closable) return continueAsGuest();
   emit('close');
 }
 </script>
@@ -308,15 +320,18 @@ function onDismiss() {
 
       <template v-if="showGuest">
         <div class="auth-or"><span>or</span></div>
+        <!-- No fields, no validation: this is the way in for somebody who
+             does not want to fill a form, so an empty or half-typed username
+             above must not stand in its way. -->
         <BaseButton size="lg" :disabled="busy" @click="continueAsGuest">
-          <SvgIcon name="eye" />Continue as guest
+          <SvgIcon name="eye" />{{ guesting ? 'Dealing you in…' : 'Continue as guest' }}
         </BaseButton>
         <p class="help-text auth-guest-note">
           A guest account is made for you. It lasts as long as this browser remembers it.
         </p>
       </template>
 
-      <div v-else class="auth-switch">
+      <div v-if="closable" class="auth-switch">
         {{ isSignup ? 'Already have an account?' : 'New here?' }}
         <button type="button" class="link" @click="switchTo(isSignup ? 'login' : 'signup')">
           {{ isSignup ? 'Log in' : 'Create an account' }}

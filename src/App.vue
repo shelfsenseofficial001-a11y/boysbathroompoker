@@ -5,7 +5,7 @@
 // Identity is a guest account and nothing else in this pass: an anonymous
 // Supabase session where the server is set up for it, the server's own
 // per-tab guest naming where it isn't. There is no login screen to route to.
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { api } from './lib/api.js';
 import { getSocket, setGuestName, setTokenSource, emitAck } from './lib/socket.js';
 import { supabaseConfigured } from './lib/supabase.js';
@@ -72,36 +72,78 @@ const barUser = computed(() => {
   return { id: null, username: auth.displayName.value || 'You' };
 });
 
+// What the account control offers. A guest and an account get the same
+// shape - somewhere to play, something about them, their settings, and a way
+// out - with the one difference being that a guest's "something about them"
+// is the offer to become somebody.
 const menuGroups = computed(() => {
   if (!barUser.value) return [];
-  const account = [];
-  if (supabaseConfigured && auth.isGuest.value) {
-    account.push({ id: 'signup', icon: 'key', label: 'Keep this account' });
-    account.push({ id: 'login', icon: 'key', label: 'Log in', mobileOnly: true });
-    account.push({ id: 'stay', icon: 'eye', label: 'Continue as guest', mobileOnly: true });
-  }
+  const guest = auth.isGuest.value;
   return [
-    [{ id: 'settings', icon: 'gear', label: 'Settings' }, ...account],
+    [
+      { id: 'lobby', icon: 'trophy', label: 'Go to lobby' },
+      guest
+        ? { id: 'signup', icon: 'key', label: 'Create account' }
+        : { id: 'profile', icon: 'key', label: 'Profile' },
+      { id: 'settings', icon: 'gear', label: 'Settings' },
+    ],
     [
       {
         id: 'logout',
         icon: 'leave',
-        label: auth.hasAccount.value ? 'Log out' : 'New guest',
+        label: guest ? 'Leave guest session' : 'Log out',
         danger: true,
       },
     ],
   ];
 });
 
-function onMenuPick(id) {
+async function onMenuPick(id) {
   if (id === 'logout') return logout();
   if (id === 'signup') return openAuth('signup');
   if (id === 'login') return openAuth('login');
-  if (id === 'stay') return; // already a guest; the menu closing is the answer
-  if (id === 'settings') {
-    if (view.value === 'lobby') return lobby.value?.showPage('settings');
-    return openAuth('login');
+  if (id === 'lobby') return goLobby();
+  // Settings and Profile are both pages of the lobby, so getting there is
+  // the same move twice: go to the lobby, then open the page.
+  if (id === 'settings' || id === 'profile') {
+    if (!user.value && !auth.signedIn.value) return openAuth('login');
+    if (view.value !== 'lobby') {
+      view.value = 'lobby';
+      await nextTick();
+    }
+    return lobby.value?.showPage('settings', id === 'profile' ? 'profile' : null);
   }
+}
+
+// The mark in the bar, clicked. Where "/" goes depends on who is reading it:
+// the landing page for somebody signed out, the lobby for somebody who is in.
+//
+// Already there means already there: scroll to the top and change nothing.
+// Re-running boot to land on the screen you are looking at is the "appears to
+// load but never arrives" the old full-page link produced.
+function goHome() {
+  const destination = 'home';
+  if (view.value === destination) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  notice.value = '';
+  view.value = destination;
+  try {
+    history.replaceState(null, '', '/');
+  } catch {
+    // A sandboxed frame. The view has changed either way.
+  }
+  window.scrollTo({ top: 0 });
+}
+
+// The lobby, asked for rather than arrived at: from the hero, the closing
+// band, or the account menu.
+function goLobby() {
+  if (!user.value && !auth.signedIn.value) return openAuth('login');
+  notice.value = '';
+  view.value = 'lobby';
+  window.scrollTo({ top: 0 });
 }
 
 // A rename from the avatar menu. The bar reads `user.username` and the avatar
@@ -113,11 +155,33 @@ const hold = (ms) => new Promise((r) => setTimeout(r, ms));
 const authTab = ref('login');
 const authGuest = ref(false);
 
+// `authGuest` means "this is the first-visit prompt": it cannot be dismissed
+// without an answer. It does NOT mean "offer to play as a guest" - that offer
+// belongs on every sheet shown to somebody who is not signed in, which is
+// what `showGuestOption` below decides. Conflating the two is why the guest
+// button vanished from every sheet opened from the top bar.
 function openAuth(mode = 'login') {
   authTab.value = mode;
   authGuest.value = false;
   authOpen.value = true;
 }
+
+// Playing as a guest is offered to anyone who has not already taken a seat.
+// Somebody signed in is never shown this sheet at all.
+const showGuestOption = computed(() => supabaseConfigured && !auth.signedIn.value);
+
+// The landing page is the only screen long enough to need its own contents
+// listing. The lobby is one page and the table is a game; neither has
+// anywhere for a link in the bar to go.
+const LANDING_LINKS = [
+  { href: '#how', label: 'How it works' },
+  { href: '#features', label: 'Features' },
+  { href: '#faq', label: 'FAQ' },
+];
+const barLinks = computed(() => {
+  if (view.value !== 'home' && view.value !== 'boot') return [];
+  return LANDING_LINKS;
+});
 const user = ref(null); // { id, username } - the server's own record
 const guest = ref(false);
 const roomCode = ref(null);
@@ -268,7 +332,11 @@ async function enter() {
       return;
     }
     if (invite) return followInvite(invite);
-    view.value = 'lobby';
+    // The front page, whoever is reading it. Signing in used to land here in
+    // the lobby, which made "/" mean one thing for a visitor and another for
+    // a player; now it is the same page for everybody and the lobby is
+    // somewhere you choose to go.
+    view.value = 'home';
   } catch (err) {
     bootError.value = err.message;
     view.value = 'blocked';
@@ -447,8 +515,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
       :menu-groups="menuGroups"
       :show-auth="showAuth"
       :loading="booting"
+      :links="barLinks"
       @pick="onMenuPick"
       @auth="openAuth"
+      @home="goHome"
+      @guest="playAsGuest"
       @renamed="onRenamed"
     />
 
@@ -494,8 +565,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
     :error="landingError"
     @auth="openAuth"
     @guest="playAsGuest"
-    @lobby="playAsGuest"
-    @settings="openAuth('login')"
+    @lobby="goLobby"
+    @settings="onMenuPick('settings')"
   />
 
     <LobbyScreen
@@ -531,7 +602,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
       :show-feature-links="view === 'home' || view === 'boot'"
       @auth="openAuth"
       @guest="playAsGuest"
-      @lobby="view === 'home' ? playAsGuest() : lobby?.showPage('main')"
+      @lobby="goLobby"
       @settings="onMenuPick('settings')"
     />
   </div>
@@ -543,7 +614,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', dropSocket));
 
   <AuthModal
     v-if="authOpen && !transit"
-    :show-guest="authGuest"
+    :show-guest="showGuestOption"
     :closable="!authGuest"
     :initial-tab="authTab"
     @done="onAuthed"

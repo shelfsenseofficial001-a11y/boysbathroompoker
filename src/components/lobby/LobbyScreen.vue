@@ -32,10 +32,14 @@ const page = ref('main');
 const error = ref('');
 const screen = ref(null);
 const joinForm = ref(null);
+const settings = ref(null);
 
-async function showPage(name) {
+// `tab` lets the caller land on a particular settings section - the account
+// menu's "Profile" is Settings opened at Profile, not a page of its own.
+async function showPage(name, tab = null) {
   page.value = name;
   await nextTick();
+  if (tab) settings.value?.showTab(tab);
   window.scrollTo({ top: 0 });
 }
 
@@ -94,6 +98,7 @@ onMounted(() => playEntrance(screen.value));
 
     <SettingsPage
       v-if="page === 'settings'"
+      ref="settings"
       :user="user"
       @back="showPage('main')"
       @auth="emit('auth', $event)"

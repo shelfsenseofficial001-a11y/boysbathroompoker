@@ -57,6 +57,7 @@ const year = new Date().getFullYear();
             <li><a class="link" href="#hands-on">The table</a></li>
             <li><a class="link" href="#your-way">Rooms and bots</a></li>
             <li><a class="link" href="#compete">Compete</a></li>
+            <li><a class="link" href="#faq">FAQ</a></li>
           </ul>
         </div>
 
@@ -76,7 +77,7 @@ const year = new Date().getFullYear();
 
     <div class="foot-bar">
       <p>© {{ year }} CCPoker</p>
-      <p class="foot-note">Chips only. No real money.</p>
+      <p class="foot-note">In development. Chips only. No real money.</p>
     </div>
   </footer>
 </template>
