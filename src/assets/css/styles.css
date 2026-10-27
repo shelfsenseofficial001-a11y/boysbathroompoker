@@ -182,7 +182,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .btn-primary {
   background: linear-gradient(180deg, var(--gold-hi), var(--gold));
   color: #2a1c05;
-  box-shadow: 0 6px 18px rgba(230, 180, 80, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  /* No coloured halo under it. The gold is bright enough against this
+     background to carry the emphasis on its own, and a glow around every
+     primary button reads as a light leak rather than as weight. The inset
+     highlight stays: that is the top edge catching the light, which is what
+     gives the button its shape. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .btn-ghost { background: transparent; border-color: var(--line-2); color: var(--text-2); }
 .btn-ghost:hover:not(:disabled) { color: var(--text-1); border-color: rgba(255, 255, 255, 0.28); }
@@ -3903,9 +3908,13 @@ html { scroll-behavior: smooth; }
      out with space-between, so an emptied-but-present `.topbar-user` still
      counts as a child and the burger gets spaced into the middle between it
      and the mark. `margin-left: auto` then holds the button against the
-     right edge whatever else is or is not in the bar. */
-  .topbar-user { display: none; }
-  .topbar-burger { margin-left: auto; }
+     right edge whatever else is or is not in the bar.
+     Scoped to the shell's own bar. The table renderer draws a second bar
+     with these same class names, and it carries the only way out of a room -
+     hiding its right-hand group left a player sealed in with no Leave button
+     and no account menu, because that bar has no drawer to move them into. */
+  .app-shell > .topbar .topbar-user { display: none; }
+  .app-shell > .topbar .topbar-burger { margin-left: auto; }
 }
 
 /* The drawer itself. Above the bar (50), below the auth sheet (200). */
