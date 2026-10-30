@@ -7,6 +7,7 @@ import { cardBackSVG, feltSVG, feltTheme } from './svg/themes.js';
 import { chipSVG, chipStackSVG, breakdown, chipSet } from './svg/chips.js';
 import { feltLogoSVG, dealerButtonSVG, turnRingSVG } from './svg/table.js';
 import { avatarSVG } from './svg/avatars.js';
+import { avatarFor, lookupAvatars, onAvatars } from './avatars.js';
 import { icons } from './svg/icons.js';
 import { motionReduced, toggleMotion, resumeEntrance, ENTRANCE_MS } from './motion.js';
 import { play, soundMuted, toggleSound } from './sound.js';
@@ -99,6 +100,21 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+
+// The face on a nameplate: the player's own picture where there is one, and
+// the drawn-from-the-name one otherwise.
+//
+// `handle` is the account the seat belongs to, which the server puts on each
+// seat; a bot has none, and neither does a guest, and both land on the
+// generated face the table has always used. The picture itself is never
+// waited for - see src/lib/avatars.js.
+function faceHTML(name, handle) {
+  const url = avatarFor(handle);
+  if (!url) return avatarSVG(name);
+  // alt is empty on purpose: the name is written beside it, and a screen
+  // reader announcing it twice is worse than not announcing the picture.
+  return `<img class="avatar-photo" src="${esc(url)}" alt="" loading="lazy" decoding="async">`;
+}
 
 function describeAction(a) {
   if (!a) return null;
@@ -265,6 +281,20 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   socket.on('chatHistory', onChatHistory);
   socket.on('handHistory', onHandHistory);
   socket.on('connect', resync);
+  // A picture arriving after the seats were drawn. Only fires when one of
+  // them actually has a face to put up, so a table of players with no
+  // pictures redraws nothing.
+  const stopAvatars = onAvatars(() => {
+    if (!shown) return;
+    // Whichever screen is up. This used to redraw the table and only the
+    // table, which meant the waiting room - the one screen a player reaches
+    // before any picture has been asked for - drew its faces once, from an
+    // empty cache, and kept the generated ones until something else happened
+    // to redraw it. The first thing you see after making a room was the one
+    // place this never worked.
+    if (mode === 'waiting') drawWaiting(shown);
+    else if (mode === 'table') drawTable(null, shown);
+  });
   const clock = setInterval(tickClock, 200);
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
@@ -292,6 +322,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     socket.off('chatHistory', onChatHistory);
     socket.off('handHistory', onHandHistory);
     socket.off('connect', resync);
+    stopAvatars();
     clearInterval(clock);
     timers.forEach(clearTimeout);
     window.removeEventListener('resize', onResize);
@@ -1473,22 +1504,36 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     ]);
     others.delete(user.id);
     const n = others.size;
+    // Who the room could pass to, counted the same way the server counts it
+    // (Room.voters): people, not bots. A host leaving a table of bots is the
+    // last one out and closes it; a host leaving people hands it on.
+    const heirs = new Set([
+      ...cur.lobby.filter((p) => !p.isBot && p.userId > 0).map((p) => p.userId),
+      ...cur.table.seats.filter((p) => p && !p.isBot && !p.left && p.userId > 0).map((p) => p.userId),
+    ]);
+    heirs.delete(user.id);
+    // The only case that still ends the room: nobody left to give it to.
+    const closing = host && heirs.size === 0;
     const mid = cur.table.phase !== 'waiting';
     return `<div class="sheet sheet-ask" role="dialog" aria-modal="true" aria-label="Leave the room">
       ${sheetX}
       <div class="sheet-crown is-bust">${icons.leave}</div>
-      <h2 class="sheet-title">${host ? 'Close the room?' : 'Leave the room?'}</h2>
+      <h2 class="sheet-title">${closing ? 'Close the room?' : 'Leave the room?'}</h2>
       <p class="sheet-sub">${
-        host
-          ? `You're the host, so leaving ends the room for everyone${
-              n ? ` — ${n} other player${n === 1 ? '' : 's'} will be sent back to the lobby` : ''
-            }. This can't be undone.`
-          : mid
-            ? 'Your chips stay on the table and the hand carries on without you.'
-            : 'You can rejoin later with the room code.'
+        closing
+          ? `You're the last one here${
+              n ? ' apart from the bots' : ''
+            }, so leaving closes the room. This can't be undone.`
+          : host
+            ? `The room passes to ${
+                heirs.size === 1 ? 'the other player' : 'one of the other players'
+              }, and the game carries on without you.`
+            : mid
+              ? 'Your chips stay on the table and the hand carries on without you.'
+              : 'You can rejoin later with the room code.'
       }</p>
       <div class="sheet-actions">
-        <button class="btn ${host ? 'btn-danger' : 'btn-primary'} btn-lg" data-ov="leave-yes">${host ? 'Close the room' : 'Leave'}</button>
+        <button class="btn ${closing ? 'btn-danger' : 'btn-primary'} btn-lg" data-ov="leave-yes">${closing ? 'Close the room' : 'Leave'}</button>
         <button class="btn btn-ghost" data-ov="leave-no">Stay</button>
       </div>
     </div>`;
@@ -1672,6 +1717,15 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   function onRoomState(payload) {
     if (payload.code !== roomCode) return;
     latest = payload;
+    // Faces for whoever is sitting down. Asked for once per handle and
+    // cached; nothing here waits on the answer, and the seats redraw if one
+    // arrives (see the onAvatars subscription below).
+    lookupAvatars([
+      ...(payload.table?.seats || []).map((p) => p && p.handle),
+      // The waiting room lists people before anyone has a seat, so their
+      // handles come from the lobby as well.
+      ...(payload.lobby || []).map((p) => p && p.handle),
+    ]);
     if (payload.turn) {
       turnTotal = payload.turn.totalMs;
       turnEndsAt = performance.now() + payload.turn.remainingMs;
@@ -1771,6 +1825,19 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // Shared top bar
   // ---------------------------------------------------------------------------
   // `page` lines the bar's contents up with the column of content beneath it.
+  // The player's own picture, for the bar at the top of the table.
+  //
+  // Taken from whichever list they are in - the lobby before the deal, a seat
+  // after it - because that is where the server puts their account handle,
+  // and the handle is what a picture is looked up by. Null until one is
+  // known, which is the generated face, which is what the bar drew before any
+  // of this existed.
+  function myFace() {
+    const inLobby = (shown?.lobby || []).find((p) => p.userId === user.id);
+    const seat = (shown?.table?.seats || []).find((p) => p && p.userId === user.id);
+    return avatarFor(inLobby?.handle || seat?.handle || null);
+  }
+
   // The table itself is full-bleed, so its bar stays full width too.
   function topbarHTML(t, { page = false } = {}) {
     return `<header class="topbar${page ? ' topbar-page' : ''}">
@@ -1787,7 +1854,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
       <div class="topbar-user">
-        ${userMenuHTML(user, TOPBAR_MENU)}
+        ${userMenuHTML(user, TOPBAR_MENU, myFace())}
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
     </header>`;
@@ -1817,6 +1884,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     });
     wireUserMenu(root, user, {
       groups: TOPBAR_MENU,
+      picture: myFace(),
       onPick: (id) => {
         if (id === 'settings') {
           askingSettings = true;
@@ -1944,7 +2012,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <ul class="player-list">
             ${state.lobby.map((p) => `
               <li class="player-row${p.isBot ? ' is-bot' : ''}">
-                <span class="avatar-sm">${p.isBot ? icons.robot : avatarSVG(p.username)}</span>
+                <span class="avatar-sm">${p.isBot ? icons.robot : faceHTML(p.username, p.handle)}</span>
                 <span class="pname">${esc(p.username)}${p.isBot ? `<span class="badge bot ${levelClass(p.botLevel)}">${esc(levelLabel(p.botLevel))}</span>` : ''}${p.userId === state.hostUserId ? `<span class="mark is-owner" title="Room owner" aria-label="Room owner" role="img">${icons.key}</span>` : ''}${p.userId === user.id ? '<span class="badge you">You</span>' : ''}</span>
                 <span class="buyin">
                   <span class="amt">${fmt(p.buyIn)}</span>
@@ -3316,8 +3384,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         // the menu rather than on the whole of it.
         : p.userId === ctx.hostUserId
           ? ''
+          // Vote kick is only offered where a vote would mean something. Under
+          // three people the server refuses it (Room.canVoteKick), and an
+          // option that is always refused is worse than no option: it reads
+          // as broken rather than as not applicable. The host can still
+          // remove anyone from their own room.
           : `${isHost ? `<button data-make-host="${p.userId}">${icons.key}Make room owner</button>` : ''}
-             <button data-vote-kick="${p.userId}">Vote kick</button>`;
+             ${ctx.canVoteKick ? `<button data-vote-kick="${p.userId}">Vote kick</button>` : ''}`;
 
     const items = `${profileItem}${others}`;
     if (!items.trim()) return '';
@@ -3364,7 +3437,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     let html = `<div class="${groupCls}" style="left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}">
       ${L.isMe ? '' : handHTML(p, L, ctx)}
       <div class="${cls}" data-seat="${p.seat}">
-      <div class="avatar">${avatarSVG(p.username)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
+      <div class="avatar">${faceHTML(p.username, p.handle)}${p.isBot ? `<span class="bot-mark">${icons.robot}</span>` : ''}${ring}</div>
       <div class="who"><span class="name-row"><span class="name">${esc(p.username)}</span>${marksHTML(p, ctx)}</span><span class="amt">${fmt(p.chips)}</span></div>
       ${stack}
       ${betTray}

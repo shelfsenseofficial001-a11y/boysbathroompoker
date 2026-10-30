@@ -284,6 +284,19 @@ watch(() => props.username, load);
               <SvgIcon :name="row.net_chips >= 0 ? 'raise' : 'fold'" />
               {{ row.net_chips > 0 ? '+' : '' }}{{ grouped(row.net_chips) }}
             </span>
+            <!-- What the match was played for, on a line of its own rather
+                 than as two more columns: the row already carries four, and
+                 a phone folds it to two. Matches finished before these were
+                 recorded simply have no second line. -->
+            <span v-if="row.small_blind || row.start_stack" class="prof-game-meta">
+              <template v-if="row.small_blind">
+                Blinds {{ grouped(row.small_blind) }}/{{ grouped(row.big_blind) }}
+              </template>
+              <template v-if="row.small_blind && row.start_stack"> · </template>
+              <template v-if="row.start_stack">
+                Started with {{ grouped(row.start_stack) }}
+              </template>
+            </span>
           </li>
         </ol>
 

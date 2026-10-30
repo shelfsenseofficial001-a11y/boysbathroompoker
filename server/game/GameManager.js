@@ -137,6 +137,21 @@ class Room {
     return Math.floor(this.voters(targetUserId).size / 2) + 1;
   }
 
+  // Whether a vote is a vote at all.
+  //
+  // Below three people it isn't. With two, the target is excluded from their
+  // own vote, which leaves an electorate of one and a majority of one: the
+  // other player removes them on their own say-so, and calling that a vote
+  // dresses up something nobody agreed to. Under three it is the host's job
+  // - they can already remove anyone from their own room - and the control
+  // is taken off the table rather than left there to be refused.
+  //
+  // Bots are not counted. They cannot vote and cannot be voted out, so a
+  // table of two people and four bots is still two people.
+  canVoteKick() {
+    return this.voters().size >= Room.VOTEKICK_MIN;
+  }
+
   recordHand(summary) {
     if (!summary?.winners?.length) return;
     const at = this.handLog.findIndex((h) => h.handNumber === summary.handNumber);
@@ -291,22 +306,66 @@ class GameManager {
 
     for (const p of room.table.seats) {
       if (!p || p.isBot) continue; // bots have no account row to record against
-      const info = room.lobby.get(p.userId);
-      const result = {
-        gameId: room.gameId,
+      const result = this.resultFor(room, p, {
         matchId,
-        startStack: info?.buyIn || 0,
-        endStack: p.chips,
         placement: placeOf.get(p.userId) || null,
-        mode: room.isPrivate ? 'Private' : 'Casual',
-        hands: room.table.handNumber || 0,
         endedAt,
-      };
+      });
       if (onGuestResult?.(p.userId, result)) continue; // held for the session, not stored
       db.recordGameResult(room.gameId, p.userId, result);
     }
     db.endGame(room.gameId);
     room.gameId = null;
+  }
+
+  // One seat's match, as a row. Shared by the two things that produce one -
+  // a match ending, and a player leaving one - so a record cannot depend on
+  // which way the player left the table.
+  resultFor(room, p, { matchId, placement, endedAt }) {
+    const info = room.lobby.get(p.userId);
+    return {
+      gameId: room.gameId,
+      matchId,
+      startStack: info?.buyIn || 0,
+      endStack: p.chips,
+      placement,
+      mode: room.isPrivate ? 'Private' : 'Casual',
+      hands: room.table.handNumber || 0,
+      smallBlind: room.table.smallBlind,
+      bigBlind: room.table.bigBlind,
+      endedAt,
+    };
+  }
+
+  // A player walking out of a match that is still running.
+  //
+  // Their chips are counted where they stand and the row is written now,
+  // rather than at a finish they will not be present for. Leaving a match
+  // used to record nothing at all: a player who sat down, won, and left was
+  // a player who had never played.
+  //
+  // The match carries on, so `gameId` is left alone and `db.endGame` is not
+  // called. The row is written under the same `matchId` the finish would
+  // use, which is what makes this safe to do twice: the unique index on
+  // (user_id, match_id) means if the match later ends with their seat still
+  // in the list, that second write is ignored and this one - taken when they
+  // actually left - is the one that stands.
+  //
+  // Returns true if anything was recorded or buffered.
+  recordDeparture(room, userId, { onGuestResult } = {}) {
+    if (!room.gameId) return false; // nothing running: no match to leave
+    const p = room.table.seats.find((s) => s && s.userId === userId);
+    if (!p || p.isBot) return false; // never sat down, or isn't a person
+    const result = this.resultFor(room, p, {
+      matchId: `g${room.gameId}`,
+      // They left; they did not place. Where they would have finished is not
+      // knowable, and guessing it from the current stacks would record a
+      // position in a match that went on without them.
+      placement: null,
+      endedAt: new Date().toISOString(),
+    });
+    if (onGuestResult?.(userId, result)) return true;
+    return !!db.recordGameResult(room.gameId, userId, result);
   }
 
   removeRoom(code) {
@@ -315,6 +374,8 @@ class GameManager {
 }
 
 Room.CHAT_MAX = 80;
+// Fewest people at a table for a vote to mean anything. See canVoteKick.
+Room.VOTEKICK_MIN = 3;
 // Matching the sidebar's own ceiling on the client.
 Room.HANDS_MAX = 60;
 

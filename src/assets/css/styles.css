@@ -328,6 +328,10 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .shut-say h1 { margin: 0 0 10px; }
 .shut-say .help-text { margin-top: 12px; }
+/* The way out of the dead end. `.btn-lg` is full width by default, which on a
+   centred column of text reads as a banner rather than a button, so it is
+   given its own width and centred under the sentence that explains it. */
+.shut-say .btn { width: auto; margin: 18px auto 0; padding-inline: 28px; }
 .reduce-motion .shut-seat { animation: none; }
 
 /* ---------- Signing in and out ----------
@@ -912,6 +916,11 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .player-row .avatar-sm { width: 34px; height: 34px; flex: none; }
 .player-row .avatar-sm svg { width: 100%; height: 100%; }
+/* The same circle, holding an uploaded picture instead of a drawn one. */
+.player-row .avatar-sm .avatar-photo {
+  width: 100%; height: 100%; display: block;
+  border-radius: 50%; object-fit: cover; background: var(--bg-3);
+}
 .player-row .pname { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge {
   display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px;
@@ -2023,6 +2032,14 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .pod .avatar { position: relative; width: 2.9em; height: 2.9em; flex: none; }
 .pod .avatar > svg:first-child { width: 100%; height: 100%; display: block; }
+/* A player's own picture, in the circle the drawn one occupies. `cover` so a
+   portrait that isn't square fills the plate rather than letterboxing in it,
+   and the same ring the generated faces carry sits over the top of it. */
+.pod .avatar > .avatar-photo {
+  width: 100%; height: 100%; display: block;
+  border-radius: 50%; object-fit: cover;
+  background: var(--bg-3);
+}
 .pod .bot-mark {
   position: absolute; right: -0.15em; bottom: -0.15em; width: 1.3em; height: 1.3em;
   display: grid; place-items: center; border-radius: 50%;
@@ -3859,7 +3876,21 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .topbar-link {
   display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
   border-radius: 999px; white-space: nowrap;
-  font: 600 13.5px var(--font-ui); color: var(--text-2); text-decoration: none;
+  /* Longhands rather than the `font` shorthand. Two shapes wear this class -
+     an anchor for the pages with an address, a button for the lobby, which
+     has none - and the shorthand was reaching only one of them, leaving
+     "Lobby" a size larger and a weight lighter than every link beside it.
+     A button does not inherit font the way an anchor does, so it has to be
+     told, and told in a form that cannot be dropped. */
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-2);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
   transition: color 0.15s, background-color 0.15s;
 }
 .topbar-link:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.05); }
@@ -4631,6 +4662,13 @@ html { scroll-behavior: smooth; }
 .prof-game-net .icon { width: 12px; height: 12px; }
 .prof-game-net.is-up { color: var(--green); }
 .prof-game-net.is-down { color: var(--red); }
+/* The stakes and the stack, under the row rather than beside it. Spanning
+   every column so it reads as a note on the match above it, and so the four
+   columns up there keep the widths they were laid out with. */
+.prof-game-meta {
+  grid-column: 1 / -1; margin-top: 2px;
+  color: var(--text-3); font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+}
 
 .prof-none { text-align: center; padding: 34px 24px; }
 .prof-none-title { margin: 0 0 8px; font-family: var(--font-display); font-size: 26px; color: var(--text-1); }
@@ -4726,11 +4764,14 @@ html { scroll-behavior: smooth; }
 
 /* ---------- The bar's links, on every page ---------- */
 /* The lobby has no address of its own - it is a view this app switches to -
-   so its link is a button. It has to be indistinguishable from the anchors
-   beside it, which is the whole of what this rule does. */
-.topbar-nav button.topbar-link {
-  border: 0; background: none; font: inherit; cursor: pointer;
-}
+   so its link is a button, and it has to be indistinguishable from the
+   anchors beside it.
+
+   That is now done where the links themselves are described, rather than
+   here. This rule used to carry `font: inherit`, which beat `.topbar-link`
+   on specificity and handed the button the body's font instead of the bar's:
+   "Lobby" came out a size larger and a weight lighter than every link next
+   to it, which is the one thing this rule exists to prevent. */
 /* The page being read, said twice over: gold, and a rule under it. Colour
    alone would leave it unmarked for anyone who cannot tell gold from grey,
    and `aria-current="page"` says it a third time for a screen reader. */

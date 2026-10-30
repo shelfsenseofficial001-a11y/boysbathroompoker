@@ -236,6 +236,56 @@
   .umenu .only-sm { display: none; }
 }
 
+/* ---------- The bottom tray ---------- */
+/* Phone and tablet only: above this the top bar has room to show everything
+ * and a second navigation would be two answers to the same question. The
+ * component is only mounted on the page screens, so it is never over the
+ * table - the betting dock owns the foot of that one. */
+.bottom-nav { display: none; }
+
+@media (max-width: 1024px) {
+  .bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40; /* over the page, under the drawer (50) and any sheet (200) */
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    background: rgba(6, 12, 9, 0.96);
+    border-top: 1px solid var(--line-2);
+    /* The home indicator on a phone sits where a tap target would otherwise
+     * be, so the bar keeps its own height and adds the inset underneath. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 56px;
+    padding: 8px 4px;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--text-3);
+    font: 700 10.5px var(--font-ui);
+    letter-spacing: 0.04em;
+    transition: color 0.15s;
+  }
+  .bottom-nav-item .icon { width: 19px; height: 19px; }
+  .bottom-nav-item:hover { color: var(--text-2); }
+  .bottom-nav-item.is-on { color: var(--gold-hi); }
+  .bottom-nav-item:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+
+  /* Room for it. Without this the tray sits on top of the last panel on the
+   * page, and on the lobby that is the one with the Join buttons in it. */
+  .screen:has(.bottom-nav) .page,
+  .screen:has(.bottom-nav) .site-footer { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+
 /* ---------- Ultra-wide ---------- */
 /* The page screens cap themselves at --page-w, so the lobby never stretches.
  * The table is the one that spreads: its panels are capped at 300px and

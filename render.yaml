@@ -48,16 +48,25 @@ services:
         sync: false
       - key: SUPABASE_JWT_SECRET
         sync: false
+      # On the disk below rather than in the service's own filesystem, which
+      # is rebuilt from the image on every restart and redeploy.
+      - key: DB_FILE
+        value: /var/data/poker.db
 
-# The free plan has no persistent disk, so data/poker.db is rebuilt whenever the
-# service restarts or redeploys. That costs nothing in guest mode, where the
-# database only holds throwaway guest rows and finished-hand records — live
-# tables live in memory either way.
-#
-# On a paid instance, attach a disk and point the database at it by adding a
-# DB_FILE env var of /var/data/poker.db alongside:
-#
-#    disk:
-#      name: poker-data
-#      mountPath: /var/data
-#      sizeGB: 1
+    # Where the database actually lives.
+    #
+    # This used to be a comment explaining that the free plan has no disk and
+    # that losing data/poker.db cost nothing - true when the database held
+    # only throwaway guest rows and finished hands nobody read. It stopped
+    # being true when profiles grew a match history: `game_results` is what
+    # the stats pages are drawn from, so a restart wiping it is a player
+    # watching their record reset for no reason they can see.
+    #
+    # A disk needs a paid instance. `plan` above is the free one, and a
+    # blueprint asking for a disk on it is refused - so moving to a disk means
+    # moving off free, deliberately, which is why the plan line is left as it
+    # is for you to change rather than changed here.
+    disk:
+      name: poker-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -181,12 +181,19 @@ function attachSockets(io, sessionMiddleware) {
   // per-seat version of this was nine row reads multiplied by the size of the
   // room, several times a hand, to answer a question whose answer is the same
   // for all of them.
+  // The account handle for everyone in the room, seated or still waiting.
+  //
+  // The waiting room lists people before any of them has a seat, and it draws
+  // their faces - so the lobby has to be walked too, or a player's picture
+  // appears only once the cards are out.
   function handlesFor(room) {
     const handles = new Map();
-    for (const p of room.table.seats) {
-      if (!p || p.isBot || handles.has(p.userId)) continue;
-      handles.set(p.userId, db.getUserById(p.userId)?.handle || null);
-    }
+    const remember = (userId, isBot) => {
+      if (isBot || userId <= 0 || handles.has(userId)) return;
+      handles.set(userId, db.getUserById(userId)?.handle || null);
+    };
+    for (const p of room.table.seats) if (p) remember(p.userId, p.isBot);
+    for (const [userId, info] of room.lobby) remember(userId, info.isBot);
     return handles;
   }
 
@@ -226,7 +233,14 @@ function attachSockets(io, sessionMiddleware) {
       const payload = {
         code: room.code,
         hostUserId: room.hostUserId,
-        lobby: [...room.lobby.entries()].map(([uid, info]) => ({ userId: uid, ...info })),
+        lobby: [...room.lobby.entries()].map(([uid, info]) => ({
+          userId: uid,
+          ...info,
+          // So the waiting room can draw their picture, the same way a seat
+          // does. Null for bots and for guests, who have no account to have
+          // uploaded one.
+          handle: handles.get(uid) || null,
+        })),
         table: withHandles(room.table.getPublicState(userId), handles),
         // Only the people who played it are shown a game's result: someone
         // who walked in afterwards has no stake in a hand they never saw.
@@ -241,6 +255,10 @@ function attachSockets(io, sessionMiddleware) {
         // them to take if they are.
         watching: room.spectators.has(userId),
         seatsFree: Math.max(0, room.table.maxSeats - room.seatHolders()),
+        // Whether a vote to remove somebody is on offer at all. Sent rather
+        // than worked out again on the client, so the control on screen and
+        // the rule in the handler cannot drift apart.
+        canVoteKick: room.canVoteKick(),
         // Only the host is asked to answer the door, so only the host is told
         // who is standing at it.
         knocks: userId === room.hostUserId
@@ -970,6 +988,12 @@ function attachSockets(io, sessionMiddleware) {
       // The room belongs to the host: voting them out would leave everyone in
       // a table nobody can manage.
       if (target === room.hostUserId) return ack?.({ ok: false, error: 'The host can’t be voted out of their own room.' });
+      // Below three people a vote is one player removing another unopposed.
+      // The control is hidden on the client at the same threshold; this is
+      // the half that cannot be clicked past.
+      if (!room.canVoteKick()) {
+        return ack?.({ ok: false, error: 'A vote needs three players. Ask the host to remove them.' });
+      }
       if (!room.voters(target).has(userId)) return ack?.({ ok: false, error: 'You can’t vote here.' });
 
       let votes = room.kickVotes.get(target);
@@ -1254,12 +1278,41 @@ function attachSockets(io, sessionMiddleware) {
     socket.on('leaveRoom', (_payload, ack) => {
       const room = roomFor(userId);
       if (room) {
-        // The host owns the room: when they walk, it goes with them rather
-        // than leaving everyone in a table nobody can start or manage.
+        // The host leaving used to take the room with them. It doesn't any
+        // more: a table mid-hand is other people's game too, and ending it
+        // because one person walked away is the host's departure costing
+        // everybody else theirs.
+        //
+        // So the room changes hands instead. `voters` is the right list to
+        // draw from without building another one - humans, seated or waiting,
+        // never bots, never the person leaving - and the pick is random
+        // because any rule (longest seated, biggest stack) would be a rule
+        // players could work, and none of them is fairer than a draw.
+        //
+        // Only when there is nobody left to hand it to does the room close.
         if (room.hostUserId === userId) {
-          closeRoom(room, 'The host left, so the room was closed.');
-          return ack?.({ ok: true });
+          const heirs = [...room.voters(userId)];
+          if (!heirs.length) {
+            closeRoom(room, 'The host left, so the room was closed.');
+            return ack?.({ ok: true });
+          }
+          const heir = heirs[Math.floor(Math.random() * heirs.length)];
+          const seat = room.table.seats.find((p) => p && p.userId === heir && !p.left);
+          const heirName = room.lobby.get(heir)?.username || seat?.username || 'Player';
+          const leaving = nameOf();
+          room.hostUserId = heir;
+          room.hostUsername = heirName;
+          // The owner can't be voted out, so any vote already running against
+          // them stops the moment the room becomes theirs.
+          room.kickVotes.delete(heir);
+          room.keepVotes.delete(heir);
+          announce(room, `${leaving} left. ${heirName} is the room owner now.`, [heir]);
+          tell(heir, `${leaving} left, so the room is yours now.`);
         }
+        // Their chips, counted where they stand, before the seat is given up
+        // and there is nothing left to count. A match they walked out of is
+        // still a match they played. Does nothing when no match is running.
+        manager.recordDeparture(room, userId, { onGuestResult: bufferGuestResult });
         const who = nameOf();
         room.spectators.delete(userId);
         room.kickVotes.delete(userId); // no vote survives its target leaving

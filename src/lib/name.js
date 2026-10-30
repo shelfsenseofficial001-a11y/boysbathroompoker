@@ -19,11 +19,14 @@ export function userPillHTML(user) {
 // The same pill, but it opens a menu. `groups` is a list of lists: each inner
 // list is a block of items with a rule drawn between blocks, so related
 // things sit together. An item is { id, icon, label, danger? }.
-export function userMenuHTML(user, groups = []) {
-  return `<div class="user-menu">${menuInnerHTML(user, groups)}</div>`;
+// `picture` is the player's uploaded avatar, where they have one. Without it
+// the pill draws the face generated from their name, which is what every
+// guest and anybody who never uploaded one gets.
+export function userMenuHTML(user, groups = [], picture = null) {
+  return `<div class="user-menu">${menuInnerHTML(user, groups, picture)}</div>`;
 }
 
-function menuInnerHTML(user, groups) {
+function menuInnerHTML(user, groups, picture = null) {
   // An item with an `href` is drawn as a real link, which is the only way
   // middle-click, long-press and "open in new tab" work on it. The table's
   // own menu uses that for the profile page: a player in the middle of a
@@ -39,7 +42,7 @@ function menuInnerHTML(user, groups) {
         </button>`;
   const blocks = [[{ id: 'rename', icon: icons.pencil, label: 'Change name' }], ...groups];
   return `<button class="user-pill" data-user-menu aria-haspopup="menu" aria-expanded="false" title="Your account">
-      ${avatarSVG(user.username)}<span class="user-name">${esc(user.username)}</span>${icons.chevronDown}
+      ${picture ? `<img class="user-face" src="${esc(picture)}" alt="">` : avatarSVG(user.username)}<span class="user-name">${esc(user.username)}</span>${icons.chevronDown}
     </button>
     <div class="umenu" role="menu" hidden>
       ${blocks.map((g) => `<div class="umenu-group">${g.map(item).join('')}</div>`).join('')}
@@ -49,7 +52,7 @@ function menuInnerHTML(user, groups) {
 // `onPick(id)` is called for every item but 'rename', which is handled here.
 // `groups` has to match what the markup was built with, so the menu can be
 // put back after a rename.
-export function wireUserMenu(root, user, { groups = [], onPick, onRenamed } = {}) {
+export function wireUserMenu(root, user, { groups = [], picture = null, onPick, onRenamed } = {}) {
   const wrap = root.querySelector('.user-menu');
   if (!wrap) return;
   const pill = wrap.querySelector('[data-user-menu]');
@@ -79,7 +82,7 @@ export function wireUserMenu(root, user, { groups = [], onPick, onRenamed } = {}
     // Put the whole menu back once the name is settled, rather than trying to
     // patch the one label: the avatar is drawn from the name too.
     editName(wrap, pill, user, (name) => {
-      wrap.innerHTML = menuInnerHTML(user, groups);
+      wrap.innerHTML = menuInnerHTML(user, groups, picture);
       wireUserMenu(root, user, { groups, onPick, onRenamed });
       if (name) onRenamed?.(name);
     });

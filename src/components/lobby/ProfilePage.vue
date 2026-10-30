@@ -20,6 +20,7 @@ import {
 } from '../../lib/accountRules.mjs';
 import { checkBio, normalizeBio, bioRemaining, BIO_MAX, initialsFrom } from '../../../shared/profileFields.mjs';
 import { uploadAvatar, removeAvatar, squareWebp } from '../../lib/avatar.js';
+import { forgetAvatar } from '../../lib/avatars.js';
 import { avatarSVG } from '../../lib/svg/avatars.js';
 import BaseButton from '../ui/BaseButton.vue';
 import TextField from '../ui/TextField.vue';
@@ -191,6 +192,9 @@ async function dropAvatar() {
     clearPick();
     await auth.saveProfileExtras({ avatar_url: null });
     await removeAvatar(auth.userId.value);
+    // As in saveLook: the table has to be told to ask again, or it keeps
+    // drawing the picture that has just been taken down.
+    forgetAvatar(saved.value.username);
     lookNote.value = 'Picture removed.';
   } catch (err) {
     lookError.value = err.message;
@@ -219,6 +223,11 @@ async function saveLook() {
     if (previewFile.value) patch.avatar_url = await uploadAvatar(auth.userId.value, previewFile.value);
     if (bioChanged.value) patch.bio = normalizeBio(bio.value);
     await auth.saveProfileExtras(patch);
+    // The table caches faces by handle and asks once, so a picture changed
+    // while sitting at one would not show until the page was reloaded.
+    // Forgetting it here is what makes the new one appear on the nameplate
+    // without leaving the seat.
+    if (patch.avatar_url) forgetAvatar(saved.value.username);
     clearPick();
     lookNote.value = 'Saved.';
   } catch (err) {

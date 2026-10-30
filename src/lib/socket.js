@@ -5,7 +5,7 @@ import { guestSessionId } from './guestSession.js';
 let socket = null;
 let guestName = null;
 let getToken = null;
-let profileName = null;
+let getName = null;
 
 // In guest mode (SKIP_AUTH) the socket identifies itself by a per-tab name
 // instead of the session cookie, so several tabs can be different players.
@@ -13,12 +13,39 @@ export function setGuestName(name) {
   guestName = name;
 }
 
-// The Supabase guest's access token. A getter rather than the token itself,
-// because the handshake is rebuilt on every reconnect and the token it needs
-// then is the refreshed one, not the one that was current at boot.
-export function setTokenSource(fn, name = null) {
-  getToken = fn;
-  profileName = name;
+// The Supabase account's access token and display name.
+//
+// Both are getters rather than values, and the name being a value is what
+// made a guest's name follow somebody into their account. The server reads
+// the handshake name only when it first creates a players row, so whatever
+// is sent on that one connection is the name they are stuck with - and a
+// name captured here at sign-in was captured before the new profile had
+// loaded, which meant sending the previous one. Read at connect instead, so
+// it is whoever the session belongs to by then.
+export function setTokenSource(tokenFn, nameFn = null) {
+  getToken = tokenFn;
+  getName = typeof nameFn === 'function' ? nameFn : () => nameFn;
+}
+
+// Throw the connection away so the next getSocket builds a new one.
+//
+// For the retry on the shut screen. A socket whose server went away keeps
+// trying on its own and then gives up, and once it has given up, asking it
+// again achieves nothing - which is what made "Try again" look as broken as
+// the thing it was offering to fix. A fresh socket means a fresh handshake,
+// with whatever token is current by then.
+//
+// Only safe where nothing is listening on the old one, which on the shut
+// screen is the case: there is no table mounted behind it.
+export function resetSocket() {
+  if (!socket) return;
+  try {
+    socket.removeAllListeners();
+    socket.disconnect();
+  } catch {
+    // Already gone; the point is only that the next call builds another.
+  }
+  socket = null;
 }
 
 export function getSocket() {
@@ -33,7 +60,8 @@ export function getSocket() {
           payload.token = token;
           // The name to show. Verified against the same rule as a rename on
           // the server, which does not take it on trust.
-          if (profileName) payload.name = profileName;
+          const name = getName?.();
+          if (name) payload.name = name;
         }
         if (guestName) payload.guestName = guestName;
         // Which browser session this is, so a guest's finished matches can be

@@ -7,7 +7,7 @@
 // per-tab guest naming where it isn't. There is no login screen to route to.
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { api } from './lib/api.js';
-import { getSocket, setGuestName, setTokenSource, emitAck } from './lib/socket.js';
+import { getSocket, setGuestName, setTokenSource, emitAck, resetSocket } from './lib/socket.js';
 import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
@@ -17,6 +17,7 @@ import LobbyScreen from './components/lobby/LobbyScreen.vue';
 import TableScreen from './components/table/TableScreen.vue';
 import RoomGoneScreen from './components/screens/RoomGoneScreen.vue';
 import AuthModal from './components/auth/AuthModal.vue';
+import BottomNav from './components/layout/BottomNav.vue';
 import LandingPage from './components/landing/LandingPage.vue';
 import ProfileView from './components/profile/ProfileView.vue';
 import TopBar from './components/layout/TopBar.vue';
@@ -27,6 +28,20 @@ import SvgIcon from './components/ui/SvgIcon.vue';
 const auth = useAuth();
 
 const view = ref('boot'); // boot | home | lobby | table | profile | gone | blocked
+
+// Why the door is shut. Two very different things used to wear the same
+// sentence: a server that offers no way to sign in at all, and a server that
+// offers one and then doesn't answer. The first is a configuration someone
+// has to change; the second is usually a process that stopped, and the right
+// response to it is to try again.
+const blockedKind = ref('no-accounts'); // 'no-accounts' | 'no-answer'
+const retrying = ref(false);
+
+function blockFor(kind, detail = '') {
+  blockedKind.value = kind;
+  bootError.value = detail;
+  view.value = 'blocked';
+}
 
 // Whose profile is being read, from /u/<name>. The one address in this app
 // that is a path rather than a query string, because a profile is the one
@@ -128,7 +143,13 @@ const menuGroups = computed(() => {
   ];
 });
 
-async function onMenuPick(id) {
+// `from` is where to return to when the page being opened is closed. Only
+// Settings uses it; everything else here is a destination rather than a
+// detour.
+// `tab` is which section of Settings to open on. "Edit profile" means the
+// profile tab, not whatever Settings happens to open on by default - which
+// is Appearance, and is not what anybody pressing "Edit profile" is after.
+async function onMenuPick(id, from = null, tab = null) {
   if (id === 'logout') return logout();
   if (id === 'signup') return openAuth('signup');
   if (id === 'login') return openAuth('login');
@@ -144,12 +165,41 @@ async function onMenuPick(id) {
   // the same move twice: go to the lobby, then open the page.
   if (id === 'settings') {
     if (!user.value && !auth.signedIn.value) return openAuth('login');
+    // Where to send them when they press back. Captured before the view
+    // changes, because afterwards there is nothing left to say where they
+    // came from.
+    const origin = from || (view.value === 'profile' && profileName.value
+      ? { view: 'profile', handle: profileName.value }
+      : null);
     if (view.value !== 'lobby') {
       view.value = 'lobby';
       await nextTick();
     }
-    return lobby.value?.showPage('settings', null);
+    return lobby.value?.showPage('settings', tab, origin);
   }
+}
+
+// Which page the lobby is showing. Settings lives inside the lobby view, so
+// the view alone cannot say which of the two is on screen - and the bottom
+// tray has to light the right one.
+const lobbyPage = ref('main');
+
+const navActive = computed(() => {
+  if (view.value === 'profile') return 'profile';
+  if (view.value === 'lobby') return lobbyPage.value === 'settings' ? 'settings' : 'lobby';
+  return '';
+});
+
+// Never over the table: the betting dock owns the foot of that screen. And
+// nothing to offer somebody who has not arrived yet.
+const showBottomNav = computed(
+  () => !!barUser.value && ['home', 'lobby', 'profile'].includes(view.value)
+);
+
+// The back button on a lobby page, when the way back is out of the lobby.
+function onBackTo(origin) {
+  if (origin?.view === 'profile' && origin.handle) return openProfile(origin.handle);
+  goLobby();
 }
 
 // The mark in the bar, clicked. Where "/" goes depends on who is reading it:
@@ -176,10 +226,16 @@ function goHome() {
 
 // The lobby, asked for rather than arrived at: from the hero, the closing
 // band, or the account menu.
-function goLobby() {
+async function goLobby() {
   if (!user.value && !auth.signedIn.value) return openAuth('login');
   notice.value = '';
   view.value = 'lobby';
+  // Settings is a page *inside* the lobby view, so setting the view alone
+  // does nothing when you are already on it - which is why "Go to lobby"
+  // from Settings used to leave you sitting on Settings. Arriving at the
+  // lobby has to put the lobby back on its own front page too.
+  await nextTick();
+  lobby.value?.showPage('main');
   window.scrollTo({ top: 0 });
 }
 
@@ -229,7 +285,15 @@ const BAR_LINKS = [
   { id: 'features', label: 'Features', href: '#features', section: 'features' },
   { id: 'faq', label: 'FAQ', href: '#faq', section: 'faq' },
 ];
-const barLinks = computed(() => BAR_LINKS);
+// The three section links point at parts of the landing page. Anywhere else
+// they point at nothing: in the lobby they were four-fifths of the bar, all
+// of it leaving the page you were on, and "FAQ" beside "Lobby" reads as a
+// page of the app rather than a paragraph on another one.
+const barLinks = computed(() =>
+  view.value === 'home' || view.value === 'boot'
+    ? BAR_LINKS
+    : BAR_LINKS.filter((link) => !link.section)
+);
 
 // Which of them is the page being read. The three section links answer this
 // for themselves - they are lit by what is on screen, not by the view - so
@@ -313,15 +377,21 @@ async function boot() {
   // on the way in. Identity resolves underneath it and only decides the bar.
   if (profileName.value) view.value = 'profile';
 
+  // Whether anything answered. A server that is down fails here first, and
+  // that is the difference between "no accounts offered" and "no reply".
+  let serverAnswered = true;
   const config = await fetch('/api/config')
     .then((r) => r.json())
-    .catch(() => ({}));
+    .catch(() => {
+      serverAnswered = false;
+      return {};
+    });
 
   // An account, or a guest one, that this server will actually accept.
   if (config.supabaseAuth && supabaseConfigured) {
     await auth.initPromise;
     // Already somebody - an account, or a guest whose session is still good.
-    if (auth.accessToken.value) return signedIn();
+    if (auth.accessToken.value) return signedIn({ announce: takeGreeting() });
     // A signed-out visitor on a profile link stays on it. Everything below
     // is about where to put somebody who arrived at the front door.
     if (profileName.value) return;
@@ -361,7 +431,29 @@ async function boot() {
     await api.me();
     return enter();
   } catch {
-    view.value = 'blocked';
+    blockFor(serverAnswered ? 'no-accounts' : 'no-answer');
+  }
+}
+
+// Going round again, from the shut screen.
+//
+// A reload would also work and is what people did instead, but it throws away
+// the socket's own reconnection - which, by the time somebody has read the
+// screen and reached for the button, has usually already succeeded. This just
+// asks again.
+async function retry() {
+  if (retrying.value) return;
+  retrying.value = true;
+  bootError.value = '';
+  view.value = 'boot';
+  // The old connection is why this screen is up. Left in place it would be
+  // asked again and give the same silence, so it goes and boot builds a new
+  // one - which is the whole difference between this button and a reload.
+  resetSocket();
+  try {
+    await boot();
+  } finally {
+    retrying.value = false;
   }
 }
 
@@ -372,20 +464,28 @@ async function boot() {
 // whether it is still talking to the same player.
 let connectedAs = null;
 
-async function signedIn() {
+// `announce` is for an actual sign-in, as opposed to a session being picked
+// back up on load. Only one of those is news.
+async function signedIn({ announce = false } = {}) {
   hintSignedIn.value = true;
   writeHint(true);
-  transit.value = { mode: 'in', label: 'Dealing you in…' };
-  setTokenSource(() => auth.accessToken.value, auth.displayName.value);
+  setTokenSource(
+    () => auth.accessToken.value,
+    // A getter too: at this moment the profile may still be loading, and the
+    // name that was current a tick ago can be the guest they just stopped
+    // being. See setTokenSource.
+    () => auth.displayName.value
+  );
   connectedAs = auth.userId.value;
   guest.value = auth.isGuest.value;
-  try {
-    // The deal takes about as long as the handshake. Whichever finishes
-    // second decides - so a fast connection still sees the cards land, and a
-    // slow one is never held up by them.
-    await Promise.all([enter(), hold(620)]);
-  } finally {
-    transit.value = null;
+  await enter();
+  // Said in a toast rather than behind a full-screen transition. Signing in
+  // is not a journey: the page it lands on is the page they were already
+  // looking at, and covering it for two thirds of a second to say so made
+  // every login feel like a load - and made a login that then failed look
+  // like the app had hung.
+  if (announce && view.value !== 'blocked') {
+    showToast('Logged in!', { info: true, atPage: true });
   }
 }
 
@@ -396,7 +496,7 @@ async function onAuthed() {
   if (!auth.accessToken.value) return; // signed up, but held at confirmation
   // They answered the sheet from the signed-out homepage, so this is the
   // first identity of the session and the socket has yet to connect at all.
-  if (view.value === 'home' || view.value === 'profile') return signedIn();
+  if (view.value === 'home' || view.value === 'profile') return signedIn({ announce: true });
 
   guest.value = auth.isGuest.value;
   // Upgrading a guest attaches a username to the account they already had, so
@@ -406,7 +506,10 @@ async function onAuthed() {
   // handshake, and this socket's handshake happened while they were still a
   // guest. So it is told, with the new token, and it verifies that for
   // itself before believing any of it.
-  if (auth.userId.value === connectedAs) return creditGuestSession();
+  if (auth.userId.value === connectedAs) {
+    await syncTableName();
+    return creditGuestSession();
+  }
   // A different player entirely. Logging in to an account that already
   // exists is not an upgrade: the guest who played those matches is not this
   // person, so the session's results are dropped rather than handed over.
@@ -414,7 +517,9 @@ async function onAuthed() {
   // guest and then logged in would otherwise go looking for them.
   await discardGuestSession();
   // The socket has to come back as them, which takes the page with it - so
-  // the sentence is left where the next load will find it.
+  // the sentence is left where the next load will find it, and so is the
+  // toast saying the sign-in worked.
+  leaveGreeting();
   location.reload();
 }
 
@@ -428,6 +533,28 @@ async function forgetGuestResultsNow() {
     // Never connected, or already gone. It expires on its own either way.
   }
   forgetGuestSession();
+}
+
+// Signing in as somebody else reloads the page, which would otherwise swallow
+// the toast saying it worked. Left here for the next load to pick up.
+const GREET_KEY = 'bbp-just-signed-in';
+
+function leaveGreeting() {
+  try {
+    sessionStorage.setItem(GREET_KEY, '1');
+  } catch {
+    // Not persisted: they get no toast, which is the smallest thing to lose.
+  }
+}
+
+function takeGreeting() {
+  try {
+    if (sessionStorage.getItem(GREET_KEY) !== '1') return false;
+    sessionStorage.removeItem(GREET_KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const DISCARD_KEY = 'bbp-guest-discarded';
@@ -471,6 +598,28 @@ function sayIfDiscarded() {
 // sends a token and reports what came back, and the one number it trusts is
 // the one the server returned: a client that counted for itself would be
 // claiming a result rather than reading one.
+// The name the table knows them by, brought up to date with the name they
+// just chose.
+//
+// The server names a player once, when it first creates their row, and never
+// again except on a deliberate rename. On the upgrade path that first time
+// was while they were still a guest - same account, same id, same row - so
+// picking a name during sign-up changed the profile and left the table still
+// calling them Guest2144. This is that deliberate rename, made on their
+// behalf at the one moment it is unambiguously what they meant.
+async function syncTableName() {
+  const wanted = auth.displayName.value;
+  if (!wanted || wanted === user.value?.username) return;
+  try {
+    const res = await emitAck('setName', { name: wanted });
+    if (user.value) user.value.username = res.name;
+  } catch {
+    // Refused - most likely somebody at this table already answers to it.
+    // They keep the name they had and can change it from their profile;
+    // interrupting a sign-up over it would be worse than the wrong name.
+  }
+}
+
 async function creditGuestSession() {
   try {
     const res = await emitAck('refreshIdentity', { token: auth.accessToken.value });
@@ -523,8 +672,10 @@ async function enter() {
     // somewhere you choose to go.
     view.value = 'home';
   } catch (err) {
-    bootError.value = err.message;
-    view.value = 'blocked';
+    // Reaching here means identity was settled and the socket still gave
+    // nothing back - a timeout, or a handshake it refused. Either way the
+    // server exists, so this is not "nobody at the door".
+    blockFor('no-answer', err.message);
   }
 }
 
@@ -599,7 +750,7 @@ function landOnHomepage({ toast = '' } = {}) {
   notice.value = '';
   hintSignedIn.value = false;
   writeHint(false);
-  setTokenSource(() => null, null);
+  setTokenSource(() => null, () => null);
   authOpen.value = false;
   view.value = 'home';
   // Replace rather than push: Back should not return to a table they are no
@@ -749,7 +900,27 @@ onBeforeUnmount(() => {
       <span class="shut-seat" v-for="n in 6" :key="n" :style="{ '--i': n - 1 }" />
       <span class="shut-cards"><i /><i /></span>
     </div>
-    <div class="shut-say">
+    <!-- Two different dead ends, which used to share one sentence. One is a
+         server with no way in configured; the other is a server that was
+         there a moment ago and isn't answering now - and that one is worth
+         trying again rather than reloading. -->
+    <div v-if="blockedKind === 'no-answer'" class="shut-say">
+      <span class="kicker">No reply</span>
+      <h1 class="display">The table isn’t answering.</h1>
+      <p class="lead">
+        The page is here, but nothing came back from the game server. It may be restarting, or
+        it may have stopped.
+      </p>
+      <p class="help-text">
+        If you’re running it yourself, check it’s still up — then try again.
+      </p>
+      <p v-if="bootError" class="error-text selectable">{{ bootError }}</p>
+      <button class="btn btn-primary btn-lg" :disabled="retrying" @click="retry">
+        {{ retrying ? 'Trying…' : 'Try again' }}
+      </button>
+    </div>
+
+    <div v-else class="shut-say">
       <span class="kicker">No seats dealt</span>
       <h1 class="display">Nobody at the door.</h1>
       <p class="lead">
@@ -761,6 +932,9 @@ onBeforeUnmount(() => {
         <b class="selectable">SKIP_AUTH=true</b>.
       </p>
       <p v-if="bootError" class="error-text selectable">{{ bootError }}</p>
+      <button class="btn btn-primary btn-lg" :disabled="retrying" @click="retry">
+        {{ retrying ? 'Trying…' : 'Try again' }}
+      </button>
     </div>
   </div>
 
@@ -787,6 +961,8 @@ onBeforeUnmount(() => {
     @enter-room="onEnterRoom"
     @logout="logout"
     @auth="openAuth"
+    @back-to="onBackTo"
+    @page="lobbyPage = $event"
   />
 
     <TableScreen
@@ -806,7 +982,7 @@ onBeforeUnmount(() => {
       :username="profileName"
       @auth="openAuth"
       @home="goHome"
-      @edit="onMenuPick('settings')"
+      @edit="onMenuPick('settings', null, 'profile')"
     />
 
     <RoomGoneScreen
@@ -815,6 +991,15 @@ onBeforeUnmount(() => {
       :user="user"
       :guest="guest"
       @home="view = 'lobby'"
+    />
+
+    <!-- The three places worth a thumb, on a phone or a tablet. Hidden on
+         the table, where the dock owns the bottom of the screen. -->
+    <BottomNav
+      v-if="showBottomNav"
+      :active="navActive"
+      :guest="auth.isGuest.value"
+      @pick="onMenuPick"
     />
 
     <SiteFooter

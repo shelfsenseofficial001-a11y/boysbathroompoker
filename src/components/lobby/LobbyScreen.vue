@@ -20,7 +20,7 @@ const props = defineProps({
   guest: { type: Boolean, default: false },
   notice: { type: String, default: '' },
 });
-const emit = defineEmits(['enter-room', 'logout', 'auth']);
+const emit = defineEmits(['enter-room', 'logout', 'auth', 'back-to', 'page']);
 
 // The avatar menu, the auth buttons and the footer all belong to the app
 // shell now (src/App.vue), so this screen is only the lobby itself.
@@ -36,8 +36,21 @@ const settings = ref(null);
 
 // `tab` lets the caller land on a particular settings section - the account
 // menu's "Profile" is Settings opened at Profile, not a page of its own.
-async function showPage(name, tab = null) {
+// Where the player was before they opened this page, for the back button to
+// return to. Settings is a page of the lobby, so "back" used to mean the
+// lobby's front page and nothing else - which is why opening Settings from a
+// profile and pressing back dropped you in the lobby instead of the profile
+// you came from.
+const cameFrom = ref(null);
+
+async function showPage(name, tab = null, origin = null) {
+  // The front page is where journeys end, not somewhere you arrive from.
+  cameFrom.value = name === 'main' ? null : origin;
   page.value = name;
+  // Said out loud because the shell draws navigation around this - the
+  // bottom tray lights whichever of these is on screen, and it cannot know
+  // from the view alone, since Settings and the lobby are the same view.
+  emit('page', name);
   await nextTick();
   if (tab) settings.value?.showTab(tab);
   window.scrollTo({ top: 0 });
@@ -50,6 +63,17 @@ function onRenamed(name) {
 }
 
 // Called by the app shell, whose avatar menu owns the Settings item now.
+// The back button on a lobby page. It returns to wherever the player opened
+// the page from, which is usually the lobby's front page and is sometimes
+// somewhere outside the lobby entirely - a profile, say, which is a view of
+// its own. The app above knows how to reach those; this only has to say so.
+function leavePage() {
+  const origin = cameFrom.value;
+  cameFrom.value = null;
+  if (origin) return emit('back-to', origin);
+  showPage('main');
+}
+
 defineExpose({ showPage });
 
 function entered({ code, notice }) {
@@ -100,7 +124,7 @@ onMounted(() => playEntrance(screen.value));
       v-if="page === 'settings'"
       ref="settings"
       :user="user"
-      @back="showPage('main')"
+      @back="leavePage()"
       @auth="emit('auth', $event)"
       @logout="emit('logout')"
       @renamed="onRenamed"

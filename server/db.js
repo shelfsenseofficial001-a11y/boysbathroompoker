@@ -101,6 +101,12 @@ addResultCol('net_chips', 'INTEGER');
 addResultCol('placement', 'INTEGER');
 addResultCol('mode', 'TEXT');
 addResultCol('hands', 'INTEGER');
+// The stakes the match was played for. Recorded per result rather than read
+// back off the room, because a room's blinds can be retuned between games and
+// the figure a finished match is listed under has to be the one it was
+// actually played at. Null on rows written before this existed.
+addResultCol('small_blind', 'INTEGER');
+addResultCol('big_blind', 'INTEGER');
 addResultCol('ended_at', 'TEXT');
 // A result credited from a guest session, kept so the profile can say where
 // its oldest games came from. It changes no sum: a credited match counts
@@ -189,8 +195,8 @@ module.exports = {
       .prepare(
         `INSERT OR IGNORE INTO game_results
            (game_id, user_id, buy_in, final_chips, match_id, start_stack, end_stack,
-            net_chips, placement, mode, hands, ended_at, was_guest)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            net_chips, placement, mode, hands, small_blind, big_blind, ended_at, was_guest)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         gameId,
@@ -204,6 +210,8 @@ module.exports = {
         result.placement || null,
         result.mode || null,
         result.hands || 0,
+        result.smallBlind ?? null,
+        result.bigBlind ?? null,
         result.endedAt || new Date().toISOString(),
         result.wasGuest ? 1 : 0
       );
@@ -240,7 +248,8 @@ module.exports = {
     return db
       .prepare(
         `SELECT gr.id, gr.match_id, gr.net_chips, gr.start_stack, gr.end_stack,
-                gr.placement, gr.mode, gr.hands, gr.ended_at, gr.was_guest
+                gr.placement, gr.mode, gr.hands, gr.small_blind, gr.big_blind,
+                gr.ended_at, gr.was_guest
            FROM game_results gr
            JOIN users u ON u.id = gr.user_id
           WHERE u.supabase_id = ?
