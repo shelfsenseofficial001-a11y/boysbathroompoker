@@ -11,7 +11,11 @@ services:
   - type: web
     name: boysbathroompoker
     runtime: node
-    plan: free
+    # Paid, and it has to be: the disk below is what keeps the database - and
+    # so every player's match history - across a restart, and Render offers
+    # no disk on the free plan. Dropping back to `free` means dropping the
+    # disk with it, and stats resetting on every deploy.
+    plan: starter
     # The Vue client is built here; the Node process then serves dist/.
     buildCommand: npm ci && npm run build
     startCommand: npm start
@@ -62,10 +66,8 @@ services:
     # the stats pages are drawn from, so a restart wiping it is a player
     # watching their record reset for no reason they can see.
     #
-    # A disk needs a paid instance. `plan` above is the free one, and a
-    # blueprint asking for a disk on it is refused - so moving to a disk means
-    # moving off free, deliberately, which is why the plan line is left as it
-    # is for you to change rather than changed here.
+    # A disk needs a paid instance, which is why `plan` above is starter
+    # rather than free. The two go together: neither is any use alone.
     disk:
       name: poker-data
       mountPath: /var/data
