@@ -4787,6 +4787,10 @@ html { scroll-behavior: smooth; }
 }
 .prof-head-acts { display: flex; flex-direction: column; gap: 8px; }
 .prof-head-acts .btn { white-space: nowrap; }
+/* The friend button, and the second choice a request comes with. */
+.friend-acts { display: flex; gap: 8px; }
+.friend-acts .btn:only-child,
+.friend-acts .btn:first-child { flex: 1; }
 
 .prof-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .prof-section-title { margin: 0; font: 700 11px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }

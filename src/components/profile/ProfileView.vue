@@ -24,6 +24,7 @@ import { showToast } from '../../lib/toast.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import BaseButton from '../ui/BaseButton.vue';
 import LineGraph from './LineGraph.vue';
+import FriendButton from '../friends/FriendButton.vue';
 
 const props = defineProps({
   // The name out of /u/:username.
@@ -210,6 +211,7 @@ watch(() => props.username, load);
           <p v-if="profile.bio" class="prof-bio">{{ profile.bio }}</p>
         </div>
         <div class="prof-head-acts">
+          <FriendButton v-if="!isOwner" :user-id="profile.id" />
           <BaseButton size="sm" @click="copyLink"><SvgIcon name="copy" />Copy profile link</BaseButton>
           <BaseButton v-if="isOwner" size="sm" variant="ghost" @click="emit('edit')">
             <SvgIcon name="pencil" />Edit profile

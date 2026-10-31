@@ -242,3 +242,35 @@ your matches are kept.
 
 Guest play needs **Anonymous sign-ins** switched on in Supabase — see the
 settings above. It is the default way in, so with it off the front door is shut.
+
+## Friends
+
+`friendships` (migration 0007) holds **one row per pair**, whichever way round
+they met. `user_id` is whoever acted — asked, or blocked — and `friend_id` is
+the other. A unique index on `(least, greatest)` of the two makes "A asked B"
+and "B asked A" the same row, so asking back is accepting.
+
+Both columns reference `profiles`, which is the guest rule enforced rather
+than remembered: a guest has no row there, so a guest cannot friend or be
+friended.
+
+| Status | The asker / blocker sees | The other player sees |
+|---|---|---|
+| `pending` | Request Sent | Accept Request |
+| `accepted` | Friends | Friends |
+| `blocked` | Blocked | nothing — RLS hides the row |
+
+The browser may **read** its own rows and **write none**. Every change is a
+`security definer` function, because each is a rule about the pair that a
+row policy cannot express:
+
+- `send_friend_request(target)` — refused for guests, yourself, anyone without
+  an account, and either side of a block.
+- `accept_friend_request(other)` — only by the player who was asked.
+- `remove_friend(other)` — cancel, decline and unfriend are the same delete.
+  It never touches a block, so the blocked player cannot lift one.
+- `block_user(other)` — replaces a request or friendship and is written as the
+  blocker's. If the other player already blocked you, their block stands.
+
+The reading of a row from each end lives in `shared/friendship.mjs`, tested in
+`tests/friendship.test.js`. There is no unblock yet.
