@@ -2864,6 +2864,12 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
      and sits above the chips and the action row. */
   .dock .sizer {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    /* The 620px cap the sizer wears as a row of the dock - which keeps it
+       from running the whole width of a wide monitor - has no business on a
+       sheet pinned to both edges of a phone. Left on, it stopped the sheet
+       short of the right-hand edge and left a strip of the dock showing
+       through beside it. */
+    width: auto; max-width: none;
     flex-direction: column; align-items: stretch; gap: 14px;
     padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
     background: linear-gradient(180deg, #11201a, #060b09);
@@ -2903,12 +2909,13 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
     .dock .act-raise .act-caret { --caret-w: 17px; right: 4px; top: 7px; bottom: 7px; opacity: 1; }
       .dock .act-raise .act-caret .icon { display: block; width: 12px; height: 12px; }
   }
-  /* Open, the button is the sheet's own heading as much as a way into it:
-     it holds the amount the tick is about to commit. */
-  .dock.sizer-open .act-raise {
-    border-color: var(--gold-hi);
-    box-shadow: 0 0 0 3px rgba(247, 213, 138, 0.35);
-  }
+  /* No halo on it, open or shut. A gold button already reads as the one to
+     press without a glow thrown round it, and under a sheet of its own the
+     glow was light spilling out from behind a panel that is not lit.
+     The open state is the caret turning over and the sheet itself being
+     there, which is plenty to go on. */
+  .dock .act-raise { box-shadow: none; }
+  .dock.sizer-open .act-raise { border-color: var(--gold-hi); }
 }
 
 /* Phone and tablet, after the blocks above have had their say about heights:
