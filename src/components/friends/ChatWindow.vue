@@ -16,7 +16,7 @@ import { useInvite } from '../../composables/useInvite.js';
 import { removeFriend, blockUser } from '../../lib/friends.js';
 import {
   openConversation, loadMessages, sendMessage, sendInvite, markRead,
-  editMessage, unsendMessage, clearConversation,
+  editMessage, unsendMessage, clearConversation, chatExtrasReady,
   watchConversation, PAGE_SIZE,
 } from '../../lib/chat.js';
 import { threadItems, chatTimeLabel, cleanMessage, MESSAGE_MAX } from '../../../shared/chatThread.mjs';
@@ -186,6 +186,7 @@ async function open(who) {
     if (friend.value?.id !== who.id) return;
     conversationId.value = id;
     const page = await loadMessages(id);
+    extras.value = chatExtrasReady();
     messages.value = page;
     hasMore.value = page.length === PAGE_SIZE;
     unwatch = watchConversation(id, {
@@ -237,6 +238,10 @@ const replyTo = ref(null);
 const editing = ref(null);
 // Which message's ⋯ menu is open.
 const msgMenu = ref(null);
+// Whether this server has had 0011 run against it. Until it has there is no
+// reply, edit or unsend to offer, so none is drawn - a control that can only
+// apologise is worse than no control.
+const extras = ref(true);
 
 // The message a reply points at, for the quote above the bubble.
 const quoted = (msg) => (msg?.reply_to ? messages.value.find((m) => m.id === msg.reply_to) : null);
@@ -411,7 +416,7 @@ function toggleMin() {
           <div v-if="menuOpen" class="friend-chat-menu" @click.stop>
             <button v-if="canInvite" type="button" @click="inviteToLobby">Invite to lobby</button>
             <button type="button" @click="closeMenu(); openProfile()">View profile</button>
-            <button type="button" :class="{ 'is-armed': confirming === 'clear' }" @click="clearChat">
+            <button v-if="extras" type="button" :class="{ 'is-armed': confirming === 'clear' }" @click="clearChat">
               {{ confirming === 'clear' ? 'Tap again — clears for you' : 'Delete chat' }}
             </button>
             <button type="button" :class="{ 'is-armed': confirming === 'remove' }" @click="removeOrBlock('remove')">
@@ -489,7 +494,7 @@ function toggleMin() {
 
               <!-- Reply is one tap; the rest sit behind the dots. Nothing is
                    offered on a message already taken back. -->
-              <span v-if="!it.msg.deleted_at" class="bubble-acts">
+              <span v-if="extras && !it.msg.deleted_at" class="bubble-acts">
                 <button
                   type="button"
                   class="bubble-act"

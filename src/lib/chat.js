@@ -5,16 +5,30 @@
 // read only by the two of you. Everything here is just asking.
 import { supabase, supabaseConfigured } from './supabase.js';
 
-const COLUMNS =
-  'id, conversation_id, sender_id, content, kind, meta, created_at, read_at, reply_to, edited_at, deleted_at';
+// What 0009 and 0010 gave a message, and what 0011 added on top. A database
+// that hasn't had 0011 run against it answers "column ... does not exist" to
+// the whole select, which would take the thread down with it - so the first
+// such refusal drops back to the base set and the chat keeps working without
+// replies and edit marks until the migration is applied.
+const BASE_COLUMNS = 'id, conversation_id, sender_id, content, kind, meta, created_at, read_at';
+const FULL_COLUMNS = `${BASE_COLUMNS}, reply_to, edited_at, deleted_at`;
+let extended = true;
+const COLUMNS = () => (extended ? FULL_COLUMNS : BASE_COLUMNS);
+
+// True when a refusal is the database being behind this build.
+const missingColumn = (error) => error?.code === '42703' || error?.code === 'PGRST204';
 export const PAGE_SIZE = 50;
 
 // What a refusal means, said to the person who was refused.
 function sentence(error) {
   if (error?.code === '42501') return 'You can only message friends.';
   if (error?.code === '23514') return 'That message is too long.';
-  if (['42P01', '42883', 'PGRST202', 'PGRST205'].includes(error?.code)) {
-    return "Chat isn't switched on for this server yet.";
+  // A table, column or function this build asks for that the database hasn't
+  // got: the migrations are behind the code. Said as a sentence rather than
+  // handed to the player as "column messages.reply_to does not exist", which
+  // is a note for whoever runs the server, not for whoever is typing.
+  if (['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205'].includes(error?.code)) {
+    return 'Chat needs an update on the server before this works.';
   }
   return error?.message || "That didn't go through. Try again.";
 }
@@ -36,28 +50,46 @@ export async function openConversation(other) {
 // above the one already drawn.
 export async function loadMessages(conversationId, { before = null, limit = PAGE_SIZE } = {}) {
   need();
-  let query = supabase
-    .from('messages')
-    .select(COLUMNS)
-    .eq('conversation_id', conversationId)
-    .order('id', { ascending: false })
-    .limit(limit);
-  if (before != null) query = query.lt('id', before);
-  const { data, error } = await query;
+  const page = async () => {
+    let query = supabase
+      .from('messages')
+      .select(COLUMNS())
+      .eq('conversation_id', conversationId)
+      .order('id', { ascending: false })
+      .limit(limit);
+    if (before != null) query = query.lt('id', before);
+    return query;
+  };
+  let { data, error } = await page();
+  if (error && missingColumn(error) && extended) {
+    extended = false;
+    ({ data, error } = await page());
+  }
   if (error) throw new Error(sentence(error));
   return (data || []).reverse();
 }
 
 export async function sendMessage(conversationId, content, replyTo = null) {
   need();
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ conversation_id: conversationId, content, reply_to: replyTo })
-    .select(COLUMNS)
-    .single();
+  const row = () => {
+    const body = { conversation_id: conversationId, content };
+    // Only sent at all where the column exists, so a plain message still
+    // goes through on a database that hasn't had 0011 run against it.
+    if (extended && replyTo) body.reply_to = replyTo;
+    return supabase.from('messages').insert(body).select(COLUMNS()).single();
+  };
+  let { data, error } = await row();
+  if (error && missingColumn(error) && extended) {
+    extended = false;
+    ({ data, error } = await row());
+  }
   if (error) throw new Error(sentence(error));
   return data;
 }
+
+// Whether this server has the reply/edit/unsend columns. False only once a
+// select has come back saying they aren't there.
+export const chatExtrasReady = () => extended;
 
 // Changing what you said. Your own words only, and the database says so -
 // these go through functions because the browser holds no update grant.
@@ -91,7 +123,7 @@ export async function sendInvite(other, { code, token = '', line }) {
   const { data, error } = await supabase
     .from('messages')
     .insert({ conversation_id: conversationId, content: line, kind: 'invite', meta })
-    .select(COLUMNS)
+    .select(COLUMNS())
     .single();
   if (error) throw new Error(sentence(error));
   return data;
