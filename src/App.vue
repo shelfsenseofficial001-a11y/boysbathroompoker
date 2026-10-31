@@ -89,6 +89,23 @@ function readProfilePath() {
   }
 }
 
+// Where each screen lives, so a reload lands on the one the player was
+// looking at. Until these existed the address only ever changed when a
+// profile was opened, and never changed back - so refreshing anywhere after
+// that reopened somebody's profile, because that was still what the bar said.
+const LOBBY_PATHS = { main: '/lobby', settings: '/settings', friends: '/friends' };
+
+// What the current address asks for. Profiles first: that is the one address
+// somebody may have been handed rather than arrived at.
+function readAddress() {
+  const handle = readProfilePath();
+  if (handle) return { view: 'profile', handle };
+  const path = location.pathname.replace(/\/+$/, '') || '/';
+  const page = Object.keys(LOBBY_PATHS).find((k) => LOBBY_PATHS[k] === path);
+  if (page) return { view: 'lobby', page };
+  return { view: 'home' };
+}
+
 // Going to a profile, from the account menu or a seat. Pushed rather than
 // replaced: Back should return to the table or the lobby they came from.
 function openProfile(name, { push = true } = {}) {
@@ -220,6 +237,20 @@ async function onMenuPick(id, from = null, tab = null) {
 // the view alone cannot say which of the two is on screen - and the bottom
 // tray has to light the right one.
 const lobbyPage = ref('main');
+
+// Keeps the bar in step with the view. Replaced rather than pushed - moving
+// between the lobby and its pages is not somewhere Back should have to walk
+// through - and profiles are left alone, since openProfile pushes its own.
+watch([view, lobbyPage], ([now, page]) => {
+  if (['boot', 'profile', 'gone', 'blocked'].includes(now)) return;
+  const path = now === 'lobby' ? LOBBY_PATHS[page] || '/lobby' : '/';
+  if (location.pathname === path) return;
+  try {
+    history.replaceState(null, '', path + location.search);
+  } catch {
+    // A sandboxed frame. The view has changed either way.
+  }
+});
 
 const navActive = computed(() => {
   if (view.value === 'profile') return 'profile';
@@ -779,6 +810,18 @@ async function enter() {
       return;
     }
     if (invite) return followInvite(invite);
+    // Reloaded on the lobby, Settings or Friends: back to the page they were
+    // on. A seat still held has already won above - being at a table beats
+    // whatever the address says, because the table is where they actually
+    // are.
+    const asked = readAddress();
+    if (asked.view === 'lobby') {
+      notice.value = '';
+      view.value = 'lobby';
+      await nextTick();
+      lobby.value?.showPage(asked.page || 'main');
+      return;
+    }
     // The front page, whoever is reading it. Signing in used to land here in
     // the lobby, which made "/" mean one thing for a visitor and another for
     // a player; now it is the same page for everybody and the lobby is

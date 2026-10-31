@@ -6,7 +6,7 @@
 // sidebar is drawn.
 import { ref, computed } from 'vue';
 import { listFriends, touchLastSeen, watchFriendships, acceptFriendRequest, removeFriend } from '../lib/friends.js';
-import { myUnread, watchIncoming } from '../lib/chat.js';
+import { myUnread, myPreviews, watchIncoming } from '../lib/chat.js';
 import { receiveInvite } from './useInvite.js';
 import { useChat } from './useChat.js';
 import { isOnline } from '../../shared/lastSeen.mjs';
@@ -24,6 +24,8 @@ const TICK_MS = 30_000;
 const rows = ref([]);
 // { friendId: count } of messages not yet read, for the badges.
 const unread = ref({});
+// { friendId: last message } for the line under each name.
+const previews = ref({});
 // False until a list has come back, and false for good on a server without
 // the friends tables - the sidebar draws nothing then rather than an error.
 const available = ref(false);
@@ -42,10 +44,11 @@ async function refresh() {
   const who = me;
   if (!who) return;
   try {
-    const [list, counts] = await Promise.all([listFriends(), myUnread()]);
+    const [list, counts, lasts] = await Promise.all([listFriends(), myUnread(), myPreviews()]);
     // Signed out, or somebody else signed in, while that was in flight.
     if (who !== me) return;
     unread.value = counts || {};
+    previews.value = lasts || {};
     available.value = list !== null;
     rows.value = list || [];
     fetchedAt.value = Date.now();
@@ -111,6 +114,7 @@ export function stopFriends() {
   unwatchInbox = null;
   rows.value = [];
   unread.value = {};
+  previews.value = {};
   available.value = false;
   loaded.value = false;
 }
@@ -130,7 +134,7 @@ const friends = computed(() =>
     .filter((r) => r.state === 'friends')
     .map((r) => {
       const ago = secsAgo(r);
-      return { ...r, name: nameOf(r), secsAgo: ago, online: isOnline(ago), unread: unread.value[r.id] || 0 };
+      return { ...r, name: nameOf(r), secsAgo: ago, online: isOnline(ago), unread: unread.value[r.id] || 0, last: previews.value[r.id] || null };
     })
     .sort((a, b) => {
       if (a.online !== b.online) return a.online ? -1 : 1;

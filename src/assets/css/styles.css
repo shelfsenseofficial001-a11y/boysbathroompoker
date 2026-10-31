@@ -4838,6 +4838,39 @@ html { scroll-behavior: smooth; }
 .friend-seen { font-size: 12px; color: var(--text-3); }
 .friend-row.is-online .friend-seen { color: var(--green); }
 .friend-answer { display: flex; gap: 4px; flex: none; }
+/* The ⋯ at the end of a row, and what it opens. It is there at all times on
+   a touchscreen, where there is no hover to reveal it. */
+.friend-more-wrap { position: relative; flex: none; }
+.friend-more {
+  width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer;
+  border: 0; border-radius: 7px; background: none; color: var(--text-3);
+  opacity: 0; transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+.friend-more .icon { width: 15px; height: 15px; }
+.friend-row:hover .friend-more,
+.friend-more:focus-visible,
+.friend-more[aria-expanded='true'] { opacity: 1; }
+.friend-more:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-1); }
+@media (hover: none) { .friend-more { opacity: 0.6; } }
+.friend-row-menu {
+  position: absolute; top: 100%; right: 0; z-index: 8; margin-top: 4px; min-width: 170px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
+}
+.friend-row-menu button {
+  padding: 8px 10px; text-align: left; cursor: pointer; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-1); font: 600 12.5px var(--font-ui); white-space: nowrap;
+}
+.friend-row-menu button:hover { background: rgba(255, 255, 255, 0.07); }
+.friend-row-menu button.is-danger { color: #ff9d97; }
+.friend-row-menu button.is-armed { background: rgba(230, 180, 80, 0.14); color: var(--gold-hi); }
+.friend-row-menu button.is-danger.is-armed { background: rgba(255, 90, 80, 0.16); color: #ff9d97; }
+/* The last thing said is one line, however long it was. */
+.friend-seen { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ...and when it is a message rather than a status, it is not green: green
+   on this line means "here". An unread chat is the one that stands out. */
+.friend-row.is-online .friend-seen.is-preview { color: var(--text-3); }
+.friend-row:has(.friend-unread) .friend-seen.is-preview { color: var(--text-1); }
 /* Unread, the Messenger pill: a count, or 9+ past that. */
 .friend-unread {
   flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;

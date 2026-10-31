@@ -106,6 +106,17 @@ app.get(/^\/u\/[^/]+\/?$/, (req, res, next) => {
   res.sendFile(path.join(CLIENT_DIR, 'index.html'));
 });
 
+// The screens a player is actually sitting on when they press reload. Before
+// these existed the address stayed wherever the last profile link had left
+// it, so refreshing in the lobby dropped you on somebody's profile page -
+// the view had moved on and the bar had not. Each of these serves the same
+// shell; the client reads the path and opens that page.
+app.get(/^\/(lobby|settings|friends)\/?$/, (req, res, next) => {
+  if (!clientBuilt) return next();
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(CLIENT_DIR, 'index.html'));
+});
+
 // Anything that matched neither a file nor a route above. An API caller
 // wants JSON and would choke on a page; a browser gets the card table's own
 // 404. Both carry the real status - a wrong turn that answers 200 is how a

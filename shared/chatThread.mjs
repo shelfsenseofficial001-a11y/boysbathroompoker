@@ -72,3 +72,18 @@ export function cleanMessage(text) {
   const out = String(text ?? '').replace(/\r\n?/g, '\n').trim();
   return out.length > MESSAGE_MAX ? null : out || null;
 }
+
+// The one line under a name in the friends list: the last thing said in that
+// chat, whoever said it. Not the message itself in every case - an invite is
+// a card and an unsent message has no words left - so each of those says what
+// it was instead.
+export function previewLine(last, me) {
+  if (!last) return '';
+  const mine = last.sender_id === me;
+  const you = (text) => (mine ? `You: ${text}` : text);
+  if (last.deleted) return mine ? 'You unsent a message' : 'Unsent a message';
+  if (last.kind === 'invite') return you('Table invite');
+  const text = String(last.content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return you(text);
+}

@@ -7,11 +7,14 @@
 //
 // The list itself is kept by useFriends, which the app shell starts on sign
 // in; this only draws it.
-import { computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useAuth } from '../../composables/useAuth.js';
 import { useFriends } from '../../composables/useFriends.js';
 import { openChatWith } from '../../composables/useChat.js';
 import { lastSeenLabel } from '../../../shared/lastSeen.mjs';
+import { previewLine } from '../../../shared/chatThread.mjs';
+import { openConversation, clearConversation } from '../../lib/chat.js';
+import { blockUser } from '../../lib/friends.js';
 import { showToast } from '../../lib/toast.js';
 import BaseButton from '../ui/BaseButton.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
@@ -26,7 +29,68 @@ function openChat(f) {
 }
 
 const auth = useAuth();
-const { friends, requests, available, loaded, accept, decline } = useFriends();
+const { friends, requests, available, loaded, accept, decline, refresh } = useFriends();
+
+// The ⋯ on a row, and the act it is waiting to have confirmed. A second
+// press on the same item does it; a press anywhere else puts the menu away.
+const rowMenu = ref(null);
+const confirming = ref(null);
+
+function closeRowMenu() {
+  rowMenu.value = null;
+  confirming.value = null;
+}
+
+// The line under each name: the last thing said, whoever said it. Falls back
+// to whether they are about, which is what the row showed before there was
+// anything to quote.
+function subtitle(f) {
+  const line = previewLine(f.last, auth.userId.value);
+  return line || (f.online ? 'Online' : lastSeenLabel(f.secsAgo));
+}
+// Green says "here". Once the line is a message rather than a status it
+// stops meaning that, so it stops being green.
+const isPreview = (f) => !!previewLine(f.last, auth.userId.value);
+
+// Clearing the thread from the list. Yours only, the same as from inside the
+// window - the other player keeps their half.
+async function deleteMessages(f) {
+  if (confirming.value !== `clear:${f.id}`) {
+    confirming.value = `clear:${f.id}`;
+    return;
+  }
+  closeRowMenu();
+  try {
+    const id = await openConversation(f.id);
+    await clearConversation(id);
+    showToast(`Messages with ${f.name} cleared for you.`, { info: true });
+    refresh();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function block(f) {
+  if (confirming.value !== `block:${f.id}`) {
+    confirming.value = `block:${f.id}`;
+    return;
+  }
+  closeRowMenu();
+  try {
+    await blockUser(f.id);
+    showToast(`${f.name} blocked.`, { info: true });
+    refresh();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+// A press anywhere off the menu closes it.
+function onDocClick() {
+  if (rowMenu.value !== null) closeRowMenu();
+}
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 
 const guest = computed(() => !auth.hasAccount.value);
 const onlineCount = computed(() => friends.value.filter((f) => f.online).length);
@@ -86,10 +150,31 @@ async function answer(fn, id) {
             <FriendAvatar :username="f.username" :name="f.name" :url="f.avatar_url || ''" :online="f.online" />
             <span class="friend-text">
               <span class="friend-name">{{ f.name }}</span>
-              <span class="friend-seen">{{ f.online ? 'Online' : lastSeenLabel(f.secsAgo) }}</span>
+              <span class="friend-seen" :class="{ 'is-preview': isPreview(f) }">{{ subtitle(f) }}</span>
             </span>
             <span v-if="f.unread" class="friend-unread" :aria-label="`${f.unread} unread`">{{ f.unread > 9 ? '9+' : f.unread }}</span>
           </button>
+
+          <!-- What you can do with this friend without opening the chat. -->
+          <span class="friend-more-wrap">
+            <button
+              type="button"
+              class="friend-more"
+              :aria-label="`More for ${f.name}`"
+              :aria-expanded="rowMenu === f.id"
+              @click.stop="rowMenu === f.id ? closeRowMenu() : ((rowMenu = f.id), (confirming = null))"
+            >
+              <SvgIcon name="more" />
+            </button>
+            <div v-if="rowMenu === f.id" class="friend-row-menu" @click.stop>
+              <button type="button" :class="{ 'is-armed': confirming === `clear:${f.id}` }" @click="deleteMessages(f)">
+                {{ confirming === `clear:${f.id}` ? 'Tap again — clears for you' : 'Delete messages' }}
+              </button>
+              <button type="button" class="is-danger" :class="{ 'is-armed': confirming === `block:${f.id}` }" @click="block(f)">
+                {{ confirming === `block:${f.id}` ? 'Tap again to block' : 'Block user' }}
+              </button>
+            </div>
+          </span>
         </li>
       </ul>
       <p v-else-if="!requests.length" class="friends-empty">

@@ -87,6 +87,15 @@ export async function sendMessage(conversationId, content, replyTo = null) {
   return data;
 }
 
+// The last thing said in each of my chats, keyed by the friend it was with.
+// Null on a server without 0012, so the list simply draws no preview line.
+export async function myPreviews() {
+  if (!supabaseConfigured) return null;
+  const { data, error } = await supabase.rpc('my_chat_previews');
+  if (error) return null;
+  return Object.fromEntries((data || []).map((r) => [r.friend_id, r]));
+}
+
 // Whether this server has the reply/edit/unsend columns. False only once a
 // select has come back saying they aren't there.
 export const chatExtrasReady = () => extended;

@@ -1,7 +1,7 @@
 // How a chat thread is laid out: bursts, runs, faces and "Seen".
 const test = require('node:test');
 const assert = require('node:assert');
-const { GAP_SECS, MESSAGE_MAX, threadItems, chatTimeLabel, cleanMessage } = require('../shared/chatThread.mjs');
+const { GAP_SECS, MESSAGE_MAX, threadItems, chatTimeLabel, cleanMessage, previewLine } = require('../shared/chatThread.mjs');
 
 const ME = 'me';
 const THEM = 'them';
@@ -67,4 +67,28 @@ test('cleanMessage: blank or too long sends nothing', () => {
   assert.equal(cleanMessage(null), null);
   assert.equal(cleanMessage('x'.repeat(MESSAGE_MAX)).length, MESSAGE_MAX);
   assert.equal(cleanMessage('x'.repeat(MESSAGE_MAX + 1)), null);
+});
+
+test('previewLine: the last thing said, with You: on my own', () => {
+  assert.equal(previewLine({ content: 'hello', sender_id: THEM }, ME), 'hello');
+  assert.equal(previewLine({ content: 'hello', sender_id: ME }, ME), 'You: hello');
+});
+
+test('previewLine: an unsent message says so rather than showing nothing', () => {
+  assert.equal(previewLine({ content: '', sender_id: ME, deleted: true }, ME), 'You unsent a message');
+  assert.equal(previewLine({ content: '', sender_id: THEM, deleted: true }, ME), 'Unsent a message');
+});
+
+test('previewLine: an invite is named, not quoted', () => {
+  assert.equal(previewLine({ content: 'join my table AB2DE', kind: 'invite', sender_id: ME }, ME), 'You: Table invite');
+  assert.equal(previewLine({ content: 'join', kind: 'invite', sender_id: THEM }, ME), 'Table invite');
+});
+
+test('previewLine: line breaks are flattened into one line', () => {
+  assert.equal(previewLine({ content: 'one\n\ntwo', sender_id: THEM }, ME), 'one two');
+});
+
+test('previewLine: nothing to show is an empty string', () => {
+  assert.equal(previewLine(null, ME), '');
+  assert.equal(previewLine({ content: '   ', sender_id: THEM }, ME), '');
 });
