@@ -4902,28 +4902,47 @@ html { scroll-behavior: smooth; }
 }
 /* A picture in the round face slot the table chat only ever fills with an SVG. */
 .chat-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* An invite is a card, not a line: a gold-rimmed panel with a trophy, the
-   room it points at, and a Join wide enough to be the obvious thing to press.
-   It overrides the plain bubble it is built on. */
-.bubble.fchat-invite {
-  display: flex; flex-direction: column; gap: 8px; min-width: 200px; padding: 11px 12px;
-  background: linear-gradient(180deg, rgba(230, 180, 80, 0.12), rgba(230, 180, 80, 0.05));
-  border: 1px solid rgba(230, 180, 80, 0.4); border-radius: 16px; color: var(--text-1);
+/* An invite is a card, not a line: a dark panel with a gold rim, whoever
+   sent it. The plain bubble it is built on would otherwise hand a sender's
+   own invite the solid gold of .chat-row.is-mine .bubble, which put gold
+   text and a gold button on a gold card - so the mine case is overridden
+   rather than tinted, and both ends read the same. */
+.chat-row .bubble.fchat-invite,
+.chat-row.is-mine .bubble.fchat-invite {
+  display: flex; flex-direction: column; gap: 9px;
+  min-width: 212px; max-width: 100%; padding: 12px;
+  background: #11201a;
+  border: 1px solid rgba(230, 180, 80, 0.5);
+  border-radius: 16px;
+  color: var(--text-1); font-weight: 400;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
-.chat-row.is-mine .bubble.fchat-invite { color: var(--text-1); font-weight: 400; }
 .fchat-invite-head {
   display: flex; align-items: center; gap: 6px;
-  font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-hi);
+  font: 800 9.5px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--gold-hi);
 }
-.fchat-invite-head .icon { width: 14px; height: 14px; flex: none; }
-.fchat-invite .bubble-text { font-size: 13px; line-height: 1.35; }
+.fchat-invite-head .icon { width: 13px; height: 13px; flex: none; }
+/* The sentence itself, which is the part somebody actually reads. */
+.chat-row .bubble.fchat-invite .bubble-text,
+.chat-row.is-mine .bubble.fchat-invite .bubble-text {
+  font-size: 13.5px; line-height: 1.4; color: var(--text-1); font-weight: 500;
+}
 .fchat-invite-join {
-  margin-top: 1px; padding: 8px 12px; border: 0; border-radius: 10px; cursor: pointer;
+  margin-top: 2px; padding: 9px 12px; border: 0; border-radius: 10px; cursor: pointer;
   background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05;
-  font: 800 12px var(--font-ui); letter-spacing: 0.04em; text-align: center;
+  font: 800 12.5px var(--font-ui); letter-spacing: 0.04em; text-align: center;
   transition: filter 0.15s;
 }
-.fchat-invite-join:hover { filter: brightness(1.08); }
+.fchat-invite-join:hover:not(:disabled) { filter: brightness(1.08); }
+/* A table that has since closed. The card stays - it is what was said - but
+   the way in is plainly shut rather than a button that fails when pressed. */
+.fchat-invite.is-dead { border-color: var(--line-2); }
+.fchat-invite.is-dead .fchat-invite-head { color: var(--text-3); }
+.fchat-invite-join:disabled {
+  background: none; border: 1px dashed var(--line-2); color: var(--text-3);
+  cursor: default; font-weight: 700;
+}
 
 /* Incoming-invite toasts: the knock toast's card (.vote-toast.is-knock),
    stacked top-right wherever the player is, a notch below the table's own

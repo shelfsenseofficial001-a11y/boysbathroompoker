@@ -20,6 +20,7 @@ import {
 } from '../../lib/chat.js';
 import { threadItems, chatTimeLabel, cleanMessage, MESSAGE_MAX } from '../../../shared/chatThread.mjs';
 import { showToast } from '../../lib/toast.js';
+import { aliveRooms } from '../../lib/rooms.js';
 import { avatarSVG } from '../../lib/svg/avatars.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
@@ -81,7 +82,8 @@ async function inviteToLobby() {
 // how to walk through a private room's door with the token.
 function joinInvite(msg) {
   const code = msg?.meta?.code;
-  if (code) emit('join', { code, invite: msg.meta.token || '' });
+  if (!code || isDead(msg)) return;
+  emit('join', { code, invite: msg.meta.token || '' });
 }
 
 const me = computed(() => auth.userId.value);
@@ -100,6 +102,32 @@ let unwatch = null;
 const items = computed(() => threadItems(messages.value, me.value));
 // Their generated face, for the slot when they have no picture.
 const faceSVG = computed(() => avatarSVG(friend.value?.username || ''));
+
+// Tables the invites in this thread point at, and which are still there.
+// Null while unasked, so a card is never struck through on a guess.
+const liveCodes = ref(null);
+const inviteCodes = computed(() => [
+  ...new Set(
+    messages.value.filter((m) => m.kind === 'invite' && m.meta?.code).map((m) => m.meta.code)
+  ),
+]);
+const isDead = (msg) => {
+  const code = msg?.meta?.code;
+  if (!code || !liveCodes.value) return false;
+  return !liveCodes.value.has(code);
+};
+
+async function checkRooms() {
+  const codes = inviteCodes.value;
+  if (!codes.length) {
+    liveCodes.value = null;
+    return;
+  }
+  liveCodes.value = await aliveRooms(codes);
+}
+// Asked again whenever the set of invited tables changes - a new invite
+// arriving, or an older page of the thread loading in.
+watch(inviteCodes, checkRooms, { immediate: true });
 // Line breaks kept, long single words still forced to wrap in CSS.
 const atBottom = () => {
   const el = body.value;
@@ -311,11 +339,22 @@ function toggleMin() {
                   <span v-else class="contents" v-html="faceSVG" />
                 </template>
               </span>
-              <div v-if="it.msg.kind === 'invite'" class="bubble fchat-invite">
-                <span class="fchat-invite-head"><SvgIcon name="trophy" />Table invite</span>
+              <div
+                v-if="it.msg.kind === 'invite'"
+                class="bubble fchat-invite"
+                :class="{ 'is-dead': isDead(it.msg) }"
+              >
+                <span class="fchat-invite-head">
+                  <SvgIcon name="trophy" />{{ isDead(it.msg) ? 'Table closed' : 'Table invite' }}
+                </span>
                 <span class="bubble-text">{{ it.msg.content }}</span>
-                <button type="button" class="fchat-invite-join" @click="joinInvite(it.msg)">
-                  {{ it.mine ? 'Open table' : 'Join' }}
+                <button
+                  type="button"
+                  class="fchat-invite-join"
+                  :disabled="isDead(it.msg)"
+                  @click="joinInvite(it.msg)"
+                >
+                  {{ isDead(it.msg) ? 'No longer running' : it.mine ? 'Open table' : 'Join' }}
                 </button>
               </div>
               <div v-else class="bubble"><span class="bubble-text">{{ it.msg.content }}</span></div>

@@ -768,6 +768,18 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true });
     });
 
+    // Which of these rooms are still standing. An invite card sits in a chat
+    // long after the table it points at has broken up, and a Join that only
+    // fails when pressed is worse than one that is plainly shut - so the card
+    // asks first. It answers existence and nothing else: no stake, no names,
+    // no whether the door would open, which is still the knock's or the
+    // token's business.
+    socket.on('roomsAlive', ({ codes } = {}, ack) => {
+      const asked = Array.isArray(codes) ? codes.slice(0, 50) : [];
+      const alive = asked.filter((code) => typeof code === 'string' && !!manager.getRoom(code));
+      ack?.({ alive });
+    });
+
     socket.on('listRooms', (_payload, ack) => {
       ack?.({ rooms: manager.listOpenRooms() });
     });

@@ -19,6 +19,7 @@ import {
 } from './lib/socket.js';
 import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
+import { markRoomGone } from './lib/rooms.js';
 import { useAuth } from './composables/useAuth.js';
 import { startFriends, stopFriends } from './composables/useFriends.js';
 import { useInvite } from './composables/useInvite.js';
@@ -808,6 +809,9 @@ async function followInvite({ code, invite, fromInvite = true }) {
     view.value = 'table';
   } catch (err) {
     if (err.reason === 'no-room') {
+      // So every invite card pointing at this table shows it shut rather
+      // than offering a door that has just been found locked.
+      markRoomGone(code);
       goneCode.value = code;
       view.value = 'gone';
       return;
