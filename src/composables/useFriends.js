@@ -81,6 +81,17 @@ function onVisible() {
   if (document.visibilityState === 'visible') heartbeat();
 }
 
+// Their chat has been opened and read, so the badge goes now rather than at
+// the next beat. The database has already been told (mark_read); this is the
+// list catching up with it, because nothing else would - reads arrive as
+// UPDATEs and the inbox only listens for new messages.
+export function clearUnreadFor(friendId) {
+  if (!friendId || !unread.value[friendId]) return;
+  const next = { ...unread.value };
+  delete next[friendId];
+  unread.value = next;
+}
+
 export function startFriends(userId) {
   if (!userId || userId === me) return;
   stopFriends();

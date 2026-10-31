@@ -13,6 +13,7 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuth } from '../../composables/useAuth.js';
 import { closeChat, useChat } from '../../composables/useChat.js';
 import { useInvite } from '../../composables/useInvite.js';
+import { clearUnreadFor } from '../../composables/useFriends.js';
 import { removeFriend, blockUser } from '../../lib/friends.js';
 import {
   openConversation, loadMessages, sendMessage, sendInvite, markRead,
@@ -192,6 +193,21 @@ function mergeIn(row) {
   else messages.value[i] = row;
 }
 
+// Seen. Tells the database, then drops the badge on the list at once -
+// waiting for the next refresh left a chat you were looking at still marked
+// unread beside it.
+async function markSeen() {
+  const id = conversationId.value;
+  const who = friend.value?.id;
+  if (!id) return;
+  try {
+    await markRead(id);
+  } catch {
+    // Nothing to say: the next open tries again.
+  }
+  if (who) clearUnreadFor(who);
+}
+
 async function open(who) {
   unwatch?.();
   unwatch = null;
@@ -215,13 +231,13 @@ async function open(who) {
         mergeIn(row);
         // Only while it is open in front of them: a message that lands in a
         // folded-away window has not been read.
-        if (row.sender_id !== me.value && watching.value) markRead(id);
+        if (row.sender_id !== me.value && watching.value) markSeen();
         if (stick || row.sender_id === me.value) scrollToEnd(true);
       },
       onUpdate: mergeIn,
     });
     await scrollToEnd();
-    await markRead(id);
+    await markSeen();
   } catch (err) {
     showToast(err.message);
     closeChat();
@@ -401,7 +417,7 @@ onMounted(() => {
 // Reading as they come in while the window is open and in front.
 function onVisible() {
   if (document.visibilityState === 'visible' && watching.value && conversationId.value) {
-    markRead(conversationId.value);
+    markSeen();
   }
 }
 // A press anywhere off a menu puts it away.
@@ -424,7 +440,7 @@ function toggleMin() {
   // Opening it back up is seeing what came in while it was folded away.
   if (conversationId.value) {
     scrollToEnd();
-    markRead(conversationId.value);
+    markSeen();
   } else if (friend.value) {
     open(friend.value);
   }
