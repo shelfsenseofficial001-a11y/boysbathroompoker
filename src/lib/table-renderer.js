@@ -2440,7 +2440,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         else drawPending(); // showing redraws itself when the table updates
         return;
       }
-      if (kind === 'raise') return requestRaise();
+      // The pill that appears when chips have been dragged out onto the felt.
+      // The amount is already chosen - it is the chips sitting there - so
+      // this is the yes, not the question: opening the sizing sheet over it
+      // would be asking somebody to size a bet they have just finished
+      // sizing by hand.
+      setSizer(false);
       doAction(kind);
     });
 
@@ -3794,7 +3799,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       <div class="dock-actions">
         <button class="act act-fold" data-act="fold"><span class="act-label">${icons.fold}Fold<span class="kbd">F</span></span><span class="act-amt"></span></button>
         <button class="act act-call" data-act="check" id="call-btn"><span class="act-label"><span class="ic" id="call-ic">${icons.check}</span><span id="call-label">Check</span><span class="kbd">C</span></span><span class="act-amt" id="call-amt"></span></button>
-        <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span></button>
+        <!-- The caret is what makes this read as the control that opens the
+             sizing sheet rather than one that commits on the press. It is
+             shown only where the sheet exists; on a wide dock the sizer is
+             already on screen and this button is the yes, so a caret there
+             would be pointing at nothing. -->
+        <button class="act act-raise" data-act="raise" id="raise-btn"><span class="act-label">${icons.raise}<span id="raise-label">Raise</span><span class="kbd">R</span></span><span class="act-amt" id="raise-amt"></span><span class="act-caret">${icons.chevron}</span></button>
         <button class="act act-allin" data-act="allin" id="allin-btn"><span class="act-label">${icons.allin}All-in</span><span class="act-amt" id="allin-amt"></span></button>
       </div>`;
   }
@@ -3931,7 +3941,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // sheet: Raise opens it, the tick commits it, the X walks away. The same
   // controls either way - it is where they live that changes.
   let sizerOpen = false;
-  const sheetSizer = () => window.matchMedia('(max-width: 1080px)').matches;
+  // Only the phone. A tablet keeps the sizer in the dock beside the buttons -
+  // it has the width for it, and taking it away there left the dock with an
+  // empty half and nothing gained.
+  const sheetSizer = () => window.matchMedia('(max-width: 720px)').matches;
 
   function setSizer(on) {
     if (sizerOpen === on) return;
