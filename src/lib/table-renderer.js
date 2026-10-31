@@ -2298,6 +2298,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // felt, so dismissing it has to be as easy as opening it; pointerdown
     // rather than click so it goes before whatever was tapped underneath.
     root.addEventListener('pointerdown', (e) => {
+      // Anywhere off the bet sizer puts it away, the way any sheet over a
+      // page does. The Raise button is not "off" it - it is the handle, and
+      // closing here would only have its own press open it again.
+      if (sizerOpen && !e.target.closest('.sizer') && !e.target.closest('#raise-btn')) {
+        setSizer(false);
+      }
       if (historyOpen && !e.target.closest('#history') && !e.target.closest('[data-history]')) {
         setHistoryOpen(false);
       }
@@ -3961,7 +3967,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   // is the commit.
   function requestRaise() {
     if (!model?.myTurn) return;
-    if (sheetSizer() && !sizerOpen) return setSizer(true);
+    // In the sheet it is the handle and nothing else: it asks the question,
+    // and pressing it again takes the question back. The tick inside is the
+    // only thing that commits - which is what the caret turning over says.
+    if (sheetSizer()) return setSizer(!sizerOpen);
     setSizer(false);
     doAction('raise');
   }
