@@ -7,7 +7,16 @@
 // per-tab guest naming where it isn't. There is no login screen to route to.
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { api } from './lib/api.js';
-import { getSocket, setGuestName, setTokenSource, emitAck, resetSocket } from './lib/socket.js';
+import {
+  getSocket,
+  setGuestName,
+  setTokenSource,
+  setTokenRenewer,
+  setHandshakeRefused,
+  reviveSocket,
+  emitAck,
+  resetSocket,
+} from './lib/socket.js';
 import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
@@ -214,6 +223,7 @@ function goHome() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
+  if (!user.value) chosenWhileBooting = destination;
   notice.value = '';
   view.value = destination;
   try {
@@ -228,6 +238,7 @@ function goHome() {
 // band, or the account menu.
 async function goLobby() {
   if (!user.value && !auth.signedIn.value) return openAuth('login');
+  if (!user.value) chosenWhileBooting = 'lobby';
   notice.value = '';
   view.value = 'lobby';
   // Settings is a page *inside* the lobby view, so setting the view alone
@@ -330,6 +341,17 @@ async function onNav(link) {
   }
 }
 const user = ref(null); // { id, username } - the server's own record
+
+// Where the player asked to go while the handshake was still out.
+//
+// The bar is live during boot - it has to be, or it appears a second later
+// under the pointer - so "Lobby" can be pressed before the server has said
+// who they are. The lobby then has nothing to show but "Finding your seat…",
+// and `enter()`, arriving a moment later, used to send them wherever a fresh
+// load would have gone instead: the front page, or back to their table. Both
+// read as the lobby never loading. A destination somebody picked themselves
+// outranks the one a reload would have picked for them.
+let chosenWhileBooting = null;
 const guest = ref(false);
 const roomCode = ref(null);
 const notice = ref('');
@@ -476,6 +498,21 @@ async function signedIn({ announce = false } = {}) {
     // being. See setTokenSource.
     () => auth.displayName.value
   );
+  // Where the socket goes when the server will not take the token it has.
+  // It can only ask; the answer comes from Supabase, which is this end's
+  // business rather than the socket's.
+  setTokenRenewer(() => auth.renewSession());
+  setHandshakeRefused(sessionRefused);
+  // Whatever the last identity ran into is not this one's to inherit.
+  sessionGone = false;
+  // Who the server thinks it is talking to is settled once, in the
+  // handshake. A socket that shook hands as somebody else - the guest they
+  // were a moment ago - goes on answering as them however good the new token
+  // is: `whoami` comes back with the guest's row, and the bar reads
+  // Guest7726 at the top of an account somebody has just logged into. A
+  // different player is a different connection.
+  if (connectedAs && connectedAs !== auth.userId.value) resetSocket();
+  else reviveSocket();
   connectedAs = auth.userId.value;
   guest.value = auth.isGuest.value;
   await enter();
@@ -645,6 +682,27 @@ async function creditGuestSession() {
 // Once identified, go straight back to your table if you were in one (after a
 // page refresh, say), otherwise follow the link that brought you here,
 // otherwise the lobby.
+// The game server will not have this player, and no better token could be
+// got: the Supabase session behind it is gone - rotated, signed out
+// elsewhere, or cleared - while storage still held something that looked
+// like one. Nothing here can mend that; what it can do is stop pretending to
+// be loading and put the way back in front of them.
+let sessionGone = false;
+
+async function sessionRefused() {
+  if (sessionGone) return;
+  sessionGone = true;
+  // So the watcher on `auth.session` doesn't say it a second time.
+  signingOut = true;
+  try {
+    await auth.signOut();
+  } catch {
+    // The dead session is being dropped either way.
+  }
+  signingOut = false;
+  landOnHomepage({ toast: 'Your session expired — log in again to sit down.' });
+}
+
 async function enter() {
   try {
     const res = await emitAck('whoami');
@@ -656,6 +714,17 @@ async function enter() {
     if (profileName.value) {
       view.value = 'profile';
       if (res.currentRoom) roomCode.value = res.currentRoom;
+      return;
+    }
+    // Pressed while this was in the air. Their seat is remembered either way,
+    // so Back and a refresh still return to it; they are simply not carried
+    // there against a choice they made in the meantime.
+    const chose = chosenWhileBooting;
+    chosenWhileBooting = null;
+    if (chose) {
+      if (res.currentRoom) roomCode.value = res.currentRoom;
+      notice.value = '';
+      view.value = chose;
       return;
     }
     const invite = takeInvite();
@@ -672,6 +741,10 @@ async function enter() {
     // somewhere you choose to go.
     view.value = 'home';
   } catch (err) {
+    // The handshake was refused over a session that cannot be renewed.
+    // sessionRefused has already put them on the homepage with the reason;
+    // a shut screen on top of it would blame the server for saying no.
+    if (err.reason === 'unauthorized') return;
     // Reaching here means identity was settled and the socket still gave
     // nothing back - a timeout, or a handshake it refused. Either way the
     // server exists, so this is not "nobody at the door".

@@ -3,6 +3,7 @@
 // card faces and styled by css/spread.css, so the two screens are the same
 // object in two moods rather than two drawings that have to be kept in step.
 import { cardFaceSVG } from './cards.js';
+import { motionReduced } from '../motion.js';
 
 // Deterministic scatter: the same page always lands the same way, so it never
 // looks like it reshuffled itself on a reload.
@@ -95,7 +96,8 @@ export function dealFigures(el, text) {
 // nothing to steer it with on a touchscreen, and a page that lurches when
 // scrolled is worse than a flat one.
 export function followPointer(el) {
-  if (!window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) return;
+  if (motionReduced()) return;
+  if (!window.matchMedia('(hover: hover)').matches) return;
   const onMove = (e) => {
     if (!el.isConnected) return window.removeEventListener('pointermove', onMove);
     const x = e.clientX / window.innerWidth - 0.5;

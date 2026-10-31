@@ -83,8 +83,7 @@
 }
 
 /* The reduce-motion rule the rest of the game keeps: nothing moves on its
-   own, and nothing is left half-dealt. */
-@media (prefers-reduced-motion: reduce) {
-  .spread, .spread * { animation-duration: 0.01ms !important; }
-  .spread { transition: none; }
-}
+   own, and nothing is left half-dealt. Driven by the player's own switch,
+   not the OS setting - see lib/motion.js. */
+.reduce-motion .spread, .reduce-motion .spread * { animation-duration: 0.01ms !important; }
+.reduce-motion .spread { transition: none; }

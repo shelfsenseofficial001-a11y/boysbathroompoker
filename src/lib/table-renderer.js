@@ -2606,7 +2606,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // taller of a hand's two states. A revealed hand is tucked behind the plate
     // like a face-down one, just showing more of it.
     const standPx = showW * 1.4 * POD_REVEAL_SHOW + tagShowH;
-    const minPodY = ((podH / 2 + standPx + 4) / camH) * 100;
     // My own hand is drawn much larger than anyone else's (--card-me against
     // --card-o), and it now sits low enough to tuck under my own tag - which
     // leaves the space straight above it free for my chips. They go there,
@@ -2722,6 +2721,33 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const belowBet = pct(podH / 2, camH) + trayDrop + (portrait ? gapY + betH : 0);
     const belowShow = pct(podH / 2, camH);
     const above = Math.max(aboveBet, aboveShow);
+
+    // How far down a seat at the top of the table is held.
+    //
+    // Measured from the bar, not from the camera. The camera is letterboxed
+    // inside the stage - it keeps an aspect ratio - so on some windows there
+    // is a strip of background above it and on others none at all, and a
+    // reserve counted from the camera's own top left the same seat a finger's
+    // width below the bar on one screen and a hand's width on another.
+    //
+    // What is held clear is the seat as it looks all game: the hand face down
+    // behind the plate, and the badge above that. Its taller shapes are
+    // momentary - a hand lifted to peek, a hand turned up at showdown with
+    // its name under it - and those stand up into the air above instead,
+    // which is what the air is for. They are only kept off the bar itself.
+    const TOP_AIR = 18; // the everyday seat to the bar
+    const SHOW_AIR = 16; // a showdown hand at its tallest to the bar
+    const idleAbove = podH / 2 + cardO * 1.4 * POD_HAND_SHOW + tagH + 2;
+    // The band of stage sitting above the camera, which a hand may use.
+    const inset = els.camera.offsetTop || 0;
+    const minPodY =
+      (Math.max(
+        podH / 2, // the plate itself stays on the table
+        idleAbove + TOP_AIR - inset,
+        standPx + SHOW_AIR - inset
+      ) /
+        camH) *
+      100;
     const below = Math.max(belowBet, belowShow);
     // Centre to centre, two seats one above the other need this much.
     const step = Math.max(aboveBet + belowBet, aboveShow + belowShow);
@@ -2794,7 +2820,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // down the right.
       const order = [
         ...railYs.slice().reverse().map((y) => ({ side: 'left', y })),
-        ...(top ? [{ side: null, y: spread(1, 0.6, muckBox.t - 0.8)[0] }] : []),
+        // The one seat at the top of a tall table. Centred in the room above
+        // the muck it sat a long way under the bar, with nothing in between;
+        // it is pulled up to the same reserve the wide table keeps, and no
+        // further.
+        ...(top
+          ? [
+              {
+                side: null,
+                y: Math.min(spread(1, 0.6, muckBox.t - 0.8)[0], Math.max(minPodY, 0.6)),
+              },
+            ]
+          : []),
         ...railYs.map((y) => ({ side: 'right', y })),
       ];
       order.forEach((o, j) => slot.set(seated ? j + 1 : j, o));
@@ -2829,6 +2866,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // from it rather than straddling its anchor.
       const plateL = side === 'left' ? pod.x : side === 'right' ? pod.x - size.w : pod.x - size.w / 2;
       const plate = { l: plateL, r: plateL + size.w, t: pod.y - size.h / 2, b: pod.y + size.h / 2 };
+      // Held against the top reserve, which means the bar is what is above
+      // this seat rather than felt. Its turn marker goes below the plate - see
+      // .pod.is-high - because there is nothing above it to put one in.
+      const high = !isMe && pod.y <= minPodY + 0.3;
       const plateCx = (plate.l + plate.r) / 2;
       const stack = { x: plateCx, y: pod.y };
 
@@ -2840,7 +2881,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         const dealer = { x: cards.x + off, y: cards.y };
         // My chips sit squarely above my hand rather than off to one side.
         const bet = onFelt({ x: cards.x, y: clamp(cards.y - myBetRise, 8, 92) });
-        map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate });
+        map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate, high });
         return;
       }
 
@@ -2876,7 +2917,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       );
       // Where this player's cards are: behind the plate, at its top edge.
       const cards = { x: plateCx, y: plate.t };
-      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate });
+      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate, high });
     });
 
     // --- The centre column ---------------------------------------------------
@@ -3414,7 +3455,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // 'anchor' has moved to the group around the plate - the plate is now
     // placed by that group, so that the cards tucked behind it can be
     // positioned against the plate's own box.
-    const cls = ['pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', hasBet && 'has-bet', L.pod.y > 62 && 'is-low', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
+    const cls = ['pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', hasBet && 'has-bet', L.pod.y > 62 && 'is-low', L.high && 'is-high', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
       .filter(Boolean)
       .join(' ');
     const groupCls = ['anchor', 'seat-group', L.isMe && 'is-me', L.side && `side-${L.side}`]

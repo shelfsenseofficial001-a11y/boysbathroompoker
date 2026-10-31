@@ -1,15 +1,21 @@
-// Animation preference: follows the OS "reduce motion" setting unless the
-// player picks otherwise with the in-game toggle (remembered per browser).
+// Animation preference: the player's own, remembered per browser, and on
+// until they say otherwise.
+//
+// The OS "reduce motion" setting is deliberately not consulted. Windows turns
+// it on for reasons that have nothing to do with this game - a laptop on
+// battery, a box that once ticked "performance" - and reading it meant the
+// table arrived flat, with the switch already off and no hint as to why. The
+// switch below is how somebody asks for less, and it is the only way in: see
+// styles.css, where the same decision is made for the CSS.
 const KEY = 'bbp-motion';
 
 export function motionReduced() {
   try {
-    const v = localStorage.getItem(KEY);
-    if (v) return v === 'reduced';
+    return localStorage.getItem(KEY) === 'reduced';
   } catch {
-    // Storage unavailable (private mode etc.): fall back to the OS setting.
+    // Storage unavailable (private mode etc.): the default, held for this page.
+    return false;
   }
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export function applyMotionClass() {

@@ -463,6 +463,27 @@ export function useAuth() {
       markChosen();
     },
 
+    // A token this browser is holding that the auth server will not stand
+    // behind any more. It happens on its own: a refresh rotates the session,
+    // another tab signs out, a session is cleared server-side - and what is
+    // left in storage still looks like a session, so nothing here notices
+    // until something tries to use it. The game server is what tries, on
+    // every handshake, and this is how it asks for a better one.
+    //
+    // Quiet about failure on purpose: the caller is a socket that is about to
+    // try again regardless, and a sign-out thrown at somebody mid-hand over
+    // one refused refresh would be worse than a second attempt.
+    async renewSession() {
+      if (!supabaseConfigured) return null;
+      try {
+        const { data } = await supabase.auth.refreshSession();
+        if (data?.session) session.value = data.session;
+        return data?.session || null;
+      } catch {
+        return null;
+      }
+    },
+
     setIngameName: renameProfile,
     saveProfileExtras,
     changeUsername,

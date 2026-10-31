@@ -1625,6 +1625,20 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .stage.is-zooming .camera { will-change: transform; }
 .stage.is-zooming::after { will-change: opacity; }
 
+/* Between a tall table and a wide one, the cloth takes the room it is given
+   rather than holding 1.9 and letterboxing. Held to 1.9 it left a band of
+   plain background above the felt and another below it - on a 1017x906
+   window, 84px of each - and that band above is most of what reads as a gap
+   between the top seat and the bar. The oval simply gets rounder, which is
+   what a table seen from a little higher up looks like. */
+@container stage (min-aspect-ratio: 5/4) and (max-aspect-ratio: 19/10) {
+  .camera {
+    aspect-ratio: auto;
+    width: calc(100cqw - 28px);
+    height: calc(100cqh - 20px);
+  }
+}
+
 @container stage (max-aspect-ratio: 5/4) {
   .camera { aspect-ratio: 0.68; width: min(calc(100cqw - 12px), calc((100cqh - 12px) * 0.68)); }
   /* A tall table's cloth is only so wide, and five cards across it left no
@@ -2218,6 +2232,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 .turn-marker .icon { width: 100%; height: 100%; }
 .pod .tag ~ .turn-marker { top: calc(-3.9em - var(--pod-hand-rise, 0px)); }
+/* A seat at the top of the table has the bar above it, not felt: its hand,
+   its badge and then a marker on top of those is more than the room there
+   is, and reserving for all of it is what held the top plate a long way
+   down the cloth. The marker goes under the plate instead and points back
+   up at the player - the same arrow, read from the other side. */
+.pod.is-high .turn-marker,
+.pod.is-high .tag ~ .turn-marker {
+  top: auto;
+  bottom: -1.45em;
+  rotate: 180deg;
+}
 
 /* ---------- Effects layer ---------- */
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
@@ -3813,9 +3838,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 @keyframes fvRung { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 
-@media (prefers-reduced-motion: reduce) {
-  .fviz.is-live * { animation: none !important; }
-}
 .reduce-motion .fviz.is-live * { animation: none !important; }
 
 /* ---------- Footer ---------- */
@@ -3904,9 +3926,6 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 :target { scroll-margin-top: 72px; }
 .lp-group, .lp-steps { scroll-margin-top: 72px; }
 html { scroll-behavior: smooth; }
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-}
 .reduce-motion { scroll-behavior: auto; }
 .app-shell > .landing,
 .app-shell > .lobby-screen,
@@ -3942,9 +3961,6 @@ html { scroll-behavior: smooth; }
   to { background-position: -200% 0; }
 }
 /* It is a waiting state, not an animation anybody asked for. */
-@media (prefers-reduced-motion: reduce) {
-  .sk { animation: none; }
-}
 .reduce-motion .sk { animation: none; }
 
 /* Said to a screen reader, shown to nobody. */
@@ -4028,10 +4044,6 @@ html { scroll-behavior: smooth; }
    clear, and that is what reduced motion asks for. */
 /* The leave is flattened to nothing, so the drawer has to go at once rather
    than sit there for the length of a slide nobody is watching. */
-@media (prefers-reduced-motion: reduce) {
-  .mnav, .mnav-backdrop { animation: none; }
-  .drawer-leave-active { display: none; }
-}
 .reduce-motion .mnav, .reduce-motion .mnav-backdrop { animation: none; }
 .reduce-motion .drawer-leave-active { display: none; }
 
@@ -4354,7 +4366,7 @@ html { scroll-behavior: smooth; }
 .lp-card-say { padding: 20px 22px 24px; text-align: center; }
 .lp-card-t { margin: 0 0 8px; font: 700 18px var(--font-ui); color: var(--text-1); }
 .lp-card-say p { margin: 0 auto; max-width: 42ch; color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
-@media (prefers-reduced-motion: reduce) { .lp-card, .lp-card:hover { transition: none; transform: none; } }
+.reduce-motion .lp-card, .reduce-motion .lp-card:hover { transition: none; transform: none; }
 
 /* ---------- Feature previews ----------
    The real interface in miniature. Each one plays a single small loop, only
@@ -4452,12 +4464,9 @@ html { scroll-behavior: smooth; }
 @keyframes fpRefill { 0%, 100% { opacity: 0.25; translate: 0 6px; } 30%, 80% { opacity: 1; translate: 0 0; } }
 .fprev.is-live .fprev-row.is-bot { animation: fpRow 3s var(--ease-out) infinite; animation-delay: calc(var(--i) * 0.18s); }
 @keyframes fpRow { 0%, 100% { opacity: 0.55; } 40% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .fprev * { animation: none !important; }
-  .fprev-ring { opacity: 0.6; }
-  .fprev-chip { opacity: 1; translate: 0 -78px; }
-}
 .reduce-motion .fprev * { animation: none !important; }
+.reduce-motion .fprev-ring { opacity: 0.6; }
+.reduce-motion .fprev-chip { opacity: 1; translate: 0 -78px; }
 
 /* ---------- FAQ ---------- */
 .faq {
@@ -4497,10 +4506,7 @@ html { scroll-behavior: smooth; }
 .faq-a p { margin: 0; max-width: 62ch; color: var(--text-2); font-size: 15px; line-height: 1.65; }
 .faq-item.is-open .faq-a { animation: faqOpen 0.25s var(--ease-out); }
 @keyframes faqOpen { from { opacity: 0; translate: 0 -6px; } }
-@media (prefers-reduced-motion: reduce) {
-  .faq-toggle { transition: none; }
-  .faq-item.is-open .faq-a { animation: none; }
-}
+.reduce-motion .faq-toggle { transition: none; }
 .reduce-motion .faq-item.is-open .faq-a { animation: none; }
 
 .lp-steps .lp-step p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
@@ -4724,9 +4730,6 @@ html { scroll-behavior: smooth; }
    happening. */
 .graph-line { stroke-dasharray: 1200; animation: graphDraw 0.9s var(--ease-out) both; }
 @keyframes graphDraw { from { stroke-dashoffset: 1200; } to { stroke-dashoffset: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .graph-line { animation: none; stroke-dasharray: none; }
-}
 .reduce-motion .graph-line { animation: none; stroke-dasharray: none; }
 
 /* ---------- Picture and bio, in Settings ---------- */
