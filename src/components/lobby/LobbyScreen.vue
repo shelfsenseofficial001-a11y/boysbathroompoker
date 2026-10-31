@@ -23,12 +23,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['enter-room', 'logout', 'auth', 'back-to', 'page', 'profile']);
 
-// A friend in the list, pressed. Their profile for now; their chat once
-// there is one.
-function openFriend(friend) {
-  emit('profile', friend.username);
-}
-
 // The avatar menu, the auth buttons and the footer all belong to the app
 // shell now (src/App.vue), so this screen is only the lobby itself.
 
@@ -136,13 +130,13 @@ onMounted(() => playEntrance(screen.value));
     <FriendsSidebar
       v-if="user && page === 'main'"
       class="lobby-friends"
-      @open="openFriend"
+     
       @profile="emit('profile', $event)"
       @auth="emit('auth', $event)"
     />
 
     <main v-if="page === 'friends'" class="page lobby-friends-page">
-      <FriendsSidebar @open="openFriend" @profile="emit('profile', $event)" @auth="emit('auth', $event)" />
+      <FriendsSidebar @profile="emit('profile', $event)" @auth="emit('auth', $event)" />
     </main>
 
     <SettingsPage

@@ -10,13 +10,20 @@
 import { computed } from 'vue';
 import { useAuth } from '../../composables/useAuth.js';
 import { useFriends } from '../../composables/useFriends.js';
+import { openChatWith } from '../../composables/useChat.js';
 import { lastSeenLabel } from '../../../shared/lastSeen.mjs';
 import { showToast } from '../../lib/toast.js';
 import BaseButton from '../ui/BaseButton.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
-const emit = defineEmits(['open', 'profile', 'auth']);
+const emit = defineEmits(['profile', 'auth']);
+
+// A friend pressed: open the chat with them. Their name and face carry over,
+// so the window has a header before a single message has loaded.
+function openChat(f) {
+  openChatWith(f);
+}
 
 const auth = useAuth();
 const { friends, requests, available, loaded, accept, decline } = useFriends();
@@ -75,12 +82,13 @@ async function answer(fn, id) {
 
       <ul v-if="friends.length" class="friends-list">
         <li v-for="f in friends" :key="f.id" class="friend-row" :class="{ 'is-online': f.online }">
-          <button type="button" class="friend-main" @click="emit('open', f)">
+          <button type="button" class="friend-main" @click="openChat(f)">
             <FriendAvatar :username="f.username" :name="f.name" :url="f.avatar_url || ''" :online="f.online" />
             <span class="friend-text">
               <span class="friend-name">{{ f.name }}</span>
               <span class="friend-seen">{{ f.online ? 'Online' : lastSeenLabel(f.secsAgo) }}</span>
             </span>
+            <span v-if="f.unread" class="friend-unread" :aria-label="`${f.unread} unread`">{{ f.unread > 9 ? '9+' : f.unread }}</span>
           </button>
         </li>
       </ul>

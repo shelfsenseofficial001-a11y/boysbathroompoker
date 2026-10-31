@@ -6,6 +6,7 @@
 // sidebar is drawn.
 import { ref, computed } from 'vue';
 import { listFriends, touchLastSeen, watchFriendships, acceptFriendRequest, removeFriend } from '../lib/friends.js';
+import { myUnread, watchIncoming } from '../lib/chat.js';
 import { isOnline } from '../../shared/lastSeen.mjs';
 
 // One beat a minute while the page is in front of somebody. ONLINE_WITHIN in
@@ -15,6 +16,8 @@ const BEAT_MS = 60_000;
 const TICK_MS = 30_000;
 
 const rows = ref([]);
+// { friendId: count } of messages not yet read, for the badges.
+const unread = ref({});
 // False until a list has come back, and false for good on a server without
 // the friends tables - the sidebar draws nothing then rather than an error.
 const available = ref(false);
@@ -26,15 +29,17 @@ let me = null;
 let beat = null;
 let tick = null;
 let unwatch = null;
+let unwatchInbox = null;
 let pending = null;
 
 async function refresh() {
   const who = me;
   if (!who) return;
   try {
-    const list = await listFriends();
+    const [list, counts] = await Promise.all([listFriends(), myUnread()]);
     // Signed out, or somebody else signed in, while that was in flight.
     if (who !== me) return;
+    unread.value = counts || {};
     available.value = list !== null;
     rows.value = list || [];
     fetchedAt.value = Date.now();
@@ -76,6 +81,8 @@ export function startFriends(userId) {
   tick = setInterval(() => (now.value = Date.now()), TICK_MS);
   document.addEventListener('visibilitychange', onVisible);
   unwatch = watchFriendships(userId, refreshSoon);
+  // A message arriving moves a badge.
+  unwatchInbox = watchIncoming(userId, refreshSoon);
 }
 
 export function stopFriends() {
@@ -86,7 +93,10 @@ export function stopFriends() {
   document.removeEventListener('visibilitychange', onVisible);
   unwatch?.();
   unwatch = null;
+  unwatchInbox?.();
+  unwatchInbox = null;
   rows.value = [];
+  unread.value = {};
   available.value = false;
   loaded.value = false;
 }
@@ -106,7 +116,7 @@ const friends = computed(() =>
     .filter((r) => r.state === 'friends')
     .map((r) => {
       const ago = secsAgo(r);
-      return { ...r, name: nameOf(r), secsAgo: ago, online: isOnline(ago) };
+      return { ...r, name: nameOf(r), secsAgo: ago, online: isOnline(ago), unread: unread.value[r.id] || 0 };
     })
     .sort((a, b) => {
       if (a.online !== b.online) return a.online ? -1 : 1;

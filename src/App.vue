@@ -21,6 +21,7 @@ import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
 import { startFriends, stopFriends } from './composables/useFriends.js';
+import ChatWindow from './components/friends/ChatWindow.vue';
 import { showToast } from './lib/toast.js';
 import { grouped } from './lib/format.js';
 import LobbyScreen from './components/lobby/LobbyScreen.vue';
@@ -1149,6 +1150,11 @@ onBeforeUnmount(() => {
       @settings="onMenuPick('settings')"
     />
   </div>
+
+  <!-- The chat window, in the corner of every screen it is allowed on. Put
+       away at a table, where the felt needs the room; it reopens after. An
+       account only - a guest has no friends to talk to. -->
+  <ChatWindow v-if="auth.hasAccount.value && view !== 'table'" />
 
   <!-- One sheet for both ways in. On the first visit it carries the guest
        option and cannot be closed without an answer; from the top bar it is
