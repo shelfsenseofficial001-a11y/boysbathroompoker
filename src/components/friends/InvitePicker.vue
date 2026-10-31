@@ -18,17 +18,21 @@ import BaseModal from '../ui/BaseModal.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
 const { friends } = useFriends();
-const { room } = useInvite();
+const { room, pickerFor } = useInvite();
 
 const query = ref('');
 const sendingTo = ref(null);
 const search = ref(null);
 
+// Who is already in the room, from whoever opened the picker. Nothing to
+// invite them to, so they're left off the list entirely.
+const here = computed(() => new Set(pickerFor.value?.members || []));
+
 const shown = computed(() => {
   const q = query.value.trim().toLowerCase();
-  const list = q ? friends.value.filter((f) => f.name.toLowerCase().includes(q)) : friends.value;
-  // Online first - they're the ones who can actually come.
-  return list;
+  return friends.value.filter(
+    (f) => !here.value.has(f.id) && (!q || f.name.toLowerCase().includes(q))
+  );
 });
 
 async function invite(friend) {
@@ -67,7 +71,8 @@ onMounted(() => search.value?.focus());
       <p v-if="!friends.length" class="invite-empty">
         You have no friends to invite yet. Add some from their profile.
       </p>
-      <p v-else-if="!shown.length" class="invite-empty">No friend by that name.</p>
+      <p v-else-if="!shown.length && query.trim()" class="invite-empty">No friend by that name.</p>
+      <p v-else-if="!shown.length" class="invite-empty">Everyone you know is already here.</p>
 
       <ul v-else class="invite-list">
         <li v-for="f in shown" :key="f.id">

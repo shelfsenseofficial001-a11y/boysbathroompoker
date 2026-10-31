@@ -580,7 +580,7 @@ function attachSockets(io, sessionMiddleware) {
   // Puts someone who is allowed in into the room, whether they walked into a
   // public table or the host just opened the door of a private one. Returns
   // what the joiner's client needs to know, or why they can't come in.
-  function admit(room, uid, username) {
+  function admit(room, uid, username, { invited = false } = {}) {
     if (room.blocked.has(uid)) return { ok: false, error: 'The host has blocked them from this room.' };
     if (room.nameTaken(username, uid)) {
       return { ok: false, error: 'Someone in that room already uses that name.' };
@@ -600,6 +600,16 @@ function attachSockets(io, sessionMiddleware) {
       const chips = room.lateJoinChips();
       room.addToLobby(uid, username, chips);
       if (!room.allowSpectators) {
+        room.table.addLatePlayer(uid, username, chips);
+        announce(room, `${username} joined — in from the next hand.`, uid);
+        return { ok: true, code: room.code, chips, waiting: true };
+      }
+      // Somebody who followed an invite didn't come to watch - they were
+      // asked to play. They go straight into the queue for the next hand,
+      // into the seat that was free for them, rather than landing on the rail
+      // to press a plus they were effectively just handed. There is room: the
+      // full check above has already passed.
+      if (invited) {
         room.table.addLatePlayer(uid, username, chips);
         announce(room, `${username} joined — in from the next hand.`, uid);
         return { ok: true, code: room.code, chips, waiting: true };
@@ -798,7 +808,7 @@ function attachSockets(io, sessionMiddleware) {
       }
     });
 
-    socket.on('joinRoom', ({ code, buyIn, fromList, invite } = {}, ack) => {
+    socket.on('joinRoom', ({ code, buyIn, fromList, invite, fromInvite } = {}, ack) => {
       const room = manager.getRoom(code);
       if (!room) return ack?.({ ok: false, error: 'Room not found.', reason: 'no-room' });
       if (room.blocked.has(userId)) {
@@ -830,7 +840,10 @@ function attachSockets(io, sessionMiddleware) {
         ack?.({ ok: true, code: room.code, knocking: true });
         return broadcastRoom(room);
       }
-      const res = admit(room, userId, nameOf());
+      // Auto-queue anyone who came from an invite - a private room's by its
+      // token, a public one's by the flag the invite card carries. Joining a
+      // public room off the open list is unchanged: that lands on the rail.
+      const res = admit(room, userId, nameOf(), { invited: invited || !!fromInvite });
       ack?.(res);
       if (!res.ok) return;
       broadcastRoom(room);

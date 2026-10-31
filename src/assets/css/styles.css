@@ -4902,15 +4902,38 @@ html { scroll-behavior: smooth; }
 }
 /* A picture in the round face slot the table chat only ever fills with an SVG. */
 .chat-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* An invite rides in a bubble with a Join on it. */
-.fchat-invite { display: flex; flex-direction: column; gap: 7px; }
-.fchat-invite-head { display: flex; align-items: center; gap: 7px; font-weight: 600; }
-.fchat-invite-head .icon { width: 15px; height: 15px; flex: none; }
-.fchat-invite-join {
-  align-self: flex-start; padding: 4px 14px; border: 0; border-radius: 999px; cursor: pointer;
-  background: #0c1b14; color: var(--gold-hi); font: 700 12px var(--font-ui);
+/* An invite is a card, not a line: a gold-rimmed panel with a trophy, the
+   room it points at, and a Join wide enough to be the obvious thing to press.
+   It overrides the plain bubble it is built on. */
+.bubble.fchat-invite {
+  display: flex; flex-direction: column; gap: 8px; min-width: 200px; padding: 11px 12px;
+  background: linear-gradient(180deg, rgba(230, 180, 80, 0.12), rgba(230, 180, 80, 0.05));
+  border: 1px solid rgba(230, 180, 80, 0.4); border-radius: 16px; color: var(--text-1);
 }
-.chat-row.is-mine .fchat-invite-join { background: rgba(0, 0, 0, 0.14); color: #2a1c05; }
+.chat-row.is-mine .bubble.fchat-invite { color: var(--text-1); font-weight: 400; }
+.fchat-invite-head {
+  display: flex; align-items: center; gap: 6px;
+  font: 800 9.5px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold-hi);
+}
+.fchat-invite-head .icon { width: 14px; height: 14px; flex: none; }
+.fchat-invite .bubble-text { font-size: 13px; line-height: 1.35; }
+.fchat-invite-join {
+  margin-top: 1px; padding: 8px 12px; border: 0; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold)); color: #2a1c05;
+  font: 800 12px var(--font-ui); letter-spacing: 0.04em; text-align: center;
+  transition: filter 0.15s;
+}
+.fchat-invite-join:hover { filter: brightness(1.08); }
+
+/* Incoming-invite toasts: the knock toast's card (.vote-toast.is-knock),
+   stacked top-right wherever the player is, a notch below the table's own
+   knock host so the two don't land on the same spot. */
+.invite-host {
+  position: fixed; top: 72px; right: 12px; z-index: 215;
+  display: flex; flex-direction: column; gap: 10px; width: min(300px, calc(100vw - 24px));
+}
+.invite-host .vote-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 1024px) { .invite-host { top: 118px; } }
 .friend-chat .chat-form { flex: none; }
 .friend-chat-menu-wrap { position: relative; }
 .friend-chat-menu {

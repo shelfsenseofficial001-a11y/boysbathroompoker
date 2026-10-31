@@ -2348,7 +2348,13 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       // and the host's token are what the invite carries.
       const inv = e.target.closest('[data-invite-seat]');
       if (inv) {
-        return onInvite?.({ code: roomCode, token: shown?.invite || '' });
+        // Who is already here - seated, queued or watching - so the picker
+        // can leave them off: there is nothing to invite them to.
+        const members = [
+          ...(shown?.lobby || []).map((m) => m.userId),
+          ...(shown?.spectators || []).map((s) => s.userId),
+        ];
+        return onInvite?.({ code: roomCode, token: shown?.invite || '', members });
       }
       const open = e.target.closest('[data-seat-menu]');
       const vote = e.target.closest('[data-vote-kick]');

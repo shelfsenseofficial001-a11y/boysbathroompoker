@@ -7,7 +7,13 @@
 import { ref, computed } from 'vue';
 import { listFriends, touchLastSeen, watchFriendships, acceptFriendRequest, removeFriend } from '../lib/friends.js';
 import { myUnread, watchIncoming } from '../lib/chat.js';
+import { receiveInvite } from './useInvite.js';
+import { useChat } from './useChat.js';
 import { isOnline } from '../../shared/lastSeen.mjs';
+
+// The chat that's open, so an invite from that friend is left to the window
+// rather than also thrown as a toast.
+const { friend: openChatFriend } = useChat();
 
 // One beat a minute while the page is in front of somebody. ONLINE_WITHIN in
 // shared/lastSeen.mjs is two of these, so a single late beat is forgiven.
@@ -81,8 +87,16 @@ export function startFriends(userId) {
   tick = setInterval(() => (now.value = Date.now()), TICK_MS);
   document.addEventListener('visibilitychange', onVisible);
   unwatch = watchFriendships(userId, refreshSoon);
-  // A message arriving moves a badge.
-  unwatchInbox = watchIncoming(userId, refreshSoon);
+  // A message arriving moves a badge; an invite from someone whose chat
+  // isn't open is also thrown up as a toast, the way a knock is answered.
+  unwatchInbox = watchIncoming(userId, (row) => {
+    refreshSoon();
+    if (row?.kind === 'invite' && row.sender_id !== me) {
+      if (openChatFriend.value?.id === row.sender_id) return;
+      const from = rows.value.find((r) => r.id === row.sender_id);
+      receiveInvite(row, from);
+    }
+  });
 }
 
 export function stopFriends() {

@@ -22,10 +22,44 @@ export function closeInvitePicker() {
   pickerFor.value = null;
 }
 
+// Invites that have arrived and not yet been answered, newest first. Each is
+// a card like the one that greets a knock at a private room: a face, a line,
+// and two buttons. Kept here so they survive moving between screens and show
+// at a table too, where the chat window is put away.
+const toasts = ref([]);
+
+// An invite message just arrived. `friend` is the sender as the friends list
+// knows them (name, picture), which the raw message row doesn't carry.
+export function receiveInvite(msg, friend) {
+  const code = msg?.meta?.code;
+  if (!code || toasts.value.some((t) => t.id === msg.id)) return;
+  toasts.value = [
+    {
+      id: msg.id,
+      code,
+      token: msg.meta.token || '',
+      name: friend?.name || friend?.ingame_name || friend?.username || 'A friend',
+      username: friend?.username || '',
+      avatar_url: friend?.avatar_url || '',
+      line: msg.content,
+    },
+    ...toasts.value,
+  ].slice(0, 4);
+}
+
+export function dismissInvite(id) {
+  toasts.value = toasts.value.filter((t) => t.id !== id);
+}
+
+export function clearInvites() {
+  toasts.value = [];
+}
+
 export function useInvite() {
   return {
     room,
     canInvite: computed(() => !!room.value),
     pickerFor,
+    toasts,
   };
 }

@@ -24,6 +24,7 @@ import { startFriends, stopFriends } from './composables/useFriends.js';
 import { useInvite } from './composables/useInvite.js';
 import ChatWindow from './components/friends/ChatWindow.vue';
 import InvitePicker from './components/friends/InvitePicker.vue';
+import InviteToast from './components/friends/InviteToast.vue';
 
 // Whether the friend picker is open (an empty seat or the chat's menu).
 const { pickerFor: invitePicker } = useInvite();
@@ -797,9 +798,9 @@ async function enter() {
 // A link does the whole job: a seat if the game hasn't started, a seat from
 // the next hand if it has, and past the door of a private room, because the
 // host handing out the link is the invitation.
-async function followInvite({ code, invite }) {
+async function followInvite({ code, invite, fromInvite = true }) {
   try {
-    const res = await emitAck('joinRoom', { code, invite });
+    const res = await emitAck('joinRoom', { code, invite, fromInvite });
     roomCode.value = res.code;
     notice.value = res.waiting
       ? `Joining with ${grouped(res.chips)} chips — you'll be dealt in next hand.`
@@ -1163,6 +1164,9 @@ onBeforeUnmount(() => {
 
   <!-- The friend picker an empty seat or the chat menu opens. -->
   <InvitePicker v-if="auth.hasAccount.value && invitePicker" />
+
+  <!-- Invites that have arrived, answered wherever the player is. -->
+  <InviteToast v-if="auth.hasAccount.value" @join="followInvite" />
 
   <!-- One sheet for both ways in. On the first visit it carries the guest
        option and cannot be closed without an answer; from the top bar it is
