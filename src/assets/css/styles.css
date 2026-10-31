@@ -4836,7 +4836,6 @@ html { scroll-behavior: smooth; }
 .friend-text { min-width: 0; display: grid; }
 .friend-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .friend-seen { font-size: 12px; color: var(--text-3); }
-.friend-row.is-online .friend-seen { color: var(--green); }
 .friend-answer { display: flex; gap: 4px; flex: none; }
 /* The ⋯ at the end of a row, and what it opens. It is there at all times on
    a touchscreen, where there is no hover to reveal it. */
@@ -4867,19 +4866,48 @@ html { scroll-behavior: smooth; }
 .friend-row-menu button.is-danger.is-armed { background: rgba(255, 90, 80, 0.16); color: #ff9d97; }
 /* The last thing said is one line, however long it was. */
 .friend-seen { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* ...and when it is a message rather than a status, it is not green: green
-   on this line means "here". An unread chat is the one that stands out. */
-.friend-row.is-online .friend-seen.is-preview { color: var(--text-3); }
-.friend-row:has(.friend-unread) .friend-seen.is-preview { color: var(--text-1); }
+/* Green on this line means "here", so it is worn only by the line that
+   actually says that - never by a message, which was the whole row reading
+   as a status. The class is put on by the component rather than fought for
+   with specificity, so there is one rule and no ordering to get wrong. */
+.friend-row.is-online .friend-seen.is-status { color: var(--green); }
 /* Unread, the Messenger pill: a count, or 9+ past that. */
 .friend-unread {
   flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   display: grid; place-items: center; background: var(--gold); color: #1a1205;
   font: 800 11px var(--font-ui);
 }
-.friend-row .friend-name { font-weight: 600; }
-.friend-row:has(.friend-unread) .friend-name,
-.friend-row:has(.friend-unread) .friend-seen { font-weight: 700; color: var(--text-1); }
+/* Not yet read: the whole row leans in, the way every chat list says it.
+   Driven by a class on the row rather than by :has(), so it does not depend
+   on the badge being drawn or on the browser supporting that selector. */
+.friend-row.is-unread .friend-name { font-weight: 800; color: var(--text-1); }
+.friend-row.is-unread .friend-seen { font-weight: 700; color: var(--text-1); }
+
+/* ---------- "Are you sure?" ---------- */
+/* The question centred, then the answers stacked under it and divided by
+   hairlines: the destructive one first because it is what was asked for, red
+   because of what it does, and Cancel under it at the same size so neither
+   is the one you hit reaching for the other.
+
+   The buttons run to the sheet's edges by pulling back its own padding
+   (.sheet is 30px 26px 26px), rather than by passing a class through
+   BaseModal to override it - this way the dialog cannot be broken by how
+   that component chooses to handle its attributes. */
+.confirm-title { margin: 0 0 8px; font-size: 17px; font-weight: 700; color: var(--text-1); }
+.confirm-body {
+  margin: 0 0 20px; font-size: 13px; line-height: 1.5; color: var(--text-3); text-wrap: pretty;
+}
+.confirm-acts { display: flex; flex-direction: column; margin: 0 -26px -26px; }
+.confirm-act {
+  width: 100%; min-height: 48px; padding: 12px 16px; cursor: pointer;
+  border: 0; border-top: 1px solid var(--line-2); background: transparent;
+  color: var(--text-1); font: 700 13.5px var(--font-ui);
+  transition: background-color 0.15s;
+}
+.confirm-act:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.confirm-act:disabled { opacity: 0.6; cursor: default; }
+.confirm-act.is-danger { color: #ff5a50; font-weight: 800; }
+.confirm-act:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 
 .friend-avatar {
   position: relative; flex: none; width: 36px; height: 36px; border-radius: 50%;

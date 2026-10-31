@@ -25,6 +25,7 @@ import { aliveRooms } from '../../lib/rooms.js';
 import { avatarSVG } from '../../lib/svg/avatars.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 
 const emit = defineEmits(['join', 'profile']);
 
@@ -32,52 +33,71 @@ const auth = useAuth();
 const { friend, minimized } = useChat();
 const { canInvite, room } = useInvite();
 
-// The kebab menu, and the one destructive act it is waiting to have
-// confirmed ('remove' | 'block' | null). A second press confirms; anything
-// else puts it away.
+// The kebab menu, and the question a destructive item opens. Removing a
+// friend, blocking, and erasing a thread each stop and say what will happen
+// rather than taking a second press on a menu item as consent.
 const menuOpen = ref(false);
-const confirming = ref(null);
+// 'remove' | 'block' | 'clear' while the dialog is up.
+const asking = ref(null);
+const working = ref(false);
 
 function closeMenu() {
   menuOpen.value = false;
-  confirming.value = null;
 }
 
-async function removeOrBlock(which) {
-  if (confirming.value !== which) {
-    confirming.value = which;
-    return;
-  }
+function ask(kind) {
+  menuOpen.value = false;
+  asking.value = kind;
+}
+
+const QUESTIONS = {
+  remove: (name) => ({
+    title: `Remove ${name}?`,
+    body: `You'll both drop off each other's friends list and won't be able to message until one of you asks again. The messages stay.`,
+    confirmLabel: 'Remove',
+  }),
+  block: (name) => ({
+    title: `Block ${name}?`,
+    body: `${name} won't be able to message you or send you invites, and they'll drop off your friends list. They aren't told.`,
+    confirmLabel: 'Block',
+  }),
+  clear: (name) => ({
+    title: 'Delete chat?',
+    body: `This clears your copy of the chat with ${name}. They keep theirs, and either of you can still write.`,
+    confirmLabel: 'Delete',
+  }),
+};
+const question = computed(() =>
+  asking.value ? QUESTIONS[asking.value](friend.value?.name || 'them') : null
+);
+
+async function confirmAsked() {
+  const kind = asking.value;
+  if (!kind || working.value) return;
+  working.value = true;
   const other = friend.value?.id;
   try {
-    if (which === 'remove') await removeFriend(other);
-    else await blockUser(other);
-    showToast(which === 'remove' ? 'Friend removed.' : 'Blocked.', { info: true });
-    closeChat();
+    if (kind === 'clear') {
+      const id = conversationId.value;
+      if (id) {
+        await clearConversation(id);
+        messages.value = [];
+        hasMore.value = false;
+      }
+      showToast('Chat cleared for you.', { info: true });
+      asking.value = null;
+    } else {
+      if (kind === 'remove') await removeFriend(other);
+      else await blockUser(other);
+      showToast(kind === 'remove' ? 'Friend removed.' : 'Blocked.', { info: true });
+      asking.value = null;
+      closeChat();
+    }
   } catch (err) {
     showToast(err.message);
+    asking.value = null;
   } finally {
-    closeMenu();
-  }
-}
-
-// Clearing the thread. Yours only - the other player keeps their half, and
-// the confirm says so rather than implying it is gone for both.
-async function clearChat() {
-  if (confirming.value !== 'clear') {
-    confirming.value = 'clear';
-    return;
-  }
-  const id = conversationId.value;
-  closeMenu();
-  if (!id) return;
-  try {
-    await clearConversation(id);
-    messages.value = [];
-    hasMore.value = false;
-    showToast('Chat cleared for you.', { info: true });
-  } catch (err) {
-    showToast(err.message);
+    working.value = false;
   }
 }
 
@@ -416,15 +436,9 @@ function toggleMin() {
           <div v-if="menuOpen" class="friend-chat-menu" @click.stop>
             <button v-if="canInvite" type="button" @click="inviteToLobby">Invite to lobby</button>
             <button type="button" @click="closeMenu(); openProfile()">View profile</button>
-            <button v-if="extras" type="button" :class="{ 'is-armed': confirming === 'clear' }" @click="clearChat">
-              {{ confirming === 'clear' ? 'Tap again — clears for you' : 'Delete chat' }}
-            </button>
-            <button type="button" :class="{ 'is-armed': confirming === 'remove' }" @click="removeOrBlock('remove')">
-              {{ confirming === 'remove' ? 'Tap again to remove' : 'Remove friend' }}
-            </button>
-            <button type="button" class="is-danger" :class="{ 'is-armed': confirming === 'block' }" @click="removeOrBlock('block')">
-              {{ confirming === 'block' ? 'Tap again to block' : 'Block' }}
-            </button>
+            <button v-if="extras" type="button" @click="ask('clear')">Delete chat</button>
+            <button type="button" @click="ask('remove')">Remove friend</button>
+            <button type="button" class="is-danger" @click="ask('block')">Block</button>
           </div>
         </div>
         <button type="button" class="friend-chat-icon" :aria-label="minimized ? 'Open chat' : 'Minimize chat'" @click="toggleMin">
@@ -551,5 +565,16 @@ function toggleMin() {
         </button>
       </form>
     </template>
+
+    <ConfirmDialog
+      v-if="question"
+      :title="question.title"
+      :body="question.body"
+      :confirm-label="question.confirmLabel"
+      :busy="working"
+      danger
+      @confirm="confirmAsked"
+      @cancel="asking = null"
+    />
   </section>
 </template>

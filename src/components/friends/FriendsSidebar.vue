@@ -17,6 +17,7 @@ import { openConversation, clearConversation } from '../../lib/chat.js';
 import { blockUser } from '../../lib/friends.js';
 import { showToast } from '../../lib/toast.js';
 import BaseButton from '../ui/BaseButton.vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
@@ -31,14 +32,63 @@ function openChat(f) {
 const auth = useAuth();
 const { friends, requests, available, loaded, accept, decline, refresh } = useFriends();
 
-// The ⋯ on a row, and the act it is waiting to have confirmed. A second
-// press on the same item does it; a press anywhere else puts the menu away.
+// The ⋯ on a row, and the question it opens. Blocking somebody or erasing a
+// conversation asks first, in the middle of the screen - a second press on a
+// menu item is too easy to do by accident for either of those.
 const rowMenu = ref(null);
-const confirming = ref(null);
+// { kind: 'clear' | 'block', friend } while the dialog is up.
+const asking = ref(null);
+const working = ref(false);
 
 function closeRowMenu() {
   rowMenu.value = null;
-  confirming.value = null;
+}
+
+function ask(kind, friend) {
+  rowMenu.value = null;
+  asking.value = { kind, friend };
+}
+
+// What each question says. The wording is the point: clearing is yours alone
+// and blocking is not, so neither is left to be guessed at.
+const QUESTIONS = {
+  clear: (name) => ({
+    title: 'Delete messages?',
+    body: `This clears your copy of the chat with ${name}. They keep theirs, and either of you can still write.`,
+    confirmLabel: 'Delete',
+  }),
+  block: (name) => ({
+    title: `Block ${name}?`,
+    body: `${name} won't be able to message you or send you invites, and they'll drop off your friends list. They aren't told.`,
+    confirmLabel: 'Block',
+  }),
+};
+const question = computed(() => {
+  const at = asking.value;
+  return at ? QUESTIONS[at.kind](at.friend.name) : null;
+});
+
+async function confirmAsked() {
+  const at = asking.value;
+  if (!at || working.value) return;
+  working.value = true;
+  try {
+    if (at.kind === 'clear') {
+      const id = await openConversation(at.friend.id);
+      await clearConversation(id);
+      showToast(`Messages with ${at.friend.name} cleared for you.`, { info: true });
+    } else {
+      await blockUser(at.friend.id);
+      showToast(`${at.friend.name} blocked.`, { info: true });
+    }
+    asking.value = null;
+    refresh();
+  } catch (err) {
+    showToast(err.message);
+    asking.value = null;
+  } finally {
+    working.value = false;
+  }
 }
 
 // The line under each name: the last thing said, whoever said it. Falls back
@@ -48,42 +98,9 @@ function subtitle(f) {
   const line = previewLine(f.last, auth.userId.value);
   return line || (f.online ? 'Online' : lastSeenLabel(f.secsAgo));
 }
-// Green says "here". Once the line is a message rather than a status it
-// stops meaning that, so it stops being green.
-const isPreview = (f) => !!previewLine(f.last, auth.userId.value);
-
-// Clearing the thread from the list. Yours only, the same as from inside the
-// window - the other player keeps their half.
-async function deleteMessages(f) {
-  if (confirming.value !== `clear:${f.id}`) {
-    confirming.value = `clear:${f.id}`;
-    return;
-  }
-  closeRowMenu();
-  try {
-    const id = await openConversation(f.id);
-    await clearConversation(id);
-    showToast(`Messages with ${f.name} cleared for you.`, { info: true });
-    refresh();
-  } catch (err) {
-    showToast(err.message);
-  }
-}
-
-async function block(f) {
-  if (confirming.value !== `block:${f.id}`) {
-    confirming.value = `block:${f.id}`;
-    return;
-  }
-  closeRowMenu();
-  try {
-    await blockUser(f.id);
-    showToast(`${f.name} blocked.`, { info: true });
-    refresh();
-  } catch (err) {
-    showToast(err.message);
-  }
-}
+// Green says "here", so only the line that is actually saying that wears it.
+// A message preview is not a status, however recently it arrived.
+const isStatus = (f) => !previewLine(f.last, auth.userId.value);
 
 // A press anywhere off the menu closes it.
 function onDocClick() {
@@ -145,12 +162,17 @@ async function answer(fn, id) {
       </section>
 
       <ul v-if="friends.length" class="friends-list">
-        <li v-for="f in friends" :key="f.id" class="friend-row" :class="{ 'is-online': f.online }">
+        <li
+          v-for="f in friends"
+          :key="f.id"
+          class="friend-row"
+          :class="{ 'is-online': f.online, 'is-unread': f.unread > 0 }"
+        >
           <button type="button" class="friend-main" @click="openChat(f)">
             <FriendAvatar :username="f.username" :name="f.name" :url="f.avatar_url || ''" :online="f.online" />
             <span class="friend-text">
               <span class="friend-name">{{ f.name }}</span>
-              <span class="friend-seen" :class="{ 'is-preview': isPreview(f) }">{{ subtitle(f) }}</span>
+              <span class="friend-seen" :class="{ 'is-status': isStatus(f) }">{{ subtitle(f) }}</span>
             </span>
             <span v-if="f.unread" class="friend-unread" :aria-label="`${f.unread} unread`">{{ f.unread > 9 ? '9+' : f.unread }}</span>
           </button>
@@ -162,17 +184,13 @@ async function answer(fn, id) {
               class="friend-more"
               :aria-label="`More for ${f.name}`"
               :aria-expanded="rowMenu === f.id"
-              @click.stop="rowMenu === f.id ? closeRowMenu() : ((rowMenu = f.id), (confirming = null))"
+              @click.stop="rowMenu = rowMenu === f.id ? null : f.id"
             >
               <SvgIcon name="more" />
             </button>
             <div v-if="rowMenu === f.id" class="friend-row-menu" @click.stop>
-              <button type="button" :class="{ 'is-armed': confirming === `clear:${f.id}` }" @click="deleteMessages(f)">
-                {{ confirming === `clear:${f.id}` ? 'Tap again — clears for you' : 'Delete messages' }}
-              </button>
-              <button type="button" class="is-danger" :class="{ 'is-armed': confirming === `block:${f.id}` }" @click="block(f)">
-                {{ confirming === `block:${f.id}` ? 'Tap again to block' : 'Block user' }}
-              </button>
+              <button type="button" @click="ask('clear', f)">Delete messages</button>
+              <button type="button" class="is-danger" @click="ask('block', f)">Block user</button>
             </div>
           </span>
         </li>
@@ -181,5 +199,16 @@ async function answer(fn, id) {
         No friends yet. Open a player's profile to add them.
       </p>
     </template>
+
+    <ConfirmDialog
+      v-if="question"
+      :title="question.title"
+      :body="question.body"
+      :confirm-label="question.confirmLabel"
+      :busy="working"
+      danger
+      @confirm="confirmAsked"
+      @cancel="asking = null"
+    />
   </aside>
 </template>
