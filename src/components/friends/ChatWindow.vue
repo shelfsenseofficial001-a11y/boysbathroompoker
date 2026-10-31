@@ -213,7 +213,9 @@ async function open(who) {
       onInsert(row) {
         const stick = atBottom();
         mergeIn(row);
-        if (row.sender_id !== me.value) markRead(id);
+        // Only while it is open in front of them: a message that lands in a
+        // folded-away window has not been read.
+        if (row.sender_id !== me.value && watching.value) markRead(id);
         if (stick || row.sender_id === me.value) scrollToEnd(true);
       },
       onUpdate: mergeIn,
@@ -366,8 +368,28 @@ function autosize() {
   el.style.height = `${Math.min(el.scrollHeight, 110)}px`;
 }
 
+// Reading only counts while the window is actually open in front of you -
+// not closed, not folded away. Without this a message that arrived after the
+// chat was shut was marked read by the subscription that outlived it, so it
+// never got to be unread and the row never went bold.
+const watching = computed(() => !!friend.value && !minimized.value);
+
+// Shut the chat down when it closes: a live subscription on a window nobody
+// is looking at is what was quietly marking new messages read.
+function teardown() {
+  unwatch?.();
+  unwatch = null;
+  conversationId.value = null;
+  messages.value = [];
+  hasMore.value = false;
+  replyTo.value = null;
+  editing.value = null;
+  draft.value = '';
+}
+
 watch(friend, (who) => {
-  if (who && !minimized.value) open(who);
+  if (!who) return teardown();
+  if (!minimized.value) open(who);
 });
 
 // Mounted with a friend already chosen - the window was put away for a table
@@ -378,7 +400,9 @@ onMounted(() => {
 
 // Reading as they come in while the window is open and in front.
 function onVisible() {
-  if (document.visibilityState === 'visible' && conversationId.value) markRead(conversationId.value);
+  if (document.visibilityState === 'visible' && watching.value && conversationId.value) {
+    markRead(conversationId.value);
+  }
 }
 // A press anywhere off a menu puts it away.
 function onDocClick() {
@@ -396,9 +420,13 @@ onBeforeUnmount(() => {
 
 function toggleMin() {
   minimized.value = !minimized.value;
-  if (!minimized.value) {
-    if (conversationId.value) scrollToEnd();
-    else if (friend.value) open(friend.value);
+  if (minimized.value) return;
+  // Opening it back up is seeing what came in while it was folded away.
+  if (conversationId.value) {
+    scrollToEnd();
+    markRead(conversationId.value);
+  } else if (friend.value) {
+    open(friend.value);
   }
 }
 </script>
