@@ -2229,7 +2229,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           <div class="fx" id="fx"></div>
         </div>
       </main>
-      <button class="table-join" data-take-seat id="table-join" hidden>${icons.chevron}Take a seat</button>
       <div class="table-bot-wrap" id="table-bot" hidden>
         <div class="bot-menu" id="bot-menu" role="menu" aria-label="Bot difficulty" hidden>
           ${BOT_LEVELS.map(
@@ -2265,7 +2264,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       hhQ: $('hh-q'), hhWinner: $('hh-winner'), hhType: $('hh-type'), hhNo: $('hh-no'),
       hhClear: $('hh-clear'), hhX: $('hh-x'),
       spectators: $('spectators'), specCount: root.querySelector('.spec-count'), specPanel: $('spec-panel'),
-      tableJoin: $('table-join'),
       tableBot: $('table-bot'),
       botMenu: $('bot-menu'),
     };
@@ -2332,6 +2330,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // My cards: hold to peek, drag and throw toward the middle to fold.
     // Seat menus: the ⋯ on another player's nameplate, and the vote it offers.
     els.seats.addEventListener('click', async (e) => {
+      // An empty chair: the only way in for somebody watching, now that
+      // there is no button for it.
+      const sit = e.target.closest('[data-sit]');
+      if (sit) {
+        sit.disabled = true; // one press; the answer redraws the table
+        return takeSeat(Number(sit.dataset.sit));
+      }
       const open = e.target.closest('[data-seat-menu]');
       const vote = e.target.closest('[data-vote-kick]');
       const give = e.target.closest('[data-make-host]');
@@ -2455,12 +2460,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // The switch's own label; the click handler below would read it as a
       // tap on the eye and close the panel out from under it.
       if (e.target.closest('.spec-allow')) return;
-      const take = e.target.closest('[data-take-seat]');
       const remove = e.target.closest('[data-spec-remove]');
       const block = e.target.closest('[data-spec-block]');
-      if (take || remove || block) {
+      if (remove || block) {
         try {
-          if (take) return takeSeat();
           if (remove) await emitAck('removeSpectator', { userId: Number(remove.dataset.specRemove) });
           else await emitAck('removeSpectator', { userId: Number(block.dataset.specBlock), block: true });
         } catch (err) {
@@ -2474,9 +2477,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       drawSpectators(shown);
     });
 
-    // It sits on the felt rather than in the dock or the spectator panel, so
-    // neither of their delegated handlers reaches it.
-    els.tableJoin?.addEventListener('click', () => takeSeat());
     // Which bot: the four the waiting room offers, in their own colours.
     // Asking rather than seating one on the spot also means the button on
     // the felt can't drop a player onto the table by a stray tap.
@@ -2554,15 +2554,40 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // under the board - not at the geometric middle, where the pot readout
     // landed on top of it.
     if (els.feltLogo) place(els.feltLogo, BOARD);
+    // Every chair the table has, taken or not. A nine-handed table is nine
+    // seats whether two are playing or nine: an empty one is somewhere a
+    // watcher can sit down, which is how anybody joins a game in progress,
+    // so it has to be on screen and in a fixed place of its own. Laid out
+    // this way a player also keeps their chair as others come and go, rather
+    // than being shuffled round the cloth by somebody else leaving.
+    //
     // Someone who has left (or been voted out) mid-hand still holds a seat on
     // the server until the hand ends — their chips are in the pot — but
-    // they're gone from the table, so the remaining seats close up around
-    // the gap straight away rather than leaving a “Left” plate behind.
-    const list = table.seats.filter((p) => p && !p.left);
-    let start = list.findIndex((s) => s.userId === user.id);
-    if (start < 0) start = 0;
-    const ordered = [...list.slice(start), ...list.slice(0, start)];
-    const n = ordered.length;
+    // they're gone from the table, so their chair is shown open rather than
+    // leaving a “Left” plate behind. The server is what decides whether it
+    // can actually be taken yet.
+    const total = Math.max(2, table.seats.length || table.maxSeats || 9);
+    const at = (seat) => {
+      const q = table.seats[seat];
+      return q && !q.left ? q : null;
+    };
+    // Turned so my own chair is the one at the foot of the screen, the way it
+    // is when you sit down at a table. Watching from the rail there is no
+    // chair of mine to turn to, so the table is shown as it is dealt.
+    const mySeat = table.seats.findIndex((q) => q && !q.left && q.userId === user.id);
+    const ordered = Array.from({ length: total }, (_, i) => {
+      const seat = ((mySeat < 0 ? 0 : mySeat) + i) % total;
+      return { seat, p: at(seat) };
+    });
+    const n = total;
+    // Who is actually holding cards, in the order they are dealt them. The
+    // deal staggers off this rather than off the ring: counted round nine
+    // chairs, three players' cards came out with six empty beats between
+    // them.
+    const dealOrder = new Map();
+    ordered.forEach(({ seat, p: q }) => {
+      if (q) dealOrder.set(seat, dealOrder.size);
+    });
     els.camera.style.setProperty('--pod-hand-show', String(POD_HAND_SHOW));
     els.camera.style.setProperty('--pod-reveal-show', String(POD_REVEAL_SHOW));
     els.camera.style.setProperty('--peek-rise', String(PEEK_RISE));
@@ -2623,8 +2648,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // Nothing else on a plate changes its width mid-hand (the chip stack in it
     // has a fixed box - see .pod .stack), so neither does the table.
     const pct = (px, of) => (px / of) * 100;
-    const plateSize = (seat) => {
-      const el = els.seats.querySelector(`.pod[data-seat="${seat}"]`);
+    // An open chair is a ring with a plus in it rather than a nameplate, and
+    // a much smaller thing: measuring it as a plate reserved a plate's width
+    // of felt around nothing.
+    const openPx = 2.6 * podFont + 2;
+    const plateSize = (seat, open) => {
+      if (open) return { w: pct(openPx, camW), h: pct(openPx, camH) };
+      const el = els.seats.querySelector(`.pod[data-seat="${seat}"]:not(.is-open)`);
       return { w: pct(el?.offsetWidth || 15 * podFont, camW), h: pct(podH, camH) };
     };
     // A bet's chips, as tall as .bet svg's clamp. The stack is drawn to a
@@ -2639,12 +2669,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const trayDrop = pct(1.2 * podFont - 1 + 4, camH);
     const dealerW = pct(Math.min(30, Math.max(18, 0.046 * cqmin)), camW);
     const gapX = pct(5, camW);
-    // Chips beside a plate get a wider berth than the dealer button does: the
-    // acting seat's plate wears an outline a few pixels outside its own box,
-    // and chips tucked right up against the edge sat on it. Only the chips go
-    // out here now - the figure is on the plate's tray - so this is all the
-    // width a bet takes beside a seat.
-    const betGap = pct(10, camW);
     // --- The edge of the cloth ----------------------------------------------
     // The felt is a stadium on a wide table and an oval on a tall one, drawn
     // by feltSVG from these same two numbers: half-width 45% of the camera,
@@ -2718,7 +2742,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const gapY = pct(4, camH);
     const aboveBet = pct(podH / 2 + cardO * 1.4 * (POD_HAND_SHOW + PEEK_RISE) + tagH + 2, camH);
     const aboveShow = pct(podH / 2 + standPx + 2, camH);
-    const belowBet = pct(podH / 2, camH) + trayDrop + (portrait ? gapY + betH : 0);
+    // A seat's chips hang under its plate on both shapes of table now, so the
+    // room for them is reserved on both. Counted only on a phone, the wide
+    // table's seats sat a stack's height too close together the moment the
+    // chips moved under them.
+    const belowBet = pct(podH / 2, camH) + trayDrop + gapY + betH;
     const belowShow = pct(podH / 2, camH);
     const above = Math.max(aboveBet, aboveShow);
 
@@ -2770,7 +2798,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // only when I have one. Watching from the rail, every seat on the table
     // belongs on a side rail, and the rails run the whole height, since
     // there is no plate of mine at the foot for them to stop short of.
-    const seated = ordered[0]?.userId === user.id;
+    const seated = mySeat >= 0;
     if (portrait) {
       const m = seated ? n - 1 : n;
       // One seat at the top when there is an odd one out, and the rest split
@@ -2837,9 +2865,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       order.forEach((o, j) => slot.set(seated ? j + 1 : j, o));
     }
 
-    ordered.forEach((p, i) => {
-      const isMe = p.userId === user.id;
-      const size = plateSize(p.seat);
+    ordered.forEach(({ seat, p }, i) => {
+      const open = !p;
+      const isMe = !!p && p.userId === user.id;
+      const size = plateSize(seat, open);
       // Seat 0 (me) at the bottom; others follow clockwise in action order.
       const a = ((90 + (i * 360) / n) * Math.PI) / 180;
       const pod = { x: 50 + rx * Math.cos(a), y: 50 + ry * Math.sin(a) };
@@ -2857,6 +2886,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         side = s.side;
         pod.y = s.y;
         pod.x = side === 'left' ? -railOut : side === 'right' ? 100 + railOut : 50;
+        // A nameplate on a rail is anchored at the rail and grows inward from
+        // it, so its anchor sits off the cloth on purpose. An open chair is a
+        // circle centred on its anchor, which put half of it off the side of
+        // the screen - so it is nudged in by its own radius to stand where
+        // the middle of a plate would.
+        if (open) pod.x += side === 'left' ? size.w / 2 : side === 'right' ? -size.w / 2 : 0;
       } else {
         // Room above for the hand and badge, and the whole plate on the table.
         pod.y = Math.max(pod.y, minPodY);
@@ -2872,6 +2907,14 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       const high = !isMe && pod.y <= minPodY + 0.3;
       const plateCx = (plate.l + plate.r) / 2;
       const stack = { x: plateCx, y: pod.y };
+      const dealIndex = dealOrder.get(seat) ?? 0;
+
+      // An open chair has no hand, no chips and no button to place; the ring
+      // itself is the whole of it.
+      if (open) {
+        map.set(seat, { pod, cards: pod, bet: pod, dealer: pod, stack, isMe: false, side, index: i, dealIndex, plate, high, open: true });
+        return;
+      }
 
       if (isMe) {
         const toward = (k) => ({ x: pod.x + (CENTER.x - pod.x) * k, y: pod.y + (CENTER.y - pod.y) * k });
@@ -2881,7 +2924,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         const dealer = { x: cards.x + off, y: cards.y };
         // My chips sit squarely above my hand rather than off to one side.
         const bet = onFelt({ x: cards.x, y: clamp(cards.y - myBetRise, 8, 92) });
-        map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate, high });
+        map.set(seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, dealIndex, plate, high });
         return;
       }
 
@@ -2894,30 +2937,29 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // plate, in the room the spacing above set aside for them.
       const inward = plateCx <= 50 ? 1 : -1;
       const edge = inward > 0 ? plate.r : plate.l;
-      const isDealer = table.dealerSeat === p.seat;
+      const isDealer = table.dealerSeat === seat;
       const dealer = { x: edge + inward * (gapX + dealerW / 2), y: pod.y };
-      const betFrom = edge + inward * ((isDealer ? gapX + dealerW : 0) + betGap);
-      // On a wide table the chips hang off that point and grow away from the
-      // plate, rather than being centred on a guess at their width: one sample
-      // width stood in for every seat, so a four-figure bet - or a taller chip
-      // stack - ran straight back under the nameplate.
-      // On a phone a plate is pinned to the rail, which is off the cloth, so
-      // its chips can't sit beside it or under it - under it is where the
-      // bottom seats found my own nameplate. They go out onto the open felt
-      // instead, on the line from the player toward the middle of the table:
-      // in front of them, the way chips are pushed in at a real table.
+      // Chips go under the plate, squared up on it: what a player has out
+      // this street reads as theirs because it is directly below their name,
+      // and the figure in the tray is directly above it. Beside the plate,
+      // where they used to go on a wide table, a stack sat between two seats
+      // and had to be traced back to one of them.
+      //
+      // On a phone a plate pinned to a side rail is off the cloth altogether,
+      // so there is nothing under it to put chips on. Those go out onto the
+      // open felt instead, on the line from the player toward the middle of
+      // the table: in front of them, the way chips are pushed in at a real
+      // table.
       const toCentre = (k) => ({ x: plateCx + (50 - plateCx) * k, y: pod.y + (50 - pod.y) * k });
       const under = plate.b + trayDrop + gapY + betH / 2;
       const bet = onFelt(
-        !portrait
-          ? { x: betFrom, y: pod.y, grow: inward > 0 ? 'right' : 'left' }
-          : side
-            ? { ...toCentre(0.3), grow: side === 'left' ? 'right' : 'left' }
-            : { x: plateCx, y: under }
+        portrait && side
+          ? { ...toCentre(0.3), grow: side === 'left' ? 'right' : 'left' }
+          : { x: plateCx, y: under }
       );
       // Where this player's cards are: behind the plate, at its top edge.
       const cards = { x: plateCx, y: plate.t };
-      map.set(p.seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, plate, high });
+      map.set(seat, { pod, cards, bet, dealer, stack, isMe, side, index: i, dealIndex, plate, high });
     });
 
     // --- The centre column ---------------------------------------------------
@@ -2956,7 +2998,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       place(els.foldZone, BOARD);
       if (els.feltLogo) place(els.feltLogo, BOARD);
     }
-    return { portrait, n, map };
+    return { portrait, n, map, slots: ordered, dealt: dealOrder.size };
   }
 
   function myLayout() {
@@ -2986,7 +3028,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // A resize that reshapes the table needs the cloth cut again. Compared
     // with a little slack, so a pixel of reflow doesn't rebuild the felt.
     if (Math.abs(feltAspect() - feltCutFor) > 0.01) drawFelt();
-    els.camera.classList.toggle('is-crowded', layout.n >= 5);
+    els.camera.classList.toggle('is-crowded', layout.dealt >= 5);
     // Only a genuinely new hand deals cards in. Plain redraws (cancelling a
     // fold, ending a peek, resizing) must not replay everyone's deal.
     const newHand = t.handNumber !== renderedHand;
@@ -3030,9 +3072,12 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     if (sinceEntry < ENTRANCE_MS) {
       root.querySelector('.table-screen')?.style.setProperty('--seat-elapsed', `${Math.round(sinceEntry)}ms`);
     }
-    els.seats.innerHTML = t.seats
-      .filter((p) => p && !p.left)
-      .map((p) => seatHTML(p, layout.map.get(p.seat), ctx))
+    // Every chair, in ring order: the players at the table and the open
+    // seats between them, which are the way in for anyone watching.
+    els.seats.innerHTML = layout.slots
+      .map(({ seat, p }) =>
+        p ? seatHTML(p, layout.map.get(seat), ctx) : openSeatHTML(seat, layout.map.get(seat), cur)
+      )
       .join('');
 
     if (keptHand) {
@@ -3045,7 +3090,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     }
     drawBoard(t, newHand, ctx.winCards);
     drawPot(t, summary);
-    drawMuck(t);
+    drawMuck();
     drawDock(cur);
     drawSpectators(cur);
     drawPending();
@@ -3441,6 +3486,33 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       ${open ? `<div class="pod-menu">${items}</div>` : ''}`;
   }
 
+  // An empty chair. Shown at every table, whether or not the person looking
+  // at it can sit in one: nine seats with two people in them should read as a
+  // table with room at it, not as a table of two.
+  //
+  // It is a button only for someone watching who could actually take it. For
+  // a player it is just a mark on the cloth - a plus offered to somebody
+  // already sitting down is a promise the server would refuse - and while a
+  // hand is running, sitting down means being dealt in from the next one, so
+  // the label says that rather than letting the press look like it failed.
+  function openSeatHTML(seat, L, cur) {
+    if (!L) return '';
+    const canSit = !!cur?.watching && (cur?.seatsFree ?? 0) > 0;
+    const style = `left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}`;
+    const body = `<span class="open-ring">${canSit ? icons.plus : ''}</span>`;
+    if (!canSit) {
+      return `<div class="anchor seat-group is-open" style="${style}">
+        <div class="pod is-open" data-seat="${seat}" aria-hidden="true">${body}</div>
+      </div>`;
+    }
+    const label = cur.table.phase === 'waiting'
+      ? `Sit in seat ${seat + 1}`
+      : `Sit in seat ${seat + 1} — you'll be dealt in next hand`;
+    return `<div class="anchor seat-group is-open" style="${style}">
+      <button type="button" class="pod is-open is-free" data-sit="${seat}" title="${label}" aria-label="${label}">${body}</button>
+    </div>`;
+  }
+
   function seatHTML(p, L, ctx) {
     const { t } = ctx;
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
@@ -3525,7 +3597,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const H = els.camera.clientHeight;
     const dx = ((DECK.x - to.x) / 100) * W;
     const dy = ((DECK.y - to.y) / 100) * H;
-    return `--dx:${dx.toFixed(0)}px;--dy:${dy.toFixed(0)}px;--d:${(cardIdx * layout.n + L.index) * 90}ms`;
+    return `--dx:${dx.toFixed(0)}px;--dy:${dy.toFixed(0)}px;--d:${(cardIdx * layout.dealt + L.dealIndex) * 90}ms`;
   }
 
   // `flip: true` builds a two-sided card that turns over in 3D (used for my
@@ -3641,15 +3713,17 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       ${t.currentBet > 0 && BETTING.includes(t.phase) ? `<div class="pot-sub">Current bet ${fmt(t.currentBet)}</div>` : ''}`;
   }
 
-  function drawMuck(t) {
-    const folded = t.seats.filter((s) => s && s.folded && s.hasCards).length;
-    let html = '';
-    for (let i = 0; i < Math.min(folded * 2, 8); i++) {
-      const r = ((i * 47) % 50) - 25;
-      const dx = ((i * 13) % 12) - 6;
-      html += `<div class="card" style="transform:translate(${dx}%, ${-i * 2}%) rotate(${r}deg)"><div class="back">${cardBackSVG(getSettings().cardBack)}</div></div>`;
-    }
-    els.muck.innerHTML = html;
+  // Nothing is drawn where the muck was. A growing pile of card backs on the
+  // cloth is a count of how many people have folded, which is already on
+  // their seats, and it put a second heap of cards on the felt for the eye to
+  // sort out from the board. A hand that is given up now simply goes: see
+  // tossCards, which fades it where it lies rather than sending it anywhere.
+  //
+  // The spot itself is still the top of the centre column, and the board and
+  // pot are still laid out below it - what used to stand there is now the
+  // clear air above the board.
+  function drawMuck() {
+    if (els.muck.childElementCount) els.muck.innerHTML = '';
   }
 
   // ---------------------------------------------------------------------------
@@ -3744,9 +3818,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     // to act on, so the tray and the action buttons go rather than sitting
     // there greyed out.
     els.dock.classList.toggle('is-watching', !me);
-    // Offered on the felt, in the corner nearest the seats, and only while
-    // there's a chair going spare.
-    if (els.tableJoin) els.tableJoin.hidden = !!me || (shown?.seatsFree ?? 0) < 1;
     // The owner's, and only while there's a chair to sit one in. A bot added
     // now is dealt in from the next hand, the same as anyone taking a seat
     // mid-game.
@@ -3992,10 +4063,21 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     return url.toString();
   }
 
-  // Leaving the rail for a chair. Offered from the dock while watching.
-  async function takeSeat() {
+  // Leaving the rail for a chair: pressing the plus in an empty one. The seat
+  // asked for is the one that was pressed, and the server has the last word
+  // on it - somebody may have sat down in it while the press was in the air,
+  // in which case it seats them elsewhere rather than refusing them.
+  //
+  // Mid-game there is no sitting down into a hand already dealt: the chair is
+  // held and the cards come on the next one. That is said here, because
+  // otherwise the press looks like it did nothing for as long as the hand
+  // has left to run.
+  async function takeSeat(seat = null) {
     try {
-      await emitAck('takeSeat');
+      await emitAck('takeSeat', seat == null ? {} : { seat });
+      if (shown?.table.phase !== 'waiting') {
+        showNotice('Seat taken — you’re dealt in on the next hand.');
+      }
     } catch (err) {
       showError(err.message);
     }
@@ -4181,7 +4263,6 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function onDockClick(e) {
-    if (e.target.closest('[data-take-seat]')) return takeSeat();
     const act = e.target.closest('[data-act]');
     if (act && !act.disabled) {
       const kind = act.dataset.act;
@@ -4736,14 +4817,16 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       el.style.top = `${L.cards.y}%`;
       el.style.transform = `translate(-50%, -50%) rotate(${i ? 5 : -5}deg)`;
       els.fx.appendChild(el);
+      // Given up where they were held, rather than flown across the cloth to
+      // a pile that is no longer drawn. A hand sliding away still read as
+      // something being played; folding is the opposite of that, and the two
+      // cards simply going is what it looks like at a table.
       later(() => {
         el.getBoundingClientRect();
-        el.style.left = `${MUCK.x + Math.random() * 4 - 2}%`;
-        el.style.top = `${MUCK.y + Math.random() * 4 - 2}%`;
-        el.style.transform = `translate(-50%, -50%) rotate(${200 + Math.random() * 160}deg) scale(${L.isMe ? 0.6 : 1})`;
+        el.style.opacity = '0';
+        el.style.transform = `translate(-50%, -50%) rotate(${i ? 9 : -9}deg) scale(0.86)`;
       }, 16 + i * 70);
-      later(() => (el.style.opacity = '0'), 650 + i * 70);
-      later(() => el.remove(), 1100);
+      later(() => el.remove(), 900);
     }
   }
 

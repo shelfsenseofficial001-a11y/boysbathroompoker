@@ -149,7 +149,7 @@
  */
 @media (max-width: 1024px) {
   :is(.show-history, .show-chat)
-    :is(.history-toggle, .chat-toggle, .spectators, .table-join, .table-bot-wrap) {
+    :is(.history-toggle, .chat-toggle, .spectators, .table-bot-wrap) {
     display: none;
   }
 }

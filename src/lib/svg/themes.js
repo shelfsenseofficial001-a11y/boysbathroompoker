@@ -135,14 +135,51 @@ export function feltSVG(id = 'green', aspect = 1.9) {
         stroke-width="1" vector-effect="non-scaling-stroke"/>
       ${bracket(-run, 1)}${bracket(run, -1)}
       ${roomy ? studs(-run, 1) + studs(run, -1) : ''}`;
-    // One for each long side, each sitting in the middle of its own cushion.
+    // One for each long side, each sitting in the middle of its own cushion -
+    // except the far one on a wide table, which is where the dealer stands.
+    // An inlay there ran straight through the notch and out the other side,
+    // which read as a panel someone had taken a bite out of rather than as a
+    // gap cut for a person.
     const mid = T / 2;
     return tall
       ? `<g transform="translate(${(W / 2 - RW * a + mid).toFixed(2)} 50) rotate(90)">${inlay}</g>
          <g transform="translate(${(W / 2 + RW * a - mid).toFixed(2)} 50) rotate(90)">${inlay}</g>`
-      : `<g transform="translate(${(W / 2).toFixed(2)} ${(50 - RH + mid).toFixed(2)})">${inlay}</g>
-         <g transform="translate(${(W / 2).toFixed(2)} ${(50 + RH - mid).toFixed(2)})">${inlay}</g>`;
+      : `<g transform="translate(${(W / 2).toFixed(2)} ${(50 + RH - mid).toFixed(2)})">${inlay}</g>`;
   };
+
+  // ---- The dealer's stand ----
+  // The bite cut out of the middle of the far cushion, where the box stands
+  // to pitch the cards and push the pot. A real table is cut this way so the
+  // dealer can reach the board without leaning over the rail, and the cut is
+  // what makes it read as a poker table rather than an oval with people
+  // round it.
+  //
+  // It is taken out of the whole table at once, by mask, rather than drawn on
+  // top: everything from the drop shadow up is cut by the same circle, so the
+  // background shows through the dip the way it would through a real one.
+  // Bitten less deep than the cushion is thick, so the cloth's own edge runs
+  // past underneath it unbroken.
+  const notchR = T * 1.85;
+  const notchCy = 50 - RH - notchR + T * 0.72;
+  const notchCx = W / 2;
+  // The metalwork the inlay would have carried, moved either side of the cut:
+  // a pair of chevrons facing in, marking the stand as a place rather than a
+  // dent. Same accent as the inlay's brackets, for the same reason.
+  const chevron = (x, dir) => `
+    <g transform="translate(${x.toFixed(2)} ${(50 - RH + T / 2).toFixed(2)}) scale(${dir} 1)">
+      <path d="M0 -1.9 L2.0 0 L0 1.9M2.4 -1.9 L4.4 0 L2.4 1.9" fill="none" stroke="${t.line}"
+        stroke-opacity=".7" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>`;
+  const dealerStand = `
+    <g clip-path="url(#${u}cRail)">
+      <!-- The cut edge: dark where the cushion is cut through, with the same
+           light along its lip that the rest of the rail catches. -->
+      <circle cx="${notchCx.toFixed(2)}" cy="${notchCy.toFixed(2)}" r="${notchR.toFixed(2)}"
+        fill="none" stroke="#000" stroke-opacity=".55" stroke-width="1.6"/>
+      <circle cx="${notchCx.toFixed(2)}" cy="${notchCy.toFixed(2)}" r="${(notchR - 0.75).toFixed(2)}"
+        fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="0.8"/>
+      ${chevron(notchCx - notchR - 2.6, -1)}${chevron(notchCx + notchR + 2.6, 1)}
+    </g>`;
 
   const soften = (id, px) =>
     `<filter id="${id}" x="-12%" y="-12%" width="124%" height="124%">
@@ -189,7 +226,14 @@ export function feltSVG(id = 'green', aspect = 1.9) {
     ${soften(`${u}b2`, 0.6)}
     <clipPath id="${u}cFelt">${ring(T, '')}</clipPath>
     <clipPath id="${u}cRail">${ring(0, '')}</clipPath>
+    <!-- Everything below is drawn through this: the table less the dealer's
+         stand. White keeps, black cuts. -->
+    <mask id="${u}mStand">
+      <rect x="0" y="0" width="${W.toFixed(2)}" height="100" fill="#fff"/>
+      <circle cx="${notchCx.toFixed(2)}" cy="${notchCy.toFixed(2)}" r="${notchR.toFixed(2)}" fill="#000"/>
+    </mask>
   </defs>
+  <g mask="url(#${u}mStand)">
   ${ring(-0.4, 'fill="#000" opacity=".45"', 0.8)}
   ${ring(0, `fill="url(#${u}Rail)"`)}
   <!-- Rail, lit: the sheen clipped to the rail's own silhouette so it reads as
@@ -224,6 +268,8 @@ export function feltSVG(id = 'green', aspect = 1.9) {
        dashed line the bets are pushed over. -->
   ${ring(T + 2.4, `fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1" vector-effect="non-scaling-stroke"`)}
   ${ring(T + 4.6, `fill="none" stroke="${t.line}" stroke-opacity=".22" stroke-width="1" stroke-dasharray="1 5" vector-effect="non-scaling-stroke"`)}
+  </g>
+  ${dealerStand}
 </svg>`;
 }
 

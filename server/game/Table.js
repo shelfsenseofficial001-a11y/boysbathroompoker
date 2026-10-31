@@ -30,8 +30,14 @@ class Table {
 
   // ---- Seating ----
 
-  addPlayer(userId, username, buyIn, isBot = false, botLevel = null) {
-    const seat = this.seats.findIndex((s) => s === null);
+  // `preferSeat` is the chair somebody actually pressed on the felt. It is a
+  // preference and not a demand: between the press and this call another
+  // player can have sat down in it, and turning somebody away from the table
+  // over that would be worse than seating them one chair along.
+  addPlayer(userId, username, buyIn, isBot = false, botLevel = null, preferSeat = null) {
+    const wanted = Number.isInteger(preferSeat) ? preferSeat : -1;
+    const free = wanted >= 0 && wanted < this.seats.length && this.seats[wanted] === null;
+    const seat = free ? wanted : this.seats.findIndex((s) => s === null);
     if (seat === -1) throw new Error('Table is full.');
     this.seats[seat] = {
       seat,
@@ -55,8 +61,8 @@ class Table {
   // hand in progress - it would be dealt and bet without them - and are dealt
   // in from the next one, which startHand() handles by clearing sittingOut
   // for anyone holding chips.
-  addLatePlayer(userId, username, buyIn, isBot = false, botLevel = null) {
-    const seat = this.addPlayer(userId, username, buyIn, isBot, botLevel);
+  addLatePlayer(userId, username, buyIn, isBot = false, botLevel = null, preferSeat = null) {
+    const seat = this.addPlayer(userId, username, buyIn, isBot, botLevel, preferSeat);
     this.seats[seat].sittingOut = true;
     this.seats[seat].folded = true;
     return seat;

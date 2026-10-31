@@ -528,17 +528,27 @@ function attachSockets(io, sessionMiddleware) {
     if (room.nameTaken(username, uid)) {
       return { ok: false, error: 'Someone in that room already uses that name.' };
     }
-    // Walking in on a game already under way: the host's stake applies, not
-    // whatever the joiner typed, and they wait for the current hand to finish
-    // rather than being dealt into the middle of one.
+    // Walking in on a game already under way. They come in watching and pick
+    // their own chair from the felt, rather than being planted in whichever
+    // one happened to be free: the empty seats are on screen with a plus in
+    // them, and pressing one is what puts them in the queue for the next
+    // hand. The host's stake applies when they do, not whatever they typed.
+    //
+    // Where the host allows no watchers there is no rail to wait on, so the
+    // old way in stands: a chair is found for them or they are turned away.
     if (room.table.phase !== 'waiting') {
       if (room.table.seats.every((seat) => seat !== null) || room.lobby.size >= room.table.maxSeats) {
         return { ok: false, error: 'That table is full.' };
       }
       const chips = room.lateJoinChips();
       room.addToLobby(uid, username, chips);
-      room.table.addLatePlayer(uid, username, chips);
-      announce(room, `${username} joined — in from the next hand.`, uid);
+      if (!room.allowSpectators) {
+        room.table.addLatePlayer(uid, username, chips);
+        announce(room, `${username} joined — in from the next hand.`, uid);
+        return { ok: true, code: room.code, chips, waiting: true };
+      }
+      room.spectators.set(uid, 'watching');
+      announce(room, `${username} is here — they can take any empty seat.`, uid);
       return { ok: true, code: room.code, chips, waiting: true };
     }
     if (room.lobby.size >= room.table.maxSeats) return { ok: false, error: 'That room is full.' };
@@ -1218,9 +1228,10 @@ function attachSockets(io, sessionMiddleware) {
       ack?.({ ok: true });
     });
 
-    // A watcher pulling up a chair. There's no seat to take mid-hand, so
-    // they're dealt in from the next one, on the host's late-join stake.
-    socket.on('takeSeat', (_payload, ack) => {
+    // A watcher pulling up a chair - the one they pressed on the felt, where
+    // it is free. There's no seat to take mid-hand, so they're dealt in from
+    // the next one, on the host's late-join stake.
+    socket.on('takeSeat', ({ seat } = {}, ack) => {
       const room = roomFor(userId);
       if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
       if (!room.spectators.has(userId)) return ack?.({ ok: false, error: 'You already have a seat.' });
@@ -1229,7 +1240,8 @@ function attachSockets(io, sessionMiddleware) {
       const info = room.lobby.get(userId);
       room.spectators.delete(userId);
       if (info) info.buyIn = chips;
-      if (room.table.phase !== 'waiting') room.table.addLatePlayer(userId, nameOf(), chips);
+      const wanted = Number.isInteger(seat) ? seat : null;
+      if (room.table.phase !== 'waiting') room.table.addLatePlayer(userId, nameOf(), chips, false, null, wanted);
       ack?.({ ok: true, chips });
       announce(room, `${nameOf()} is taking a seat.`, userId);
       broadcastRoom(room);

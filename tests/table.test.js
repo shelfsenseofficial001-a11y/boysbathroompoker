@@ -188,6 +188,32 @@ test('a full table refuses another player', () => {
   assert.throws(() => t.addLatePlayer(999, 'One Too Many', 100), /full/i);
 });
 
+// Pressing an empty chair on the felt asks for that chair in particular.
+test('a player sits in the chair they asked for', () => {
+  const t = tableWith([100, 100]);
+  assert.equal(t.addPlayer(30, 'Picky', 100, false, null, 6), 6);
+  assert.equal(t.seats[6].userId, 30);
+  // And the seats between are left open rather than closed up over.
+  assert.equal(t.seats[2], null);
+  assert.equal(t.addLatePlayer(31, 'Also Picky', 100, false, null, 4), 4);
+  assert.equal(t.seats[4].sittingOut, true);
+});
+
+// Between the press and the server, somebody else can have taken it. Seating
+// them one chair along beats turning them away from the table.
+test('a chair already taken seats them elsewhere rather than refusing', () => {
+  const t = tableWith([100, 100]);
+  const seat = t.addPlayer(30, 'Late', 100, false, null, 0);
+  assert.notEqual(seat, 0);
+  assert.equal(t.seats[0].userId, 1); // whoever was already there stays put
+  assert.equal(t.seats[seat].userId, 30);
+  // A chair that isn't a chair is no reason to refuse anybody either.
+  for (const bad of [-1, 99, 1.5, null, undefined, '3']) {
+    const u = new Table({ smallBlind: 5, bigBlind: 10 });
+    assert.equal(u.addPlayer(7, 'Odd', 100, false, null, bad), 0);
+  }
+});
+
 function t0maxSeats() {
   return new Table({ smallBlind: 5, bigBlind: 10 }).maxSeats;
 }
