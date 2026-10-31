@@ -270,9 +270,21 @@ function openAuth(mode = 'login') {
   authOpen.value = true;
 }
 
+// Whether this server will take a guest who has no account anywhere - the
+// way in when there is no account server to reach. Answered by /api/config
+// on boot; false until it has, so nothing offers a door before the server
+// has said it is open.
+const offlineGuests = ref(false);
+
 // Playing as a guest is offered to anyone who has not already taken a seat.
 // Somebody signed in is never shown this sheet at all.
-const showGuestOption = computed(() => supabaseConfigured && !auth.signedIn.value);
+//
+// Offered where there is an account server to mint one, and also where there
+// is none but this server will take a guest of the browser's own making:
+// without the second, a laptop with no internet showed no way in at all.
+const showGuestOption = computed(
+  () => (supabaseConfigured || offlineGuests.value) && !auth.signedIn.value
+);
 
 // The landing page is the only screen long enough to need its own contents
 // listing. The lobby is one page and the table is a game; neither has
@@ -408,6 +420,8 @@ async function boot() {
       serverAnswered = false;
       return {};
     });
+
+  offlineGuests.value = config.offlineGuests === true;
 
   // An account, or a guest one, that this server will actually accept.
   if (config.supabaseAuth && supabaseConfigured) {
@@ -883,16 +897,44 @@ async function logout() {
   }
 }
 
+// A guest this browser makes for itself, with no account server in it.
+//
+// The same thing the SKIP_AUTH boot path does, and for the same reason: the
+// game server deals the cards and keeps the chips, and it will take a player
+// who is nobody in particular. There is no token, so nothing here is signed
+// in - `guest` is what the rest of the page reads to know that.
+function playOffline() {
+  authOpen.value = false;
+  landingError.value = '';
+  guest.value = true;
+  setGuestName(tabGuestName());
+  return enter();
+}
+
 // The landing page's "Play as guest". The same anonymous sign-in the sheet
 // offers, reached without opening the sheet at all.
+//
+// With no account server in reach it falls through to a guest of this
+// browser's own making, where the game server will take one. An evening of
+// poker on a laptop with no internet should not be stopped by an account
+// nobody needs: there is nothing to sign in to, and nothing to sign in for.
 async function playAsGuest() {
   if (landingBusy.value) return;
   landingBusy.value = true;
   landingError.value = '';
   try {
+    if (!supabaseConfigured) return await playOffline();
     await auth.continueAsGuest();
     onAuthed();
   } catch (err) {
+    if (err.offline && offlineGuests.value) {
+      try {
+        return await playOffline();
+      } catch (e) {
+        landingError.value = e.message;
+        return;
+      }
+    }
     landingError.value = err.message;
   } finally {
     landingBusy.value = false;
@@ -1096,6 +1138,7 @@ onBeforeUnmount(() => {
     :closable="!authGuest"
     :initial-tab="authTab"
     @done="onAuthed"
+    @offline="playOffline"
     @close="authOpen = false"
   />
 </template>

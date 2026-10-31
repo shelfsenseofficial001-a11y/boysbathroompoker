@@ -18,6 +18,7 @@ import {
   MIN_PASSWORD,
 } from '../../composables/useAuth.js';
 import { clearInvalid } from '../../lib/invalid.js';
+import { supabaseConfigured } from '../../lib/supabase.js';
 import { emitAck } from '../../lib/socket.js';
 import BaseModal from '../ui/BaseModal.vue';
 import BaseButton from '../ui/BaseButton.vue';
@@ -32,7 +33,7 @@ const props = defineProps({
   closable: { type: Boolean, default: true },
   initialTab: { type: String, default: 'login' },
 });
-const emit = defineEmits(['done', 'close']);
+const emit = defineEmits(['done', 'close', 'offline']);
 
 const auth = useAuth();
 
@@ -199,11 +200,17 @@ async function continueAsGuest() {
   busy.value = true;
   guesting.value = true;
   try {
+    if (!supabaseConfigured) return emit('offline');
     await auth.continueAsGuest();
     emit('done');
-  } catch {
-    // The sheet stays open and the reason stays general: whatever went wrong,
-    // it is nothing the player typed and nothing they can act on.
+  } catch (err) {
+    // No account server to ask is not a refusal, and this sheet is the wrong
+    // place to answer it: the page knows whether the game server will take a
+    // guest of the browser's own making, and it is the page that puts one at
+    // a table. See playAsGuest in App.vue.
+    if (err.offline) return emit('offline');
+    // The sheet stays open and the reason stays general: whatever else went
+    // wrong, it is nothing the player typed and nothing they can act on.
     formError.value = 'Guest access is unavailable right now';
   } finally {
     busy.value = false;

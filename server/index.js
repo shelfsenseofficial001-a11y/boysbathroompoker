@@ -9,7 +9,7 @@ const { Server } = require('socket.io');
 
 const { router: authRouter, requireAuth } = require('./auth');
 const { router: playersRouter } = require('./players');
-const { attachSockets } = require('./sockets');
+const { attachSockets, offlineGuestsAllowed } = require('./sockets');
 const { supabaseAuthEnabled } = require('./supabaseAuth');
 
 // Auth bypass is a development convenience and must be impossible to switch
@@ -80,6 +80,10 @@ app.get('/api/config', (req, res) =>
   res.json({
     skipAuth: process.env.SKIP_AUTH === 'true',
     supabaseAuth: supabaseAuthEnabled,
+    // Whether the page may fall back to a guest of its own making when the
+    // account server cannot be reached. Asked here rather than guessed,
+    // because only this server knows whether it would take one.
+    offlineGuests: offlineGuestsAllowed,
   })
 );
 

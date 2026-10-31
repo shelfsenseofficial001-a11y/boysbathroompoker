@@ -5,7 +5,7 @@ const bcrypt = require('bcrypt');
 const db = require('./db');
 const { verifyAccessToken, supabaseAuthEnabled } = require('./supabaseAuth');
 const { getOrCreateSupabaseUser } = require('./identity');
-const { DISPLAY_NAME_RE, usernameFromEmail } = require('../shared/displayName.mjs');
+const { DISPLAY_NAME_RE, usernameFromEmail, guestName } = require('../shared/displayName.mjs');
 const { GuestBuffer } = require('./guestBuffer');
 const { GameManager } = require('./game/GameManager');
 const { Table } = require('./game/Table');
@@ -24,6 +24,50 @@ function getOrCreateGuest(name) {
   const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 4);
   db.createUser(name, hash);
   return db.getUserByUsername(name);
+}
+
+// Whether somebody with no account at all may sit down here.
+//
+// This game is meant to run on a laptop with no internet - that is most of
+// what it is for - and an account server is not needed to deal cards. When
+// there is none in reach the browser makes a guest for itself and the table
+// takes it, which is the difference between a working evening and a landing
+// page that says "couldn't reach the server".
+//
+// Open everywhere except a deployed build that has an auth server of its
+// own: there, a guest is already offered through Supabase, which can rate
+// limit what this cannot, and a door that mints a player row for every
+// caller is one worth keeping shut. ALLOW_OFFLINE_GUESTS overrules either
+// way, for a deployment that does want the open door.
+const offlineGuestsAllowed =
+  process.env.ALLOW_OFFLINE_GUESTS === 'true'
+    ? true
+    : process.env.ALLOW_OFFLINE_GUESTS === 'false'
+      ? false
+      : !(supabaseAuthEnabled && process.env.NODE_ENV === 'production');
+
+// A guest this browser made for itself, with nothing verifying it.
+//
+// Keyed on the browser's own session id and not on a name, which is the
+// whole of its safety: a name can be typed by anybody, and `getOrCreateGuest`
+// below hands back whatever row already carries it - so a guest who picked
+// their name would be wearing somebody else's the moment the names collided.
+// The id is sixteen random bytes the browser keeps to itself (see
+// lib/guestSession.js), so a row can only be returned to the tab that made
+// it.
+//
+// Shaped exactly like the Supabase guest beside it: an account name derived
+// from the id, and a generated `Guest####` for the table to show. Nothing
+// about either is the browser's to choose.
+function getOrCreateLocalGuest(sessionId) {
+  if (!sessionId) return null;
+  const username = `lg_${crypto.createHash('sha256').update(sessionId).digest('hex').slice(0, 16)}`;
+  const existing = db.getUserByUsername(username);
+  if (existing) return existing;
+  const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 4);
+  const id = db.createUser(username, hash);
+  db.setDisplayName(id, guestName(id));
+  return db.getUserByUsername(username);
 }
 
 function wrapSessionMiddleware(sessionMiddleware) {
@@ -104,6 +148,19 @@ function attachSockets(io, sessionMiddleware) {
       const guest = getOrCreateGuest(socket.handshake.auth?.guestName);
       if (guest) {
         socket.userId = guest.id;
+        return next();
+      }
+    }
+    // Nobody verified, and nobody to verify them: a guest the browser made
+    // for itself because there was no auth server to ask. Last, so a real
+    // token is always preferred to one of these - a player whose session
+    // went stale is sent back to sign in rather than quietly becoming
+    // somebody new with none of their chips.
+    if (offlineGuestsAllowed && !socket.handshake.auth?.token) {
+      const local = getOrCreateLocalGuest(guestSessionIdOf(socket));
+      if (local) {
+        socket.userId = local.id;
+        socket.guestSessionId = guestSessionIdOf(socket);
         return next();
       }
     }
@@ -1374,4 +1431,4 @@ function attachSockets(io, sessionMiddleware) {
   return manager;
 }
 
-module.exports = { attachSockets };
+module.exports = { attachSockets, offlineGuestsAllowed };

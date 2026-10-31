@@ -139,6 +139,15 @@ export function authMessage(err) {
   return known ? known[1] : raw || 'Something went wrong. Try again.';
 }
 
+// Whether the auth server was simply not there. Told apart from every other
+// failure because it is the only one with somewhere else to go: a game that
+// runs on a laptop with no internet does not need an account server to deal
+// cards, and a guest who cannot reach one can still play here.
+const OFFLINE_RE = /failed to fetch|networkerror|network request failed|load failed/i;
+export function isOffline(err) {
+  return OFFLINE_RE.test(err?.message || String(err || ''));
+}
+
 // Asked before signing up, so a taken name is a sentence under the box rather
 // than a unique violation surfacing as a generic auth error. Through an RPC
 // because RLS - rightly - lets a player read their own profile and no others.
@@ -357,7 +366,15 @@ export function useAuth() {
     // --- The three ways in ---------------------------------------------
     async continueAsGuest() {
       const { data, error: err } = await supabase.auth.signInAnonymously();
-      if (err) throw new Error(authMessage(err));
+      if (err) {
+        const wrapped = new Error(authMessage(err));
+        // Carried out with the message so a caller can tell "the account
+        // server said no" from "there was no account server to ask". Only
+        // the second one has a way forward, and it is the page that knows
+        // what that is - see playAsGuest in App.vue.
+        wrapped.offline = isOffline(err);
+        throw wrapped;
+      }
       return adopt(data.session);
     },
 
