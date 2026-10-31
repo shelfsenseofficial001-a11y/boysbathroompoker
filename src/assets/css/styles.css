@@ -4954,6 +4954,24 @@ html { scroll-behavior: smooth; }
 .invite-host .vote-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
 @media (max-width: 1024px) { .invite-host { top: 118px; } }
 .friend-chat .chat-form { flex: none; }
+.friend-chat .chat-context { flex: none; }
+/* The name at the top is a way to their page, so it says so under the
+   pointer. The chevron beside it is what folds the window away. */
+.friend-chat-who:hover .friend-chat-name { text-decoration: underline; }
+.friend-chat-who:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 8px; }
+/* The row's actions sit inside a narrow window, so the menu is pulled in
+   from the edge rather than hanging off it. */
+.friend-chat .msg-menu { min-width: 104px; }
+.friend-chat .reply-quote { max-width: 76%; }
+/* An unsent message should read as something taken out, not as something
+   said. .chat-row.is-mine .bubble carries more weight than .bubble.is-gone,
+   so your own tombstone would otherwise come out solid gold. Scoped to this
+   window: the table chat keeps the look it has. */
+.friend-chat .bubble.is-gone,
+.friend-chat .chat-row.is-mine .bubble.is-gone {
+  background: transparent; border: 1px dashed var(--line-2);
+  color: var(--text-3); font-style: italic; font-weight: 400;
+}
 .friend-chat-menu-wrap { position: relative; }
 .friend-chat-menu {
   position: absolute; top: 100%; right: 0; z-index: 6; margin-top: 4px; min-width: 150px;

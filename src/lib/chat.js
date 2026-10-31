@@ -5,7 +5,8 @@
 // read only by the two of you. Everything here is just asking.
 import { supabase, supabaseConfigured } from './supabase.js';
 
-const COLUMNS = 'id, conversation_id, sender_id, content, kind, meta, created_at, read_at';
+const COLUMNS =
+  'id, conversation_id, sender_id, content, kind, meta, created_at, read_at, reply_to, edited_at, deleted_at';
 export const PAGE_SIZE = 50;
 
 // What a refusal means, said to the person who was refused.
@@ -47,15 +48,37 @@ export async function loadMessages(conversationId, { before = null, limit = PAGE
   return (data || []).reverse();
 }
 
-export async function sendMessage(conversationId, content) {
+export async function sendMessage(conversationId, content, replyTo = null) {
   need();
   const { data, error } = await supabase
     .from('messages')
-    .insert({ conversation_id: conversationId, content })
+    .insert({ conversation_id: conversationId, content, reply_to: replyTo })
     .select(COLUMNS)
     .single();
   if (error) throw new Error(sentence(error));
   return data;
+}
+
+// Changing what you said. Your own words only, and the database says so -
+// these go through functions because the browser holds no update grant.
+export async function editMessage(id, content) {
+  need();
+  const { error } = await supabase.rpc('edit_message', { message: id, body: content });
+  if (error) throw new Error(sentence(error));
+}
+
+// Taking it back. The row stays and the words go.
+export async function unsendMessage(id) {
+  need();
+  const { error } = await supabase.rpc('unsend_message', { message: id });
+  if (error) throw new Error(sentence(error));
+}
+
+// Clearing the thread - for you. The other player keeps their half.
+export async function clearConversation(conversationId) {
+  need();
+  const { error } = await supabase.rpc('clear_conversation', { conversation: conversationId });
+  if (error) throw new Error(sentence(error));
 }
 
 // An invite to a table, as a message with a card the other person taps. The

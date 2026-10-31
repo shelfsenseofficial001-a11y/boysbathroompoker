@@ -1164,7 +1164,11 @@ onBeforeUnmount(() => {
   <!-- The chat window, in the corner of every screen it is allowed on. Put
        away at a table, where the felt needs the room; it reopens after. An
        account only - a guest has no friends to talk to. -->
-  <ChatWindow v-if="auth.hasAccount.value && view !== 'table'" @join="followInvite" />
+  <ChatWindow
+    v-if="auth.hasAccount.value && view !== 'table'"
+    @join="followInvite"
+    @profile="openProfile"
+  />
 
   <!-- The friend picker an empty seat or the chat menu opens. -->
   <InvitePicker v-if="auth.hasAccount.value && invitePicker" />

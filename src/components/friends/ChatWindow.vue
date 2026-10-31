@@ -16,6 +16,7 @@ import { useInvite } from '../../composables/useInvite.js';
 import { removeFriend, blockUser } from '../../lib/friends.js';
 import {
   openConversation, loadMessages, sendMessage, sendInvite, markRead,
+  editMessage, unsendMessage, clearConversation,
   watchConversation, PAGE_SIZE,
 } from '../../lib/chat.js';
 import { threadItems, chatTimeLabel, cleanMessage, MESSAGE_MAX } from '../../../shared/chatThread.mjs';
@@ -25,7 +26,7 @@ import { avatarSVG } from '../../lib/svg/avatars.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
-const emit = defineEmits(['join']);
+const emit = defineEmits(['join', 'profile']);
 
 const auth = useAuth();
 const { friend, minimized } = useChat();
@@ -58,6 +59,31 @@ async function removeOrBlock(which) {
   } finally {
     closeMenu();
   }
+}
+
+// Clearing the thread. Yours only - the other player keeps their half, and
+// the confirm says so rather than implying it is gone for both.
+async function clearChat() {
+  if (confirming.value !== 'clear') {
+    confirming.value = 'clear';
+    return;
+  }
+  const id = conversationId.value;
+  closeMenu();
+  if (!id) return;
+  try {
+    await clearConversation(id);
+    messages.value = [];
+    hasMore.value = false;
+    showToast('Chat cleared for you.', { info: true });
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+// Their page, from the face or the name at the top of the window.
+function openProfile() {
+  if (friend.value?.username) emit('profile', friend.value.username);
 }
 
 // Invite to lobby, from the menu: send this friend an invite to the room
@@ -204,16 +230,84 @@ function onScroll() {
   if (body.value && body.value.scrollTop < 40) loadOlder();
 }
 
+// What the composer is doing besides starting a new message: answering one,
+// or rewriting one. Both are the same strip above the box, the way the
+// table's chat does it.
+const replyTo = ref(null);
+const editing = ref(null);
+// Which message's ⋯ menu is open.
+const msgMenu = ref(null);
+
+// The message a reply points at, for the quote above the bubble.
+const quoted = (msg) => (msg?.reply_to ? messages.value.find((m) => m.id === msg.reply_to) : null);
+// Who a reply was aimed at, said the way the table's chat says it.
+function repliedTo(msg) {
+  const to = quoted(msg);
+  if (!to) return 'an earlier message';
+  if (to.sender_id === msg.sender_id) return msg.sender_id === me.value ? 'yourself' : 'themselves';
+  return to.sender_id === me.value ? 'you' : friend.value?.name || 'them';
+}
+const quoteText = (msg) => {
+  const to = quoted(msg);
+  if (!to) return 'No longer shown';
+  return to.deleted_at ? 'Message deleted' : to.content;
+};
+
+function startReply(msg) {
+  msgMenu.value = null;
+  editing.value = null;
+  replyTo.value = msg;
+  input.value?.focus();
+}
+
+function startEdit(msg) {
+  msgMenu.value = null;
+  replyTo.value = null;
+  editing.value = msg;
+  draft.value = msg.content;
+  nextTick(() => {
+    autosize();
+    input.value?.focus();
+  });
+}
+
+function cancelContext() {
+  if (editing.value) draft.value = '';
+  replyTo.value = null;
+  editing.value = null;
+  nextTick(autosize);
+}
+
+async function unsend(msg) {
+  msgMenu.value = null;
+  try {
+    await unsendMessage(msg.id);
+    // The row stays and loses its words, so the thread keeps its shape.
+    mergeIn({ ...msg, content: '', deleted_at: new Date().toISOString(), meta: null });
+    if (editing.value?.id === msg.id) cancelContext();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
 async function send() {
   const content = cleanMessage(draft.value);
   if (!content || sending.value || !conversationId.value) return;
   sending.value = true;
   const id = conversationId.value;
+  const target = editing.value;
   try {
-    const row = await sendMessage(id, content);
+    if (target) {
+      await editMessage(target.id, content);
+      mergeIn({ ...target, content, edited_at: new Date().toISOString() });
+      editing.value = null;
+    } else {
+      const row = await sendMessage(id, content, replyTo.value?.id || null);
+      mergeIn(row);
+      replyTo.value = null;
+      await scrollToEnd(true);
+    }
     draft.value = '';
-    mergeIn(row);
-    await scrollToEnd(true);
     await nextTick();
     autosize();
     input.value?.focus();
@@ -229,6 +323,13 @@ function onKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     send();
+    return;
+  }
+  // Escape backs out of answering or rewriting, rather than closing the
+  // whole window out from under a half-written line.
+  if (e.key === 'Escape' && (replyTo.value || editing.value)) {
+    e.preventDefault();
+    cancelContext();
   }
 }
 
@@ -254,9 +355,10 @@ onMounted(() => {
 function onVisible() {
   if (document.visibilityState === 'visible' && conversationId.value) markRead(conversationId.value);
 }
-// A press anywhere off the menu puts it away.
+// A press anywhere off a menu puts it away.
 function onDocClick() {
   if (menuOpen.value) closeMenu();
+  if (msgMenu.value !== null) msgMenu.value = null;
 }
 document.addEventListener('visibilitychange', onVisible);
 document.addEventListener('click', onDocClick);
@@ -282,7 +384,16 @@ function toggleMin() {
        chat drawn in a corner. -->
   <section v-if="friend" class="friend-chat" :class="{ 'is-min': minimized }" aria-label="Chat">
     <header class="friend-chat-bar">
-      <button type="button" class="friend-chat-who" @click="toggleMin" :aria-expanded="!minimized">
+      <!-- The face and the name go to their page; the chevron is what folds
+           the window away, so a press on somebody's name does the thing a
+           press on somebody's name does everywhere else. -->
+      <button
+        type="button"
+        class="friend-chat-who"
+        :title="`View ${friend.name}'s profile`"
+        :aria-label="`View ${friend.name}'s profile`"
+        @click="openProfile"
+      >
         <FriendAvatar :username="friend.username" :name="friend.name" :url="friend.avatar_url" />
         <span class="friend-chat-name">{{ friend.name }}</span>
       </button>
@@ -299,6 +410,10 @@ function toggleMin() {
           </button>
           <div v-if="menuOpen" class="friend-chat-menu" @click.stop>
             <button v-if="canInvite" type="button" @click="inviteToLobby">Invite to lobby</button>
+            <button type="button" @click="closeMenu(); openProfile()">View profile</button>
+            <button type="button" :class="{ 'is-armed': confirming === 'clear' }" @click="clearChat">
+              {{ confirming === 'clear' ? 'Tap again — clears for you' : 'Delete chat' }}
+            </button>
             <button type="button" :class="{ 'is-armed': confirming === 'remove' }" @click="removeOrBlock('remove')">
               {{ confirming === 'remove' ? 'Tap again to remove' : 'Remove friend' }}
             </button>
@@ -329,9 +444,14 @@ function toggleMin() {
             class="chat-row"
             :class="{ 'is-mine': it.mine, 'is-first': it.first, 'is-last': it.last }"
           >
-            <span v-if="it.first && !it.mine" class="chat-meta">
-              <span class="chat-who">{{ friend.name }}</span>
+            <!-- Who is talking, and who they answered, on one line above the
+                 bubble - the table chat's shape exactly. -->
+            <span v-if="(it.first && !it.mine) || it.msg.reply_to" class="chat-meta">
+              <span v-if="it.msg.reply_to" class="reply-arrow"><SvgIcon name="call" /></span>
+              <span v-if="it.first && !it.mine" class="chat-who">{{ friend.name }}</span>
+              <span v-if="it.msg.reply_to" class="reply-note">Replied to {{ repliedTo(it.msg) }}</span>
             </span>
+            <span v-if="it.msg.reply_to" class="reply-quote">{{ quoteText(it.msg) }}</span>
             <div class="bubble-line">
               <span v-if="!it.mine" class="chat-face" :class="{ 'is-blank': !it.last }">
                 <template v-if="it.last">
@@ -357,20 +477,66 @@ function toggleMin() {
                   {{ isDead(it.msg) ? 'No longer running' : it.mine ? 'Open table' : 'Join' }}
                 </button>
               </div>
-              <div v-else class="bubble"><span class="bubble-text">{{ it.msg.content }}</span></div>
+              <!-- Unsent: the row stays so the thread keeps its shape, and
+                   says which side took it back. -->
+              <div v-else-if="it.msg.deleted_at" class="bubble is-gone">
+                {{ it.mine ? 'You unsent this' : 'Message unsent' }}
+              </div>
+              <div v-else class="bubble">
+                <span class="bubble-text">{{ it.msg.content }}</span>
+                <span v-if="it.msg.edited_at" class="bubble-edited">edited</span>
+              </div>
+
+              <!-- Reply is one tap; the rest sit behind the dots. Nothing is
+                   offered on a message already taken back. -->
+              <span v-if="!it.msg.deleted_at" class="bubble-acts">
+                <button
+                  type="button"
+                  class="bubble-act"
+                  title="Reply"
+                  aria-label="Reply"
+                  @click.stop="startReply(it.msg)"
+                >
+                  <SvgIcon name="call" />
+                </button>
+                <button
+                  v-if="it.mine"
+                  type="button"
+                  class="bubble-act"
+                  title="More"
+                  aria-label="Message actions"
+                  :aria-expanded="msgMenu === it.msg.id"
+                  @click.stop="msgMenu = msgMenu === it.msg.id ? null : it.msg.id"
+                >
+                  <SvgIcon name="more" />
+                </button>
+                <div v-if="it.mine && msgMenu === it.msg.id" class="msg-menu" @click.stop>
+                  <button v-if="it.msg.kind !== 'invite'" type="button" @click="startEdit(it.msg)">Edit</button>
+                  <button type="button" class="is-danger" @click="unsend(it.msg)">Unsend</button>
+                </div>
+              </span>
             </div>
           </li>
         </template>
       </ol>
 
-      <form class="chat-form" @submit.prevent="send">
+      <!-- What the box is about to do, when it isn't simply a new message. -->
+      <div v-if="replyTo || editing" class="chat-context">
+        <span class="ctx-kind">{{ editing ? 'Editing' : `Replying to ${replyTo.sender_id === me ? 'yourself' : friend.name}` }}</span>
+        <span class="ctx-text">{{ (editing || replyTo).content }}</span>
+        <button type="button" class="ctx-x" aria-label="Cancel" @click="cancelContext">
+          <SvgIcon name="close" />
+        </button>
+      </div>
+
+      <form class="chat-form" :class="{ 'is-editing': !!editing }" @submit.prevent="send">
         <textarea
           ref="input"
           v-model="draft"
           class="input"
           rows="1"
           :maxlength="MESSAGE_MAX"
-          placeholder="Say something…"
+          :placeholder="editing ? 'Edit your message…' : 'Say something…'"
           aria-label="Message"
           @input="autosize"
           @keydown="onKey"
