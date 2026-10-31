@@ -12,17 +12,77 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useAuth } from '../../composables/useAuth.js';
 import { closeChat, useChat } from '../../composables/useChat.js';
+import { useInvite } from '../../composables/useInvite.js';
+import { removeFriend, blockUser } from '../../lib/friends.js';
 import {
-  openConversation, loadMessages, sendMessage, markRead,
+  openConversation, loadMessages, sendMessage, sendInvite, markRead,
   watchConversation, PAGE_SIZE,
 } from '../../lib/chat.js';
 import { threadItems, chatTimeLabel, cleanMessage, MESSAGE_MAX } from '../../../shared/chatThread.mjs';
 import { showToast } from '../../lib/toast.js';
+import { avatarSVG } from '../../lib/svg/avatars.js';
 import SvgIcon from '../ui/SvgIcon.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
+const emit = defineEmits(['join']);
+
 const auth = useAuth();
 const { friend, minimized } = useChat();
+const { canInvite, room } = useInvite();
+
+// The kebab menu, and the one destructive act it is waiting to have
+// confirmed ('remove' | 'block' | null). A second press confirms; anything
+// else puts it away.
+const menuOpen = ref(false);
+const confirming = ref(null);
+
+function closeMenu() {
+  menuOpen.value = false;
+  confirming.value = null;
+}
+
+async function removeOrBlock(which) {
+  if (confirming.value !== which) {
+    confirming.value = which;
+    return;
+  }
+  const other = friend.value?.id;
+  try {
+    if (which === 'remove') await removeFriend(other);
+    else await blockUser(other);
+    showToast(which === 'remove' ? 'Friend removed.' : 'Blocked.', { info: true });
+    closeChat();
+  } catch (err) {
+    showToast(err.message);
+  } finally {
+    closeMenu();
+  }
+}
+
+// Invite to lobby, from the menu: send this friend an invite to the room
+// we're in. Only there when there is a room to invite to (canInvite).
+async function inviteToLobby() {
+  closeMenu();
+  const r = room.value;
+  if (!friend.value || !r) return;
+  try {
+    await sendInvite(friend.value.id, {
+      code: r.code,
+      token: r.token || '',
+      line: `Come play — join my table ${r.code}.`,
+    });
+    showToast(`Invite sent to ${friend.value.name}.`, { info: true });
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+// Following an invite's Join: hand the room back up to the app, which knows
+// how to walk through a private room's door with the token.
+function joinInvite(msg) {
+  const code = msg?.meta?.code;
+  if (code) emit('join', { code, invite: msg.meta.token || '' });
+}
 
 const me = computed(() => auth.userId.value);
 const conversationId = ref(null);
@@ -38,6 +98,8 @@ const input = ref(null);
 let unwatch = null;
 
 const items = computed(() => threadItems(messages.value, me.value));
+// Their generated face, for the slot when they have no picture.
+const faceSVG = computed(() => avatarSVG(friend.value?.username || ''));
 // Line breaks kept, long single words still forced to wrap in CSS.
 const atBottom = () => {
   const el = body.value;
@@ -164,11 +226,17 @@ onMounted(() => {
 function onVisible() {
   if (document.visibilityState === 'visible' && conversationId.value) markRead(conversationId.value);
 }
+// A press anywhere off the menu puts it away.
+function onDocClick() {
+  if (menuOpen.value) closeMenu();
+}
 document.addEventListener('visibilitychange', onVisible);
+document.addEventListener('click', onDocClick);
 
 onBeforeUnmount(() => {
   unwatch?.();
   document.removeEventListener('visibilitychange', onVisible);
+  document.removeEventListener('click', onDocClick);
 });
 
 function toggleMin() {
@@ -181,64 +249,94 @@ function toggleMin() {
 </script>
 
 <template>
-  <section v-if="friend" class="chat" :class="{ 'is-min': minimized }" aria-label="Chat">
-    <header class="chat-head">
-      <button type="button" class="chat-who" @click="toggleMin" :aria-expanded="!minimized">
+  <!-- Shell is the window's own (.friend-chat*); the message column and the
+       composer reuse the table chat's classes, so this reads as the same
+       chat drawn in a corner. -->
+  <section v-if="friend" class="friend-chat" :class="{ 'is-min': minimized }" aria-label="Chat">
+    <header class="friend-chat-bar">
+      <button type="button" class="friend-chat-who" @click="toggleMin" :aria-expanded="!minimized">
         <FriendAvatar :username="friend.username" :name="friend.name" :url="friend.avatar_url" />
-        <span class="chat-name">{{ friend.name }}</span>
+        <span class="friend-chat-name">{{ friend.name }}</span>
       </button>
-      <div class="chat-head-acts">
-        <button type="button" class="chat-icon" :aria-label="minimized ? 'Open chat' : 'Minimize chat'" @click="toggleMin">
+      <div class="friend-chat-acts">
+        <div v-if="!minimized" class="friend-chat-menu-wrap">
+          <button
+            type="button"
+            class="friend-chat-icon"
+            aria-label="More"
+            :aria-expanded="menuOpen"
+            @click.stop="menuOpen ? closeMenu() : (menuOpen = true)"
+          >
+            <SvgIcon name="more" />
+          </button>
+          <div v-if="menuOpen" class="friend-chat-menu" @click.stop>
+            <button v-if="canInvite" type="button" @click="inviteToLobby">Invite to lobby</button>
+            <button type="button" :class="{ 'is-armed': confirming === 'remove' }" @click="removeOrBlock('remove')">
+              {{ confirming === 'remove' ? 'Tap again to remove' : 'Remove friend' }}
+            </button>
+            <button type="button" class="is-danger" :class="{ 'is-armed': confirming === 'block' }" @click="removeOrBlock('block')">
+              {{ confirming === 'block' ? 'Tap again to block' : 'Block' }}
+            </button>
+          </div>
+        </div>
+        <button type="button" class="friend-chat-icon" :aria-label="minimized ? 'Open chat' : 'Minimize chat'" @click="toggleMin">
           <SvgIcon :name="minimized ? 'chevron' : 'minus'" />
         </button>
-        <button type="button" class="chat-icon" aria-label="Close chat" @click="closeChat">
+        <button type="button" class="friend-chat-icon" aria-label="Close chat" @click="closeChat">
           <SvgIcon name="close" />
         </button>
       </div>
     </header>
 
     <template v-if="!minimized">
-      <div ref="body" class="chat-body" @scroll="onScroll">
-        <p v-if="loading" class="chat-note" aria-busy="true">Loading…</p>
-        <p v-else-if="loadingMore" class="chat-note" aria-busy="true">Loading earlier…</p>
-        <p v-else-if="!messages.length" class="chat-note">
-          Say hello to {{ friend.name }}.
-        </p>
+      <ol ref="body" class="chat-log" @scroll="onScroll">
+        <li v-if="loading" class="friend-chat-note" aria-busy="true">Loading…</li>
+        <li v-else-if="loadingMore" class="friend-chat-note" aria-busy="true">Loading earlier…</li>
+        <li v-else-if="!messages.length" class="friend-chat-note">Say hello to {{ friend.name }}.</li>
 
         <template v-for="it in items" :key="it.key">
-          <div v-if="it.type === 'time'" class="chat-time">{{ chatTimeLabel(it.at) }}</div>
-          <div
+          <li v-if="it.type === 'time'" class="friend-chat-when">{{ chatTimeLabel(it.at) }}</li>
+          <li
             v-else
-            class="chat-line"
-            :class="[it.mine ? 'is-mine' : 'is-theirs', { 'is-last': it.last }]"
+            class="chat-row"
+            :class="{ 'is-mine': it.mine, 'is-first': it.first, 'is-last': it.last }"
           >
-            <span class="chat-face">
-              <FriendAvatar
-                v-if="!it.mine && it.last"
-                :username="friend.username"
-                :name="friend.name"
-                :url="friend.avatar_url"
-              />
+            <span v-if="it.first && !it.mine" class="chat-meta">
+              <span class="chat-who">{{ friend.name }}</span>
             </span>
-            <span class="chat-bubble">{{ it.msg.content }}</span>
-            <span v-if="it.seen" class="chat-seen">Seen</span>
-          </div>
+            <div class="bubble-line">
+              <span v-if="!it.mine" class="chat-face" :class="{ 'is-blank': !it.last }">
+                <template v-if="it.last">
+                  <img v-if="friend.avatar_url" :src="friend.avatar_url" alt="" />
+                  <span v-else class="contents" v-html="faceSVG" />
+                </template>
+              </span>
+              <div v-if="it.msg.kind === 'invite'" class="bubble fchat-invite">
+                <span class="fchat-invite-head"><SvgIcon name="trophy" />Table invite</span>
+                <span class="bubble-text">{{ it.msg.content }}</span>
+                <button type="button" class="fchat-invite-join" @click="joinInvite(it.msg)">
+                  {{ it.mine ? 'Open table' : 'Join' }}
+                </button>
+              </div>
+              <div v-else class="bubble"><span class="bubble-text">{{ it.msg.content }}</span></div>
+            </div>
+          </li>
         </template>
-      </div>
+      </ol>
 
-      <form class="chat-compose" @submit.prevent="send">
+      <form class="chat-form" @submit.prevent="send">
         <textarea
           ref="input"
           v-model="draft"
-          class="chat-input"
+          class="input"
           rows="1"
           :maxlength="MESSAGE_MAX"
-          placeholder="Aa"
+          placeholder="Say something…"
           aria-label="Message"
           @input="autosize"
           @keydown="onKey"
         />
-        <button type="submit" class="chat-send" :disabled="sending || !draft.trim()" aria-label="Send">
+        <button type="submit" class="btn btn-primary btn-icon" :disabled="sending || !draft.trim()" aria-label="Send">
           <SvgIcon name="send" />
         </button>
       </form>

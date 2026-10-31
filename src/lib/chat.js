@@ -58,6 +58,22 @@ export async function sendMessage(conversationId, content) {
   return data;
 }
 
+// An invite to a table, as a message with a card the other person taps. The
+// line of text is what a notification and the chat list show; the meta is
+// what Join follows. Migration 0010 checks the meta's shape.
+export async function sendInvite(other, { code, token = '', line }) {
+  need();
+  const conversationId = await openConversation(other);
+  const meta = token ? { code, token } : { code };
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ conversation_id: conversationId, content: line, kind: 'invite', meta })
+    .select(COLUMNS)
+    .single();
+  if (error) throw new Error(sentence(error));
+  return data;
+}
+
 export async function markRead(conversationId) {
   if (!supabaseConfigured) return;
   await supabase.rpc('mark_read', { conversation: conversationId });

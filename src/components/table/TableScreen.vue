@@ -15,6 +15,7 @@
 // know about it.
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { renderTable } from '../../lib/table-renderer.js';
+import { setInviteRoom, openInvitePicker } from '../../composables/useInvite.js';
 
 const props = defineProps({
   user: { type: Object, required: true },
@@ -29,15 +30,25 @@ const host = ref(null);
 let teardown = null;
 
 onMounted(() => {
+  // While we're at this table, friends can be invited to it. The renderer
+  // reports the room and token when an empty seat is pressed; the picker is
+  // the app's, so the two stay out of each other's way.
+  setInviteRoom({ code: props.roomCode, token: '' });
   teardown = renderTable(host.value, {
     user: props.user,
     roomCode: props.roomCode,
     notice: props.notice,
     onLeave: (notice, forced) => emit('leave', { notice, forced }),
+    onInvite: (room) => {
+      if (room) setInviteRoom(room);
+      openInvitePicker({ seat: room?.seat });
+    },
   });
 });
 
 onBeforeUnmount(() => {
+  // No table, nowhere to invite to.
+  setInviteRoom(null);
   // Detaches the socket listeners, the clock and the document-level gesture
   // handlers. Safe even when the player left through the renderer's own exit,
   // which has already run it.

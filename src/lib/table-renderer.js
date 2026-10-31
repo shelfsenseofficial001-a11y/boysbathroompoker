@@ -160,7 +160,7 @@ function winningCards(summary) {
   return set;
 }
 
-export function renderTable(root, { user, roomCode, onLeave, notice }) {
+export function renderTable(root, { user, roomCode, onLeave, onInvite, notice }) {
   const socket = getSocket();
   let latest = null; // newest roomState from the server
   let shown = null; // state currently drawn (lags `latest` during a peek)
@@ -2343,6 +2343,13 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         sit.disabled = true; // one press; the answer redraws the table
         return takeSeat(Number(sit.dataset.sit));
       }
+      // The plus in an empty chair, pressed by somebody already seated: open
+      // the friend picker rather than trying to take the seat. The room code
+      // and the host's token are what the invite carries.
+      const inv = e.target.closest('[data-invite-seat]');
+      if (inv) {
+        return onInvite?.({ code: roomCode, token: shown?.invite || '' });
+      }
       const open = e.target.closest('[data-seat-menu]');
       const vote = e.target.closest('[data-vote-kick]');
       const give = e.target.closest('[data-make-host]');
@@ -3512,7 +3519,18 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const canSit = !!cur?.watching && (cur?.seatsFree ?? 0) > 0;
     const style = `left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}`;
     const body = `<span class="open-ring">${canSit ? icons.plus : ''}</span>`;
+    // A player already in a seat can't sit again, but an empty chair is still
+    // a place to wave a friend into. The plus becomes an invite rather than a
+    // dead mark - only when there's somewhere to invite them, which is to say
+    // only when we're seated here and the app offered a way to do it.
     if (!canSit) {
+      const canInvite = !!onInvite && !cur?.watching;
+      if (canInvite) {
+        const label = `Invite a friend to seat ${seat + 1}`;
+        return `<div class="anchor seat-group is-open" style="${style}">
+          <button type="button" class="pod is-open is-free" data-invite-seat="${seat}" title="${label}" aria-label="${label}"><span class="open-ring">${icons.plus}</span></button>
+        </div>`;
+      }
       return `<div class="anchor seat-group is-open" style="${style}">
         <div class="pod is-open" data-seat="${seat}" aria-hidden="true">${body}</div>
       </div>`;

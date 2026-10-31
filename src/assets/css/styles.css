@@ -4861,86 +4861,98 @@ html { scroll-behavior: smooth; }
   background: var(--green); box-shadow: 0 0 0 2px rgba(12, 22, 18, 0.95);
 }
 
-/* ---------- The chat window ---------- */
-/* A panel in the bottom-right corner, over everything but a sheet. On a
-   phone it fills the screen; the bottom tray is hidden behind it, so there
-   is no doubt about where a tap lands. */
-.chat {
+/* ---------- The friends chat window ---------- */
+/* A floating corner window whose shell is its own (.friend-chat*), but whose
+   message column and composer reuse the table chat's classes (.chat-log,
+   .chat-row, .bubble, .chat-meta, .chat-who, .chat-face, .chat-form, .input),
+   so talking to a friend looks like talking at a table. Nothing here styles a
+   bare .chat* class, so the table chat is left exactly as it was. */
+.friend-chat {
   position: fixed; right: 20px; bottom: 0; z-index: 120;
-  width: 336px; max-width: calc(100vw - 40px); height: 460px; max-height: calc(100dvh - 80px);
+  width: 328px; max-width: calc(100vw - 40px); height: 456px; max-height: calc(100dvh - 80px);
   display: flex; flex-direction: column;
-  background: var(--bg-1, #0c1612); border: 1px solid var(--line); border-bottom: 0;
+  background: rgba(6, 12, 9, 0.97); border: 1px solid var(--line-2); border-bottom: 0;
   border-radius: var(--r-l) var(--r-l) 0 0; box-shadow: var(--shadow-2); overflow: hidden;
 }
-.chat.is-min { height: auto; }
-.chat-head {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+.friend-chat.is-min { height: auto; }
+.friend-chat-bar {
+  flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.03);
 }
-.chat.is-min .chat-head { border-bottom: 0; }
-.chat-who {
+.friend-chat.is-min .friend-chat-bar { border-bottom: 0; }
+.friend-chat-who {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px;
   border: 0; background: none; color: inherit; cursor: pointer; text-align: left; padding: 0;
 }
-.chat-who .friend-avatar { width: 30px; height: 30px; }
-.chat-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat-head-acts { display: flex; gap: 2px; flex: none; }
-.chat-icon {
+.friend-chat-who .friend-avatar { width: 30px; height: 30px; }
+.friend-chat-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.friend-chat-acts { display: flex; gap: 2px; flex: none; }
+.friend-chat-icon {
   width: 30px; height: 30px; flex: none; display: grid; place-items: center;
   border: 0; border-radius: 8px; background: none; color: var(--text-3); cursor: pointer;
 }
-.chat-icon:hover { background: rgba(255, 255, 255, 0.07); color: var(--text-1); }
-.chat-icon .icon { width: 16px; height: 16px; }
-
-.chat-body {
-  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  display: flex; flex-direction: column; gap: 2px; padding: 12px 10px;
+.friend-chat-icon:hover { background: rgba(255, 255, 255, 0.07); color: var(--text-1); }
+.friend-chat-icon .icon { width: 16px; height: 16px; }
+/* The log uses the table chat's own .chat-log/.chat-row/.bubble styling; only
+   these few window-specific touches are added. */
+.friend-chat .chat-log { flex: 1 1 auto; min-height: 0; }
+.friend-chat-note { margin: auto; color: var(--text-3); font-size: var(--fs-small); text-align: center; }
+.friend-chat-when {
+  align-self: center; margin: 8px 0 2px; font-size: 11px; color: var(--text-3);
 }
-.chat-note { margin: auto; color: var(--text-3); font-size: var(--fs-small); text-align: center; }
-.chat-time { align-self: center; margin: 10px 0 4px; font-size: 11px; color: var(--text-3); }
-
-/* A row: face, then bubble. Mine reverse so the bubble hugs the right. */
-.chat-line { display: flex; align-items: flex-end; gap: 7px; max-width: 86%; }
-.chat-line.is-theirs { align-self: flex-start; }
-.chat-line.is-mine { align-self: flex-end; flex-direction: row-reverse; }
-.chat-line .friend-avatar { width: 26px; height: 26px; }
-.chat-face { flex: none; width: 26px; } /* kept even when empty, so a run lines up */
-.chat-bubble {
-  padding: 7px 12px; border-radius: 17px; line-height: 1.35;
-  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+/* A picture in the round face slot the table chat only ever fills with an SVG. */
+.chat-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* An invite rides in a bubble with a Join on it. */
+.fchat-invite { display: flex; flex-direction: column; gap: 7px; }
+.fchat-invite-head { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.fchat-invite-head .icon { width: 15px; height: 15px; flex: none; }
+.fchat-invite-join {
+  align-self: flex-start; padding: 4px 14px; border: 0; border-radius: 999px; cursor: pointer;
+  background: #0c1b14; color: var(--gold-hi); font: 700 12px var(--font-ui);
 }
-.is-theirs .chat-bubble { background: #2a3b34; color: var(--text-1); border-bottom-left-radius: 5px; }
-.is-mine .chat-bubble {
-  background: linear-gradient(180deg, #4fd394, var(--green)); color: #052414;
-  border-bottom-right-radius: 5px;
+.chat-row.is-mine .fchat-invite-join { background: rgba(0, 0, 0, 0.14); color: #2a1c05; }
+.friend-chat .chat-form { flex: none; }
+.friend-chat-menu-wrap { position: relative; }
+.friend-chat-menu {
+  position: absolute; top: 100%; right: 0; z-index: 6; margin-top: 4px; min-width: 150px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: #0b1410; border: 1px solid var(--line-2); border-radius: var(--r-s); box-shadow: var(--shadow-2);
 }
-/* The tight corner only on the last of a run, Messenger-style. */
-.chat-line:not(.is-last) .chat-bubble { border-radius: 17px; }
-.chat-seen { align-self: flex-end; margin: 1px 4px 2px; font-size: 10.5px; color: var(--text-3); }
-
-.chat-compose {
-  display: flex; align-items: flex-end; gap: 8px; padding: 8px 10px;
-  border-top: 1px solid var(--line);
+.friend-chat-menu button {
+  padding: 8px 10px; text-align: left; cursor: pointer; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-1); font: 600 12.5px var(--font-ui);
 }
-.chat-input {
-  flex: 1; min-width: 0; resize: none; max-height: 110px;
-  padding: 8px 12px; border: 1px solid var(--line); border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05); color: var(--text-1); font: inherit; line-height: 1.35;
+.friend-chat-menu button:hover { background: rgba(255, 255, 255, 0.07); }
+.friend-chat-menu button.is-danger { color: #ff9d97; }
+.friend-chat-menu button.is-armed { background: rgba(230, 180, 80, 0.14); color: var(--gold-hi); }
+.friend-chat-menu button.is-danger.is-armed { background: rgba(255, 90, 80, 0.16); color: #ff9d97; }
+.invite-pick { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.invite-search {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-m);
+  background: rgba(255, 255, 255, 0.05); color: var(--text-1); font: inherit;
 }
-.chat-input:focus { outline: none; border-color: var(--gold); }
-.chat-send {
-  flex: none; width: 36px; height: 36px; display: grid; place-items: center;
-  border: 0; border-radius: 50%; background: var(--gold); color: #1a1205; cursor: pointer;
+.invite-search:focus { outline: none; border-color: var(--gold); }
+.invite-empty { margin: 8px 2px; color: var(--text-3); font-size: var(--fs-small); }
+.invite-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+.invite-row {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px;
+  border: 0; border-radius: var(--r-m); background: none; color: inherit; text-align: left; cursor: pointer;
 }
-.chat-send:disabled { opacity: 0.45; cursor: default; }
-.chat-send .icon { width: 17px; height: 17px; }
+.invite-row:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.invite-row:disabled { cursor: default; }
+.invite-row.is-off { opacity: 0.5; }
+.invite-text { flex: 1; min-width: 0; display: grid; }
+.invite-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.invite-state { font-size: 12px; color: var(--text-3); }
+.invite-row.is-off .invite-state { color: var(--text-3); }
+.invite-cta { flex: none; font: 700 12px var(--font-ui); color: var(--gold-hi); }
 
 @media (max-width: 560px) {
-  .chat:not(.is-min) {
+  .friend-chat:not(.is-min) {
     right: 0; left: 0; width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh;
     border-left: 0; border-right: 0; border-radius: 0;
   }
-  .chat.is-min { right: 12px; width: 220px; }
+  .friend-chat.is-min { right: 12px; width: 220px; }
 }
 
 .prof-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

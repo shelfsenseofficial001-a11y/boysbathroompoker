@@ -21,7 +21,12 @@ import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
 import { startFriends, stopFriends } from './composables/useFriends.js';
+import { useInvite } from './composables/useInvite.js';
 import ChatWindow from './components/friends/ChatWindow.vue';
+import InvitePicker from './components/friends/InvitePicker.vue';
+
+// Whether the friend picker is open (an empty seat or the chat's menu).
+const { pickerFor: invitePicker } = useInvite();
 import { showToast } from './lib/toast.js';
 import { grouped } from './lib/format.js';
 import LobbyScreen from './components/lobby/LobbyScreen.vue';
@@ -1154,7 +1159,10 @@ onBeforeUnmount(() => {
   <!-- The chat window, in the corner of every screen it is allowed on. Put
        away at a table, where the felt needs the room; it reopens after. An
        account only - a guest has no friends to talk to. -->
-  <ChatWindow v-if="auth.hasAccount.value && view !== 'table'" />
+  <ChatWindow v-if="auth.hasAccount.value && view !== 'table'" @join="followInvite" />
+
+  <!-- The friend picker an empty seat or the chat menu opens. -->
+  <InvitePicker v-if="auth.hasAccount.value && invitePicker" />
 
   <!-- One sheet for both ways in. On the first visit it carries the guest
        option and cannot be closed without an answer; from the top bar it is
