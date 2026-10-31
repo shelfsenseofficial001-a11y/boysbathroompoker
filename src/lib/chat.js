@@ -87,6 +87,30 @@ export async function sendMessage(conversationId, content, replyTo = null) {
   return data;
 }
 
+// Friends already invited to this room, so the picker doesn't offer to send
+// the same invite twice. Read rather than remembered, so it still holds after
+// a reload - and asked in two steps because the message says which
+// conversation it was in, and the conversation says who that was with.
+export async function invitedToRoom(code, me) {
+  if (!supabaseConfigured || !code || !me) return new Set();
+  const { data: sent, error } = await supabase
+    .from('messages')
+    .select('conversation_id')
+    .eq('kind', 'invite')
+    .eq('sender_id', me)
+    .filter('meta->>code', 'eq', code);
+  if (error) return new Set();
+  const ids = [...new Set((sent || []).map((m) => m.conversation_id))];
+  if (!ids.length) return new Set();
+  const { data: convs } = await supabase
+    .from('conversations')
+    .select('id, participant_1, participant_2')
+    .in('id', ids);
+  return new Set(
+    (convs || []).map((c) => (c.participant_1 === me ? c.participant_2 : c.participant_1))
+  );
+}
+
 // The last thing said in each of my chats, keyed by the friend it was with.
 // Null on a server without 0012, so the list simply draws no preview line.
 export async function myPreviews() {

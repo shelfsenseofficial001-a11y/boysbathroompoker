@@ -5067,6 +5067,8 @@ html { scroll-behavior: smooth; }
 .invite-state { font-size: 12px; color: var(--text-3); }
 .invite-row.is-off .invite-state { color: var(--text-3); }
 .invite-cta { flex: none; font: 700 12px var(--font-ui); color: var(--gold-hi); }
+/* Already asked: said as a fact rather than offered as a button again. */
+.invite-cta.is-sent { color: var(--text-3); font-weight: 600; }
 
 @media (max-width: 560px) {
   .friend-chat:not(.is-min) {

@@ -12,17 +12,24 @@
 import { ref, computed, onMounted } from 'vue';
 import { useFriends } from '../../composables/useFriends.js';
 import { useInvite, closeInvitePicker } from '../../composables/useInvite.js';
-import { sendInvite } from '../../lib/chat.js';
+import { sendInvite, invitedToRoom } from '../../lib/chat.js';
+import { useAuth } from '../../composables/useAuth.js';
 import { showToast } from '../../lib/toast.js';
 import BaseModal from '../ui/BaseModal.vue';
 import FriendAvatar from './FriendAvatar.vue';
 
+const auth = useAuth();
 const { friends } = useFriends();
 const { room, pickerFor } = useInvite();
 
 const query = ref('');
 const sendingTo = ref(null);
 const search = ref(null);
+// Friends already asked to this table. Read from the invites themselves on
+// open, so it still holds after a reload, and added to as more are sent.
+const invited = ref(new Set());
+
+const isInvited = (f) => invited.value.has(f.id);
 
 // Who is already in the room, from whoever opened the picker. Nothing to
 // invite them to, so they're left off the list entirely.
@@ -36,7 +43,7 @@ const shown = computed(() => {
 });
 
 async function invite(friend) {
-  if (!friend.online || sendingTo.value || !room.value) return;
+  if (!friend.online || isInvited(friend) || sendingTo.value || !room.value) return;
   sendingTo.value = friend.id;
   try {
     await sendInvite(friend.id, {
@@ -45,7 +52,9 @@ async function invite(friend) {
       line: `Come play — join my table ${room.value.code}.`,
     });
     showToast(`Invite sent to ${friend.name}.`, { info: true });
-    closeInvitePicker();
+    // Marked rather than closed: the sheet stays up so the next person can
+    // be asked too, and this one plainly cannot be asked again.
+    invited.value = new Set([...invited.value, friend.id]);
   } catch (err) {
     showToast(err.message);
   } finally {
@@ -53,7 +62,11 @@ async function invite(friend) {
   }
 }
 
-onMounted(() => search.value?.focus());
+onMounted(async () => {
+  search.value?.focus();
+  const code = room.value?.code;
+  if (code) invited.value = await invitedToRoom(code, auth.userId.value);
+});
 </script>
 
 <template>
@@ -79,9 +92,15 @@ onMounted(() => search.value?.focus());
           <button
             type="button"
             class="invite-row"
-            :class="{ 'is-off': !f.online }"
-            :disabled="!f.online || sendingTo === f.id"
-            :title="f.online ? `Invite ${f.name}` : `${f.name} is offline`"
+            :class="{ 'is-off': !f.online || isInvited(f) }"
+            :disabled="!f.online || isInvited(f) || sendingTo === f.id"
+            :title="
+              isInvited(f)
+                ? `${f.name} has already been invited`
+                : f.online
+                  ? `Invite ${f.name}`
+                  : `${f.name} is offline`
+            "
             @click="invite(f)"
           >
             <FriendAvatar :username="f.username" :name="f.name" :url="f.avatar_url || ''" :online="f.online" />
@@ -89,7 +108,9 @@ onMounted(() => search.value?.focus());
               <span class="invite-name">{{ f.name }}</span>
               <span class="invite-state">{{ f.online ? 'Online' : 'Offline' }}</span>
             </span>
-            <span class="invite-cta">{{ sendingTo === f.id ? 'Sending…' : (f.online ? 'Invite' : '') }}</span>
+            <span class="invite-cta" :class="{ 'is-sent': isInvited(f) }">
+              {{ sendingTo === f.id ? 'Sending…' : isInvited(f) ? 'Invited' : f.online ? 'Invite' : '' }}
+            </span>
           </button>
         </li>
       </ul>
