@@ -22,6 +22,14 @@ services:
     # "/" serves index.html, so a 200 here means the app is really up.
     healthCheckPath: /
     envVars:
+      # Three things hang off this, and none of them announce themselves if it
+      # is missing: the refusal to boot with SKIP_AUTH on, `trust proxy` - Render
+      # terminates TLS at a proxy and forwards plain HTTP, so without it
+      # req.secure is always false - and the secure flag on the session cookie.
+      # Set here rather than assumed, because a cookie that quietly stops being
+      # secure is not a failure anybody notices.
+      - key: NODE_ENV
+        value: production
       # better-sqlite3 is a native module and is compiled during the build, so
       # the Node version is pinned to the one the lockfile was resolved with.
       - key: NODE_VERSION
