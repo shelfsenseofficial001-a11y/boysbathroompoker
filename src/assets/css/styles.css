@@ -1563,12 +1563,12 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 }
 
 @media (max-width: 760px) {
-  /* On a phone the slider, −/+ box and presets go: there isn't room for them
-     under the table. The chip tray stays, because tapping chips is how a bet
-     gets sized without them. */
-  /* Scoped to .dock so it outranks the base rules, which come later in the
-     file and would otherwise win. */
-  .dock .sizer { display: none; }
+  /* The slider, the presets and the −/+ box used to be dropped outright
+     here: there was no room for them under the table, and tapping chips was
+     the only way left to size a bet. They are a sheet now (see the 1080px
+     block below), so a phone has them again - it is only that they wait
+     under the dock until Raise asks for them, rather than standing in a band
+     of height the table wants. The chip tray stays where it is either way. */
   .dock .dock-sizing { padding: 2px 10px; border-inline: 0; }
   /* Spread across the full width so each chip is a comfortable tap target. */
   .dock .tray { width: 100%; justify-content: space-between; gap: 4px; }
@@ -2733,7 +2733,81 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 }
 @media (max-width: 1080px) {
   .dock-sizing { width: 100%; }
+  /* Phone and tablet: the dock stops repeating the table.
+     Everything this readout says is already on screen above it - the turn
+     and its clock are drawn round the acting seat's own picture, the pot is
+     in the middle of the felt, and what there is to call is printed on the
+     Call button the thumb is already going to. Three figures said twice,
+     and the second telling was taking a band of height off the table to do
+     it, on the screens with the least to spare.
+     Watching is the exception: there are no cards, no buttons and no seat
+     of one's own, so the line is the only thing in the dock and the only
+     word for what is happening. It stays. */
+  .dock:not(.is-watching) .status-sub { display: none; }
+  /* The turn line is the gold badge and its clock, both of which are already
+     drawn round the acting seat's own picture. Everything else this line
+     says - "You folded", "You're all-in", "You will join next round",
+     "Hand complete" - is said here and nowhere else, so it stays. */
+  .dock:not(.is-watching) .status-line[data-kind='turn'],
+  .dock:not(.is-watching) .status-line[data-kind='wait'] { display: none; }
+
+  /* ---- The bet sizer, as a sheet ----
+     A desktop dock keeps the sizer in a column of its own, on screen the
+     whole hand. A phone has no band of height to hold a slider on the chance
+     it is wanted - that height is the table - so here it waits under the
+     dock until Raise asks for it, and comes up over it.
+     Fixed to the window rather than to the dock, so it is not clipped by it
+     and sits above the chips and the action row. */
+  .dock .sizer {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    flex-direction: column; align-items: stretch; gap: 14px;
+    padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, #11201a, #060b09);
+    border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.6);
+    transform: translateY(101%);
+    visibility: hidden;
+    transition: transform 0.22s var(--ease-out), visibility 0.22s;
+  }
+  .dock.sizer-open .sizer { transform: translateY(0); visibility: visible; }
+  .dock .sizer .quick { flex: none; }
+  .dock .sizer .quick-btn { height: 44px; }
+  .dock .sizer .amount-row { flex: none; gap: 12px; }
+  .dock .sizer .range { flex: 1 1 auto; }
+  /* What the tick replaces. */
+  .dock .sizer .stepper { display: none; }
+  /* Scoped to .dock so it outranks the `display: none` the two carry a few
+     lines below - that rule is later in the file and would otherwise win. */
+  .dock .sizer-x, .dock .sizer-ok { display: flex; }
 }
+
+/* The sheet's own two controls, drawn here and shown only by the block
+   above: on a wide dock the sizer is a row with no way out and no yes of its
+   own, because the Raise button is both. */
+.sizer-x, .sizer-ok { display: none; align-items: center; justify-content: center; cursor: pointer; }
+.sizer-x {
+  position: absolute; top: 10px; right: 12px; width: 34px; height: 34px;
+  border-radius: 50%; border: 1px solid var(--line-2);
+  background: rgba(6, 12, 9, 0.9); color: var(--text-2);
+}
+.sizer-x .icon { width: 17px; height: 17px; }
+.sizer-x:hover { color: var(--text-1); border-color: rgba(255, 255, 255, 0.3); }
+.sizer-ok {
+  flex: none; gap: 9px; height: 46px; padding: 0 20px; border-radius: 12px;
+  border: 1px solid rgba(230, 180, 80, 0.8);
+  background: linear-gradient(180deg, #f9dc9a, var(--gold) 55%, #c9962f);
+  color: #261903; font: 800 16px/1 var(--font-ui); font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+.sizer-ok .icon { width: 19px; height: 19px; stroke-width: 3; }
+.sizer-ok:active { filter: brightness(0.95); }
+.sizer-ok:disabled { opacity: 0.4; cursor: not-allowed; }
+/* The quick row needs room beside the close button rather than under it. */
+.dock.sizer-open .sizer .quick { padding-right: 44px; }
+/* Asked for, so it moves; but it arrives rather than travels where somebody
+   has said they would rather it didn't. */
+.reduce-motion .dock .sizer { transition: none; }
 @media (max-width: 720px) {
   .dock { grid-template-columns: 1fr; grid-template-areas: 'status' 'sizing' 'actions'; gap: 10px; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); }
   /* Too narrow for one row: the heading sits above the figures. Stretch,
@@ -2767,6 +2841,19 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
   .kbd { display: none; }
   .toast-host { bottom: 200px; }
 }
+/* Phone and tablet, after the blocks above have had their say about heights:
+   what is left of the status column takes the room it needs and no more.
+   The row under the heading held the figures and the Peek button; with the
+   figures gone and nothing to peek at it is an empty band of dark, and with
+   the heading gone too the whole column is. Both used to keep their height
+   regardless, which is the gap that showed under "Hand complete". */
+@media (max-width: 1080px) {
+  .dock.status-lonely:not(.is-watching) .status-row { display: none; }
+  .dock.status-bare:not(.is-watching) .dock-status { display: none; }
+  .dock:not(.is-watching) .status-row { height: auto; min-height: 0; margin-top: 0; }
+  .dock:not(.is-watching) .status-line { height: auto; min-height: 0; line-height: 1.3; }
+}
+
 /* The narrowest phones: three pills on one line only fit if the type comes
    down with them. Better slightly smaller than clipped mid-word. */
 @media (max-width: 390px) {

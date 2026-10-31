@@ -2440,7 +2440,8 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
         else drawPending(); // showing redraws itself when the table updates
         return;
       }
-      doAction(kind === 'raise' ? 'raise' : kind);
+      if (kind === 'raise') return requestRaise();
+      doAction(kind);
     });
 
     // The switch is inside the panel, which is rebuilt on every update, so
@@ -3764,6 +3765,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
           ${(trayDenoms = tableChipSet()).map((d) => chipButton(d, false)).join('')}
         </div>
         <div class="sizer">
+          <!-- The two controls a bet sizer needs when it is a sheet rather
+               than a row of the dock: a way out, and a way to say yes. Both
+               are off on a wide screen, where the sizer is on screen all the
+               time and the Raise button is what says yes. -->
+          <button type="button" class="sizer-x" data-sizer-close aria-label="Close bet sizing">${icons.fold}</button>
           <div class="quick">
             <button class="quick-btn" data-quick="min">Min</button>
             <button class="quick-btn" data-quick="half">½ Pot</button>
@@ -3777,6 +3783,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
               <input class="input num" type="number" id="amt-input" step="1" inputmode="numeric" aria-label="Bet amount">
               <button type="button" class="step-btn" data-step="1" aria-label="Increase bet">${icons.plus}</button>
             </div>
+            <!-- Takes the stepper's place in the sheet. It carries the figure
+                 because the stepper it replaces was where the figure was
+                 read, and a bare tick would be asking somebody to confirm an
+                 amount that is no longer written down anywhere. -->
+            <button type="button" class="sizer-ok" data-sizer-ok>${icons.check}<b id="sizer-amt"></b></button>
           </div>
         </div>
       </div>
@@ -3835,15 +3846,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
 
     let main;
     let sub = '';
+    // What this line is saying, as a word the stylesheet can act on. A phone
+    // and a tablet drop the turn line and keep the rest: the turn and its
+    // clock are already drawn round the acting seat, but "You folded" and
+    // "You will join next round" are said here and nowhere else.
+    let kind = 'wait';
     if (!me) {
+      kind = 'watch';
       main = 'Spectating';
       // Nothing else: there's no hand of your own to read, and taking a
       // chair is offered on the felt rather than down here.
       sub = '';
     } else if (t.phase === 'showdown') {
+      kind = 'done';
       main = 'Hand complete';
       sub = 'Next hand shortly<span class="dots"></span>';
     } else if (m.myTurn) {
+      kind = 'turn';
       main = `<span class="turn-badge">Your turn<span class="turn-clock" id="turn-clock">${icons.clock}<span id="turn-secs">–</span></span></span>`;
       sub = `${m.toCall > 0
         ? `<span class="stat stat-call">To call <b>${fmt(Math.min(m.toCall, me.chips))}</b></span>`
@@ -3853,6 +3872,9 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       // Someone waiting to be dealt in carries folded = true, because they
       // take no part in the hand on the table — but they haven't folded
       // anything, so say what's actually happening to them.
+      // Anything about me is mine alone and is said nowhere else; waiting on
+      // somebody else is the acting seat's own ring saying it again.
+      kind = me.sittingOut || me.folded || me.allIn ? 'self' : 'wait';
       main = me.sittingOut
         ? me.chips > 0
           ? 'You will join next round'
@@ -3867,10 +3889,23 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       }<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     }
     setHTML(q('st-main'), main);
+    q('st-main').dataset.kind = kind;
     setHTML(q('st-sub'), sub);
+    // The turn has gone, or the hand has; a sheet asking how much to raise
+    // has nothing left to ask about.
+    if (sizerOpen && !m.myTurn) setSizer(false);
+    if (sizerOpen) q('sizer-amt').textContent = fmt(currentAmount());
 
     const canPeek = !!me && me.hasCards && !me.folded && t.phase !== 'showdown' && !autoReveal();
     els.dock.querySelector('[data-peek]').classList.toggle('is-hidden', !canPeek);
+    // Nothing left in the status column once a narrow screen has dropped the
+    // lines it is already showing on the table. Said here rather than asked
+    // of the markup in CSS, because the stylesheet would have to work it out
+    // from three separate things and would still be guessing at the third.
+    // Without it the column kept its height and the dock carried a band of
+    // empty dark under a heading, or under nothing at all.
+    els.dock.classList.toggle('status-bare', (kind === 'turn' || kind === 'wait') && !canPeek);
+    els.dock.classList.toggle('status-lonely', !canPeek);
 
     const off = !m.myTurn;
     els.dock.querySelector('[data-act="fold"]').disabled = !m.canFold;
@@ -3886,6 +3921,36 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     drawFoldButton();
     drawAllinButton();
     syncAmount();
+  }
+
+  // Asking how much, on a screen with no room to ask it standing up.
+  //
+  // The sizer is a row of the dock on a desktop and is simply there, all the
+  // time, with Raise as the word that commits it. A phone has no band of
+  // height to keep a slider in on the chance it is wanted, so there it is a
+  // sheet: Raise opens it, the tick commits it, the X walks away. The same
+  // controls either way - it is where they live that changes.
+  let sizerOpen = false;
+  const sheetSizer = () => window.matchMedia('(max-width: 1080px)').matches;
+
+  function setSizer(on) {
+    if (sizerOpen === on) return;
+    sizerOpen = on;
+    els.dock.classList.toggle('sizer-open', on);
+    if (on) {
+      syncAmount();
+      els.dock.querySelector('#sizer-amt').textContent = fmt(currentAmount());
+    }
+  }
+
+  // Pressing Raise. On a wide dock the amount is already set and showing, so
+  // this is the commit; in the sheet it is the question, and the tick inside
+  // is the commit.
+  function requestRaise() {
+    if (!model?.myTurn) return;
+    if (sheetSizer() && !sizerOpen) return setSizer(true);
+    setSizer(false);
+    doAction('raise');
   }
 
   function currentAmount() {
@@ -3914,6 +3979,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       return;
     }
     const amt = currentAmount();
+    // The sheet's tick carries the figure the stepper would have shown, so it
+    // follows the slider and the presets the same way the stepper does.
+    const ok = els.dock.querySelector('#sizer-amt');
+    if (ok) ok.textContent = fmt(amt);
     const range = els.dock.querySelector('#amt-range');
     const input = els.dock.querySelector('#amt-input');
     if (range) {
@@ -4263,6 +4332,11 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
   }
 
   function onDockClick(e) {
+    if (e.target.closest('[data-sizer-close]')) return setSizer(false);
+    if (e.target.closest('[data-sizer-ok]')) {
+      setSizer(false);
+      return doAction('raise');
+    }
     const act = e.target.closest('[data-act]');
     if (act && !act.disabled) {
       const kind = act.dataset.act;
@@ -4270,6 +4344,7 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
       if (kind !== 'allin') setAllinArmed(false);
       if (kind === 'fold') return requestFold();
       if (kind === 'allin') return requestAllin();
+      if (kind === 'raise') return requestRaise();
       return doAction(kind);
     }
     const q = e.target.closest('[data-quick]');
@@ -4450,7 +4525,10 @@ export function renderTable(root, { user, roomCode, onLeave, notice }) {
     const k = e.key.toLowerCase();
     const press = (kind) => {
       const b = els.dock.querySelector(`[data-act="${kind}"]`);
-      if (b && !b.disabled) doAction(kind);
+      if (b && !b.disabled) {
+        if (kind === 'raise') requestRaise();
+        else doAction(kind);
+      }
     };
     if (k === 'p') peekBriefly();
     else if (k === 'f') requestFold();
