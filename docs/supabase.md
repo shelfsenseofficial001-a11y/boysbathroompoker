@@ -274,3 +274,28 @@ row policy cannot express:
 
 The reading of a row from each end lives in `shared/friendship.mjs`, tested in
 `tests/friendship.test.js`. There is no unblock yet.
+
+### The list, and who's on
+
+Migration 0008 adds `profiles.last_seen_at` and two functions.
+
+- `touch_last_seen()` stamps it with the database's clock. The page calls it
+  once a minute while it is visible — started by the app shell on sign in, not
+  by the sidebar, so it keeps beating at a table.
+- `my_friends()` returns everyone you have a non-blocked row with: friends,
+  requests you were sent, requests you sent. For accepted friends only, it
+  gives `seen_secs_ago`, worked out in the database so a wrong clock in the
+  browser can't turn somebody green.
+
+A friend seen within two minutes is online (`ONLINE_WITHIN` in
+`shared/lastSeen.mjs`) — two beats, so one late one is forgiven. Past that the
+list reads `just now`, `5m ago`, `3h ago`, `2d ago`, then the date.
+
+This is a timestamp, not Supabase Presence, on purpose: a presence channel
+shows everyone subscribed to it who is online, and this shows only your
+friends. `last_seen_at` is in neither the column grant nor `public_profiles`.
+
+`friendships` is in the `supabase_realtime` publication, so a request or an
+accept redraws the other player's list without a reload. Realtime applies the
+select policy to inserts and updates; deletes carry only an id and can't be
+filtered, so any delete makes the list re-read itself through RLS.

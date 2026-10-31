@@ -20,6 +20,7 @@ import {
 import { forgetGuestSession } from './lib/guestSession.js';
 import { supabaseConfigured } from './lib/supabase.js';
 import { useAuth } from './composables/useAuth.js';
+import { startFriends, stopFriends } from './composables/useFriends.js';
 import { showToast } from './lib/toast.js';
 import { grouped } from './lib/format.js';
 import LobbyScreen from './components/lobby/LobbyScreen.vue';
@@ -35,6 +36,15 @@ import AuthTransition from './components/auth/AuthTransition.vue';
 import SvgIcon from './components/ui/SvgIcon.vue';
 
 const auth = useAuth();
+
+// The friends list and the heartbeat behind its green dots. Kept here rather
+// than in the sidebar so it keeps beating at a table, where no sidebar is
+// drawn - otherwise sitting down to play would show you as gone.
+watch(
+  () => (auth.hasAccount.value ? auth.userId.value : null),
+  (id) => (id ? startFriends(id) : stopFriends()),
+  { immediate: true }
+);
 
 const view = ref('boot'); // boot | home | lobby | table | profile | gone | blocked
 
@@ -186,6 +196,16 @@ async function onMenuPick(id, from = null, tab = null) {
     }
     return lobby.value?.showPage('settings', tab, origin);
   }
+  // The friends list as a page, for the screens too narrow to show it beside
+  // the lobby.
+  if (id === 'friends') {
+    if (!user.value && !auth.signedIn.value) return openAuth('login');
+    if (view.value !== 'lobby') {
+      view.value = 'lobby';
+      await nextTick();
+    }
+    return lobby.value?.showPage('friends');
+  }
 }
 
 // Which page the lobby is showing. Settings lives inside the lobby view, so
@@ -195,7 +215,9 @@ const lobbyPage = ref('main');
 
 const navActive = computed(() => {
   if (view.value === 'profile') return 'profile';
-  if (view.value === 'lobby') return lobbyPage.value === 'settings' ? 'settings' : 'lobby';
+  if (view.value === 'lobby') {
+    return ['settings', 'friends'].includes(lobbyPage.value) ? lobbyPage.value : 'lobby';
+  }
   return '';
 });
 
@@ -1078,6 +1100,7 @@ onBeforeUnmount(() => {
     @auth="openAuth"
     @back-to="onBackTo"
     @page="lobbyPage = $event"
+    @profile="openProfile"
   />
 
     <TableScreen

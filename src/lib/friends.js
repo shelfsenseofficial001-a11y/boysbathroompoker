@@ -42,7 +42,43 @@ async function change(fn, other) {
   return data;
 }
 
-export const sendFriendRequest = (other) => change('send_friend_request', other);
+// Everyone I have a friendship row with, blocks aside: friends with how long
+// ago they were seen, and requests either way (migration 0008). Null on a
+// server without the list, so the sidebar can say nothing rather than fail.
+export async function listFriends() {
+  if (!supabaseConfigured) return null;
+  const { data, error } = await supabase.rpc('my_friends');
+  if (error) {
+    if (notSetUp(error)) return null;
+    throw error;
+  }
+  return data || [];
+}
+
+// "I'm here." Stamped with the database's clock. A failure is not worth a
+// word: the next beat tries again, and the worst case is looking offline.
+export async function touchLastSeen() {
+  if (!supabaseConfigured) return;
+  await supabase.rpc('touch_last_seen');
+}
+
+// Calls `onChange` whenever a friendship row I can see moves - a request
+// arriving, an accept, a removal - so the list redraws without a reload.
+// Realtime applies the select policy from 0007 to inserts and updates. A
+// delete carries only the row's id and cannot be filtered, so any delete
+// wakes the list; re-reading it is cheap, and the read is what RLS checks.
+export function watchFriendships(me, onChange) {
+  if (!supabaseConfigured || !me) return () => {};
+  const channel = supabase
+    .channel(`friendships:${me}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships', filter: `user_id=eq.${me}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships', filter: `friend_id=eq.${me}` }, onChange)
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'friendships' }, onChange)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+}
+
+export const sendFriendRequest =(other) => change('send_friend_request', other);
 export const acceptFriendRequest = (other) => change('accept_friend_request', other);
 // Cancelling a request, declining one and unfriending are the same call.
 export const removeFriend = (other) => change('remove_friend', other);

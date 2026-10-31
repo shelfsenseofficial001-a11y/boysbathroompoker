@@ -9,6 +9,7 @@ import HostRoomForm from './HostRoomForm.vue';
 import JoinRoomForm from './JoinRoomForm.vue';
 import RoomList from './RoomList.vue';
 import SettingsPage from './SettingsPage.vue';
+import FriendsSidebar from '../friends/FriendsSidebar.vue';
 
 const props = defineProps({
   // Null when nobody is signed in. The homepage still renders - it is the
@@ -20,7 +21,13 @@ const props = defineProps({
   guest: { type: Boolean, default: false },
   notice: { type: String, default: '' },
 });
-const emit = defineEmits(['enter-room', 'logout', 'auth', 'back-to', 'page']);
+const emit = defineEmits(['enter-room', 'logout', 'auth', 'back-to', 'page', 'profile']);
+
+// A friend in the list, pressed. Their profile for now; their chat once
+// there is one.
+function openFriend(friend) {
+  emit('profile', friend.username);
+}
 
 // The avatar menu, the auth buttons and the footer all belong to the app
 // shell now (src/App.vue), so this screen is only the lobby itself.
@@ -97,27 +104,45 @@ onMounted(() => playEntrance(screen.value));
 <template>
   <div ref="screen" class="lobby-screen">
     <main v-show="page === 'main'" class="page">
-      <section class="hero" data-enter>
-        <div class="eyebrow">Play-money Texas Hold’em</div>
-        <h1 class="display">Pull up a chair.</h1>
-        <p class="lead">
-          Host a private table or join friends with a room code. Chips are fake — strictly for
-          bragging rights.
-        </p>
-      </section>
-      <!-- Hosting and joining go through the socket, so they wait for the
-           server's own record of this player. Signed out there is nothing to
-           wait for; signed in it is a moment, and saying so beats three dead
-           panels. -->
-      <template v-if="user">
-        <div class="lobby-grid">
-          <HostRoomForm @entered="entered" @fail="fail" />
-          <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
-        </div>
-        <RoomList @join="joinForm?.join($event, true)" @watch="watchRoom" @fail="fail" />
-        <p class="error-text" role="alert">{{ error }}</p>
-      </template>
-      <p v-else class="lead lobby-signed-out">Finding your seat…</p>
+      <div class="lobby-col">
+        <section class="hero" data-enter>
+          <div class="eyebrow">Play-money Texas Hold’em</div>
+          <h1 class="display">Pull up a chair.</h1>
+          <p class="lead">
+            Host a private table or join friends with a room code. Chips are fake — strictly for
+            bragging rights.
+          </p>
+        </section>
+        <!-- Hosting and joining go through the socket, so they wait for the
+             server's own record of this player. Signed out there is nothing to
+             wait for; signed in it is a moment, and saying so beats three dead
+             panels. -->
+        <template v-if="user">
+          <div class="lobby-grid">
+            <HostRoomForm @entered="entered" @fail="fail" />
+            <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
+          </div>
+          <RoomList @join="joinForm?.join($event, true)" @watch="watchRoom" @fail="fail" />
+          <p class="error-text" role="alert">{{ error }}</p>
+        </template>
+        <p v-else class="lead lobby-signed-out">Finding your seat…</p>
+      </div>
+    </main>
+
+    <!-- A rail down the right edge of the window on a wide screen, under the
+         bar. Narrower than that it is hidden here and reached from the
+         bottom tray instead, as a page. Only beside the lobby's front page:
+         Settings has the full width to itself. -->
+    <FriendsSidebar
+      v-if="user && page === 'main'"
+      class="lobby-friends"
+      @open="openFriend"
+      @profile="emit('profile', $event)"
+      @auth="emit('auth', $event)"
+    />
+
+    <main v-if="page === 'friends'" class="page lobby-friends-page">
+      <FriendsSidebar @open="openFriend" @profile="emit('profile', $event)" @auth="emit('auth', $event)" />
     </main>
 
     <SettingsPage
