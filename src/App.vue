@@ -554,6 +554,10 @@ async function boot() {
     await api.me();
     return enter();
   } catch {
+    // The equity calculator runs entirely in the browser, so a server that
+    // cannot identify anybody - or cannot be reached at all - is no reason
+    // to put a shut door in front of it.
+    if (readAddress().view === 'equity') return (view.value = 'equity');
     blockFor(serverAnswered ? 'no-accounts' : 'no-answer');
   }
 }

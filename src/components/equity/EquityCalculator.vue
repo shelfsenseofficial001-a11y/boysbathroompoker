@@ -222,6 +222,51 @@ function clearAll() {
   clearBoard();
   target.value = { kind: 'hand', p: 0, i: 0 };
 }
+// A card at random out of whatever is left in the deck, for the deal
+// buttons. Nothing is at stake here - this is a calculator, not a hand being
+// played - so the ordinary random source is enough.
+function randomCard() {
+  const free = [];
+  for (const s of SUITS) for (const r of RANKS) if (!placed.value.has(r + s.id)) free.push(r + s.id);
+  return free.length ? free[Math.floor(Math.random() * free.length)] : null;
+}
+
+// Fills the given slots, in order, with cards off the top of a shuffled
+// deck. Slots that already hold a card are left alone.
+function dealInto(slots) {
+  let last = null;
+  for (const slot of slots) {
+    if (getCard(slot)) continue;
+    const c = randomCard();
+    if (!c) break;
+    setCard(slot, c);
+    last = slot;
+  }
+  if (last) target.value = nextEmpty(last);
+}
+
+// The board's button: one card, onto the next empty community slot.
+const nextBoardSlot = computed(() => {
+  const i = board.findIndex((c) => !c);
+  return i === -1 ? null : { kind: 'board', i };
+});
+function dealBoardCard() {
+  if (nextBoardSlot.value) dealInto([nextBoardSlot.value]);
+}
+
+// A seat's button: enough cards to give that player a hand.
+const seatNeeds = (p) => !hands[p][0] || !hands[p][1];
+function dealHand(p) {
+  dealInto([{ kind: 'hand', p, i: 0 }, { kind: 'hand', p, i: 1 }]);
+}
+
+// Seats folded down to their nameplate. A reader's choice, kept per seat and
+// left alone by everything else: the odds behind it carry on being worked
+// out, so opening one again shows the current number rather than a stale one.
+const minimized = reactive(new Set());
+const toggleMinimized = (p) => (minimized.has(p) ? minimized.delete(p) : minimized.add(p));
+
+const deckEmpty = computed(() => placed.value.size >= 52);
 const anyCards = computed(() => placed.value.size > 0);
 const left = computed(() => 52 - placed.value.size);
 const leftInSuit = (s) => RANKS.filter((r) => !placed.value.has(r + s)).length;
@@ -466,21 +511,34 @@ onBeforeUnmount(() => {
             · {{ plan.exact ? `every runout (${plan.boards.toLocaleString('en-US')})` : `${plan.boards.toLocaleString('en-US')} sampled runouts` }}
           </span>
         </div>
-        <div class="eq-board">
-          <div v-for="(c, i) in board" :key="i" class="eq-board-col">
-            <button
-              type="button"
-              class="eq-slot is-board"
-              :class="{ 'is-target': isTarget({ kind: 'board', i }), 'is-hover': hoverKey === `b${i}`, 'has-card': !!c }"
-              :data-slot="`b${i}`"
-              :aria-label="c ? `${BOARD_LABELS[i]}: ${cardName(c)}. Tap to remove` : `${BOARD_LABELS[i]} card, empty`"
-              @pointerdown="c && onPointerDown($event, c, `b${i}`)"
-              @click="tapSlot({ kind: 'board', i })"
-            >
-              <span v-if="c" class="eq-card" v-html="face(c)" />
-            </button>
-            <span class="eq-board-label" :class="{ 'is-group': i === 1 }">{{ i === 1 ? 'Flop' : i > 2 ? BOARD_LABELS[i] : '' }}</span>
+        <div class="eq-board-row">
+          <div class="eq-board">
+            <div v-for="(c, i) in board" :key="i" class="eq-board-col">
+              <button
+                type="button"
+                class="eq-slot is-board"
+                :class="{ 'is-target': isTarget({ kind: 'board', i }), 'is-hover': hoverKey === `b${i}`, 'has-card': !!c }"
+                :data-slot="`b${i}`"
+                :aria-label="c ? `${BOARD_LABELS[i]}: ${cardName(c)}. Tap to remove` : `${BOARD_LABELS[i]} card, empty`"
+                @pointerdown="c && onPointerDown($event, c, `b${i}`)"
+                @click="tapSlot({ kind: 'board', i })"
+              >
+                <span v-if="c" class="eq-card" v-html="face(c)" />
+              </button>
+              <span class="eq-board-label" :class="{ 'is-group': i === 1 }">{{ i === 1 ? 'Flop' : i > 2 ? BOARD_LABELS[i] : '' }}</span>
+            </div>
           </div>
+          <!-- One card off the deck, onto the next empty community slot. -->
+          <button
+            type="button"
+            class="eq-deal is-board"
+            :disabled="!nextBoardSlot || deckEmpty"
+            :title="nextBoardSlot ? `Deal a random ${BOARD_LABELS[nextBoardSlot.i].toLowerCase()} card` : 'The board is complete'"
+            :aria-label="nextBoardSlot ? `Deal a random ${BOARD_LABELS[nextBoardSlot.i].toLowerCase()} card` : 'The board is complete'"
+            @click="dealBoardCard"
+          >
+            <SvgIcon name="sparkle" />
+          </button>
         </div>
         <div class="eq-status" aria-live="polite">
           <template v-if="failed">{{ failed }}</template>
@@ -513,10 +571,25 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <!-- The seat's panel: who it is, then how the hand stands. -->
-        <div class="eq-panel" :class="seatOdds(p) ? `is-${seatSummary(seatOdds(p)).kind}` : 'is-empty'">
+        <div
+          class="eq-panel"
+          :class="[seatOdds(p) ? `is-${seatSummary(seatOdds(p)).kind}` : 'is-empty', { 'is-min': minimized.has(p) }]"
+        >
           <div class="eq-plate">
             <span class="eq-badge" :style="{ '--seat-c': SEAT_COLORS[p] }">{{ p + 1 }}</span>
             <span class="eq-name">Player {{ p + 1 }}</span>
+            <!-- Enough off the deck to give this seat a hand. -->
+            <button
+              v-if="seatNeeds(p)"
+              type="button"
+              class="eq-deal"
+              :disabled="deckEmpty"
+              :aria-label="`Deal Player ${p + 1} a random hand`"
+              title="Deal a random hand"
+              @click="dealHand(p)"
+            >
+              <SvgIcon name="sparkle" />
+            </button>
             <button
               v-if="hands[p][0] || hands[p][1]"
               type="button"
@@ -527,18 +600,45 @@ onBeforeUnmount(() => {
             >
               <SvgIcon name="close" />
             </button>
+            <!-- Folds the seat down to its nameplate, for a reader who wants
+                 the felt clear and only needs to know who is where. -->
+            <button
+              type="button"
+              class="eq-min"
+              :aria-expanded="!minimized.has(p)"
+              :aria-controls="`eq-odds-${p}`"
+              :aria-label="minimized.has(p) ? `Show Player ${p + 1}’s odds` : `Hide Player ${p + 1}’s odds`"
+              :title="minimized.has(p) ? 'Show odds' : 'Hide odds'"
+              @click="toggleMinimized(p)"
+            >
+              <SvgIcon name="chevron" />
+            </button>
           </div>
-          <div v-if="seatOdds(p)" class="eq-odds">
-            <b class="eq-odds-head">{{ seatSummary(seatOdds(p)).head }}</b>
+          <!-- The same three rows whether or not there is a result yet, so a
+               seat is the same size before and after its cards land and the
+               table doesn't shuffle itself as a hand is dealt. -->
+          <div :id="`eq-odds-${p}`" class="eq-odds" :class="{ 'is-empty': !seatOdds(p) }">
+            <b class="eq-odds-head">{{ seatOdds(p) ? seatSummary(seatOdds(p)).head : '—' }}</b>
             <!-- Win, tie and lose as one bar, in that order. -->
             <span class="eq-odds-bar" aria-hidden="true">
-              <i class="is-win" :style="{ width: `${seatOdds(p).win}%` }" />
-              <i class="is-tie" :style="{ width: `${seatOdds(p).tie}%` }" />
-              <i class="is-lose" :style="{ width: `${seatOdds(p).lose}%` }" />
+              <template v-if="seatOdds(p)">
+                <i class="is-win" :style="{ width: `${seatOdds(p).win}%` }" />
+                <i class="is-tie" :style="{ width: `${seatOdds(p).tie}%` }" />
+                <i class="is-lose" :style="{ width: `${seatOdds(p).lose}%` }" />
+              </template>
             </span>
-            <span class="eq-odds-sub">{{ seatSummary(seatOdds(p)).sub }}</span>
+            <span class="eq-odds-sub">
+              {{
+                seatOdds(p)
+                  ? seatSummary(seatOdds(p)).sub
+                  : !hands[p][0] || !hands[p][1]
+                    ? 'Add 2 cards'
+                    : canCalc
+                      ? 'Calculating…'
+                      : 'Needs an opponent'
+              }}
+            </span>
           </div>
-          <div v-else class="eq-odds is-empty">{{ hands[p][0] && hands[p][1] ? 'Calculating…' : 'Add 2 cards' }}</div>
         </div>
       </div>
     </section>

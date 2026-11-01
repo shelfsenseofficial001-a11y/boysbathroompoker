@@ -5521,7 +5521,20 @@ html { scroll-behavior: smooth; }
 .eq-odds-bar .is-tie { background: var(--gold); }
 .eq-odds-bar .is-lose { background: rgba(224, 86, 79, 0.55); }
 .eq-odds-sub { font-size: 0.76em; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.eq-odds.is-empty { padding: 0.55em 0.7em; font-size: 0.82em; color: var(--text-3); white-space: nowrap; text-align: center; }
+/* A seat with no result yet keeps a filled one's shape exactly - same rows,
+   same padding - and only goes quiet, so dealing a hand changes the numbers
+   on the table and never the size of anything. */
+/* One width for every seat, so the ring is even and a seat doesn't grow
+   when "Drawing dead" becomes "Tie 1.7% · Lose 32.7%". Wide tables only:
+   with seven or more, or on a phone, the room it would take is the room
+   the seats need to clear each other. */
+.eq-stage:not(.is-crowded):not(.is-portrait) .eq-panel:not(.is-min) { width: 10.7em; }
+/* Seven or more seats get the same treatment at a tighter size, so the ring
+   stays even. Not on a tall table, where a full ring leaves the seats no
+   width to give away. */
+.eq-stage.is-crowded:not(.is-portrait) .eq-panel:not(.is-min) { width: 9.9em; }
+.eq-odds.is-empty .eq-odds-head { color: var(--text-3); font-weight: 700; }
+.eq-odds.is-empty .eq-odds-bar { opacity: 0.5; }
 
 /* The hand ahead. */
 .eq-seat.is-lead .eq-panel {
@@ -5787,3 +5800,62 @@ html { scroll-behavior: smooth; }
 .eq-matchup-kind { font-weight: 800; color: var(--text-1); font-size: 14px; }
 .eq-matchup-rule { font-size: 12px; color: var(--text-3); }
 .eq-matchup-rule b { color: var(--gold-hi); }
+
+/* Deal a card at random: one beside the board, one on each seat that still
+   needs a hand. Quiet until wanted - it is a shortcut, not the main way
+   cards get onto the table. */
+.eq-deal {
+  width: 1.55em; height: 1.55em; flex: none; display: grid; place-items: center; padding: 0;
+  border: 1px solid rgba(230, 180, 80, 0.4); border-radius: 50%;
+  background: rgba(230, 180, 80, 0.1); color: var(--gold-hi); cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.eq-deal:hover:not(:disabled) { background: rgba(230, 180, 80, 0.24); border-color: var(--gold); }
+.eq-deal:disabled { opacity: 0.3; cursor: not-allowed; }
+.eq-deal .icon { width: 0.95em; height: 0.95em; }
+.eq-deal:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* The board's one stands as tall as the cards it deals to, so it reads as
+   part of the row rather than floating beside it - but dark, like the rest
+   of the table's chrome, so it is never mistaken for a sixth card slot. */
+.eq-deal.is-board {
+  align-self: flex-start; border-radius: calc(var(--bw) * 0.1);
+  width: calc(var(--bw) * 0.62); height: calc(var(--bw) * 1.4);
+  margin-left: calc(var(--bw) * 0.2);
+  background: rgba(6, 12, 9, 0.82); border-color: rgba(230, 180, 80, 0.55);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.eq-deal.is-board:hover:not(:disabled) { background: rgba(14, 26, 20, 0.95); border-color: var(--gold); }
+.eq-deal.is-board .icon { width: 58%; height: auto; }
+/* Beside the board where there is room for it; underneath on a tall table
+   with a full ring, where the rail seats come in level with the cards and
+   anything added to that row would meet them. */
+.eq-board-row { display: flex; align-items: flex-start; }
+.eq-stage.is-portrait.is-crowded .eq-board-row { flex-direction: column; align-items: center; gap: 5px; }
+.eq-stage.is-portrait.is-crowded .eq-deal.is-board {
+  /* Under the board it is centred on it; `flex-start` above is what keeps
+     it level with the cards when it sits beside them. */
+  align-self: center;
+  width: auto; height: 1.9em; padding: 0 0.85em; margin: 0; border-radius: 999px; font-size: var(--seat-fs);
+}
+.eq-stage.is-portrait.is-crowded .eq-deal.is-board .icon { width: 1.05em; height: 1.05em; }
+
+/* Folding a seat down to its nameplate. The chevron points the way the
+   panel will move: up to close it, down to open it again. */
+.eq-min {
+  width: 1.5em; height: 1.5em; flex: none; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
+}
+.eq-min:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
+.eq-min:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.eq-min .icon { width: 0.85em; height: 0.85em; transition: transform 0.18s var(--ease-out); }
+.eq-panel:not(.is-min) .eq-min .icon { transform: rotate(180deg); }
+/* Nothing below the plate any more, so neither the divider under it nor the
+   width the odds asked for. */
+.eq-panel.is-min { width: auto; min-width: 0; }
+/* A tall table with a full ring has no width to spare for a third control,
+   and little left to fold away: those seats are down to a name and a figure
+   already. */
+.eq-stage.is-portrait.is-crowded .eq-min { display: none; }
+.eq-panel.is-min .eq-plate { border-bottom: 0; }
+.eq-panel.is-min .eq-odds { display: none; }
