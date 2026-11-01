@@ -15,6 +15,12 @@ const GUEST_NAME_RE = /^guest_[a-z0-9]{4,8}$/;
 const NEXT_HAND_DELAY_MS = 5000;
 const TURN_MS = (Number(process.env.TURN_SECONDS) || 30) * 1000;
 const BETTING_PHASES = ['preflop', 'flop', 'turn', 'river'];
+// How long an all-in runout holds before its next card, keyed by how many are
+// on the board. The first beat is for reading the hands that have just gone
+// face up; each street after that waits a little longer than the last, and
+// the river longest of all. The final one is the river left to sink in
+// before the pot is pushed.
+const RUNOUT_DELAY_MS = { 0: 2600, 3: 3000, 4: 3800, 5: 2400 };
 
 function getOrCreateGuest(name) {
   if (typeof name !== 'string' || !GUEST_NAME_RE.test(name)) return null;
@@ -169,6 +175,23 @@ function attachSockets(io, sessionMiddleware) {
 
   function attachTableEvents(room) {
     room.table.events.on('handEnded', () => scheduleNextHand(room));
+    room.table.events.on('runout', () => scheduleRunout(room));
+  }
+
+  // Deals an all-in out a street at a time. Bound to the table and the hand
+  // it started on, so a room that has moved on - the hand ended early when
+  // everyone else walked out, or the table was replaced - simply stops.
+  function scheduleRunout(room) {
+    const t = room.table;
+    const hand = t.handNumber;
+    clearTimeout(room.runoutTimer);
+    const step = () => {
+      if (room.table !== t || t.handNumber !== hand || !t.runout) return;
+      t.advanceRunout();
+      broadcastRoom(room);
+      if (t.runout) room.runoutTimer = setTimeout(step, RUNOUT_DELAY_MS[t.board.length]);
+    };
+    room.runoutTimer = setTimeout(step, RUNOUT_DELAY_MS[t.board.length]);
   }
 
   // Server-side turn clock: when it expires the player auto-checks if legal,
@@ -343,6 +366,7 @@ function attachSockets(io, sessionMiddleware) {
 
   function scheduleNextHand(room) {
     manager.recordHandResult(room);
+    room.tallyHand(room.table, room.table.lastHandSummary);
     announceHandResult(room);
     room.recordHand(room.table.lastHandSummary);
     clearTimeout(room.handTimer);
@@ -390,7 +414,13 @@ function attachSockets(io, sessionMiddleware) {
         .map((p) => ({ userId: p.userId, username: p.username, chips: p.chips, isBot: !!p.isBot }))
         .sort((a, b) => b.chips - a.chips);
       room.gameOver = {
+        // Names this result and no other, so a browser that has closed it
+        // can remember having done so across a reload. Hands and winner
+        // alone aren't enough: the same player can win two one-hand games.
+        id: `${room.code}-${Date.now()}`,
         winner: standings[0] || null,
+        // The winner's own game, hand by hand, for the result sheet.
+        winnerStats: standings[0] ? room.statsFor(standings[0].userId) : null,
         hands: room.table.handNumber,
         // Whoever was in the room for it. A player who arrives later is sent
         // no result at all rather than a celebration for a game they missed.
@@ -412,7 +442,7 @@ function attachSockets(io, sessionMiddleware) {
       room.spectators.clear();
       room.handLog = []; // a new game starts its history over, as the sidebar does
       const { smallBlind, bigBlind } = room.table;
-      room.table = new Table({ smallBlind, bigBlind });
+      room.table = new Table({ smallBlind, bigBlind, pacedRunout: true });
       attachTableEvents(room);
       broadcastRoom(room);
       return;
@@ -536,6 +566,7 @@ function attachSockets(io, sessionMiddleware) {
   function closeRoom(room, reason) {
     clearTimeout(room.turnTimer);
     clearTimeout(room.handTimer);
+    clearTimeout(room.runoutTimer);
     endMatch(room);
     const members = room.members();
     manager.removeRoom(room.code);
@@ -1427,6 +1458,7 @@ function attachSockets(io, sessionMiddleware) {
         if (!humansLeft) {
           clearTimeout(room.turnTimer);
           clearTimeout(room.handTimer);
+          clearTimeout(room.runoutTimer);
           manager.removeRoom(room.code);
         }
       }

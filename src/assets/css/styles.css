@@ -2339,6 +2339,77 @@ button.pod.is-free:disabled { cursor: default; opacity: 0.5; }
 .banner-sub { font-size: 0.82em; color: var(--text-2); letter-spacing: 0.04em; }
 @keyframes popIn { from { opacity: 0; transform: translate(-50%, 0) scale(0.75); } }
 
+/* ---------- All-in runout ----------
+   Once nobody is left to bet, the hands go face up and the board is dealt a
+   street at a time, slowly. The table goes quiet around it: the cloth darkens
+   towards the rail, the players still in it are outlined, everyone else
+   falls further back, and each player's chance of winning hangs under their
+   plate. Nothing here loops - every change happens once, when the street it
+   belongs to lands. */
+.felt-hush { transition: opacity 1.2s ease; }
+.camera.is-runout .felt .felt-hush { opacity: 1; }
+.camera.is-runout .pod.is-folded,
+.camera.is-runout .pod.is-away { opacity: 0.3; }
+.camera.is-runout .pod.is-contender {
+  border-color: rgba(230, 180, 80, 0.6);
+  box-shadow: 0 0 0 1px rgba(230, 180, 80, 0.35), 0 0 24px rgba(230, 180, 80, 0.22);
+  transition: border-color 0.6s ease, box-shadow 0.6s ease;
+}
+
+.phase-label.is-runout { color: #ff9a8f; }
+
+/* Where the next card comes down. */
+.camera.is-runout .slot.is-next {
+  border-style: solid; border-color: rgba(230, 180, 80, 0.5);
+  box-shadow: inset 0 0 calc(var(--card-board) * 0.2) rgba(230, 180, 80, 0.14);
+}
+
+/* A runout card lands face down, lifted and lit, holds there for its --d,
+   then turns and settles into the row. */
+.board .card.flip-in.is-slow {
+  animation: runoutLand 0.8s var(--ease-out) both; animation-delay: var(--d, 0ms);
+}
+.board .card.flip-in.is-slow .face { animation-duration: 0.8s; }
+.board .card.flip-in.is-slow .back { animation-duration: 0.4s; }
+@keyframes runoutLand {
+  from {
+    transform: translateY(-9%) scale(1.07);
+    filter: drop-shadow(0 0 10px rgba(247, 213, 138, 0.75)) drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5));
+  }
+}
+
+/* The odds tray: the bet tray's shape, holding a percentage instead. It
+   grows past the bet tray's width only when a tie share rides with it. */
+.pod-bet.pod-odds {
+  width: auto; min-width: var(--tray-w); padding: 0 0.5em; gap: 0.35em; overflow: hidden;
+  border-color: rgba(230, 180, 80, 0.35);
+}
+.pod-odds b { position: relative; font-size: 0.82em; color: var(--text-1); }
+.pod-odds small {
+  position: relative; font-size: 0.6em; font-weight: 700; color: var(--text-3);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.pod-odds .odds-fill {
+  position: absolute; left: 0; bottom: 0; height: 2px; width: var(--eq, 0%);
+  background: var(--text-3); border-radius: 0 1px 1px 0;
+}
+.pod-odds.is-lead b { color: var(--gold-hi); }
+.pod-odds.is-lead .odds-fill { background: var(--gold); }
+.pod-odds.is-locked { border-color: var(--green); }
+.pod-odds.is-locked b { color: #7be3ad; }
+.pod-odds.is-locked .odds-fill { background: var(--green); }
+.pod-odds.is-dead b, .pod-odds.is-pending b { color: var(--text-3); }
+/* A change of odds: the bar runs from the last street's figure to this one,
+   and the number rises into place. Delayed by however long ago the change
+   was first drawn, so a redraw part-way through carries on from there. */
+.pod-odds.is-moving .odds-fill { animation: oddsFill 1.1s var(--ease-out) both; animation-delay: var(--odds-elapsed, 0ms); }
+.pod-odds.is-moving b { animation: oddsIn 0.5s var(--ease-out) both; animation-delay: var(--odds-elapsed, 0ms); }
+@keyframes oddsFill { from { width: var(--eq-from, 0%); } }
+@keyframes oddsIn { from { opacity: 0; transform: translateY(40%); } }
+/* A phone's plates are small; the one figure on them that matters most here
+   gets a little more of the tray. */
+.camera.is-portrait .pod-odds b { font-size: 0.9em; }
+
 /* ==========================================================================
    Betting dock
    ========================================================================== */
@@ -3539,6 +3610,28 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .sheet-stack { margin-top: 16px; display: flex; justify-content: center; }
 .sheet-stack svg { height: 70px; width: auto; }
 .sheet-amt { margin-top: 6px; font-size: 30px; font-weight: 800; color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+/* The winner's game in figures, under their stack. Four across on a sheet of
+   ordinary width, two by two on a phone. */
+.win-stats {
+  margin-top: 18px; padding: 12px; text-align: center;
+  border-radius: var(--r-m); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line);
+}
+.win-stats-head { font: 800 10px var(--font-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+.win-stats-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.win-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0;
+  padding: 8px 4px; border-radius: var(--r-s, 10px); background: rgba(0, 0, 0, 0.25);
+}
+.win-stat b { font-size: 18px; font-weight: 800; line-height: 1.1; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.win-stat span { font-size: 10.5px; font-weight: 600; color: var(--text-3); line-height: 1.2; }
+.win-stats-foot {
+  margin-top: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
+  font-size: 12px; color: var(--text-3);
+}
+.win-stats-foot b { color: var(--gold-hi); font-weight: 700; }
+@media (max-width: 420px) {
+  .win-stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .sheet-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 9px; }
 .sheet-note { margin: 14px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.45; }
 

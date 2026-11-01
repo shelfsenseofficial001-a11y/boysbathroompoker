@@ -217,3 +217,47 @@ test('a chair already taken seats them elsewhere rather than refusing', () => {
 function t0maxSeats() {
   return new Table({ smallBlind: 5, bigBlind: 10 }).maxSeats;
 }
+
+test('a paced all-in shows the hands and deals one street at a time', () => {
+  const t = new Table({ smallBlind: 5, bigBlind: 10, pacedRunout: true });
+  t.addPlayer(1, 'p1', 500);
+  t.addPlayer(2, 'p2', 500);
+  let runouts = 0;
+  t.events.on('runout', () => (runouts += 1));
+  t.startHand();
+  t.applyAction(actor(t).userId, 'allin');
+  t.applyAction(actor(t).userId, 'call');
+
+  assert.equal(runouts, 1);
+  assert.equal(t.phase, 'preflop');
+  assert.equal(t.board.length, 0);
+  assert.equal(t.actingSeat, -1);
+  // Each player sees the other's cards, and both chances.
+  const view = t.getPublicState(1);
+  assert.ok(view.seats.filter(Boolean).every((p) => p.holeCards?.length === 2));
+  assert.equal(view.runout.equity.length, 2);
+  assert.ok(view.seats.filter(Boolean).every((p) => p.betThisStreet === 0));
+
+  const boards = [];
+  while (t.runout) {
+    t.advanceRunout();
+    boards.push(t.board.length);
+  }
+  assert.deepEqual(boards, [3, 4, 5, 5]);
+  assert.equal(t.phase, 'showdown');
+  assert.equal(totalChips(t), 1000);
+});
+
+test('a runout ends when everyone but one walks away', () => {
+  const t = new Table({ smallBlind: 5, bigBlind: 10, pacedRunout: true });
+  t.addPlayer(1, 'p1', 500);
+  t.addPlayer(2, 'p2', 500);
+  t.startHand();
+  t.applyAction(actor(t).userId, 'allin');
+  t.applyAction(actor(t).userId, 'call');
+  t.advanceRunout();
+  t.removePlayer(2);
+  assert.equal(t.runout, null);
+  assert.equal(t.phase, 'showdown');
+  assert.equal(t.lastHandSummary.winners[0].userId, 1);
+});

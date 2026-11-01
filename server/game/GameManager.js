@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { Table } = require('./Table');
 const db = require('../db');
+const { compareHands } = require('./handEvaluator');
 
 function makeRoomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
@@ -22,10 +23,11 @@ class Room {
     this.inviteToken = crypto.randomBytes(9).toString('base64url');
     this.hostUserId = hostUserId;
     this.hostUsername = hostUsername;
-    this.table = new Table({ smallBlind: smallBlind || 5, bigBlind: bigBlind || 10 });
+    this.table = new Table({ smallBlind: smallBlind || 5, bigBlind: bigBlind || 10, pacedRunout: true });
     this.gameId = null;
     this.lobby = new Map(); // userId -> { username, buyIn, ready }
     this.handTimer = null;
+    this.runoutTimer = null;
     // Set when a game finishes so the result outlives the table it was won
     // on: the table is reset for the next game the moment the last hand
     // ends, which would otherwise take the standings down with it.
@@ -39,6 +41,11 @@ class Room {
     // read back the hands they missed instead of starting from an empty
     // sidebar. Cleared when the next game begins.
     this.handLog = [];
+    // Each player's game so far, tallied as every hand ends, for the result
+    // sheet at the end: userId -> { dealt, won, showdownsWon, biggestPot,
+    // best }. Kept apart from handLog, which only holds the latest hands.
+    // Cleared when the next game begins.
+    this.stats = new Map();
     // Recent table talk, kept so somebody refreshing or arriving part-way
     // through doesn't land in a silent room. Oldest first.
     this.chat = [];
@@ -160,6 +167,46 @@ class Room {
     if (this.handLog.length > Room.HANDS_MAX) this.handLog.splice(0, this.handLog.length - Room.HANDS_MAX);
   }
 
+  // Counts a finished hand towards everyone who was dealt into it.
+  tallyHand(table, summary) {
+    if (!summary?.winners?.length) return;
+    const entry = (userId) => {
+      if (!this.stats.has(userId)) {
+        this.stats.set(userId, { dealt: 0, won: 0, showdownsWon: 0, biggestPot: 0, best: null });
+      }
+      return this.stats.get(userId);
+    };
+    for (const p of table.seats) {
+      if (p && !p.sittingOut && p.holeCards.length) entry(p.userId).dealt += 1;
+    }
+    for (const w of summary.winners) {
+      const s = entry(w.userId);
+      s.won += 1;
+      if (!summary.uncontested) s.showdownsWon += 1;
+      s.biggestPot = Math.max(s.biggestPot, w.amount);
+    }
+    // The best hand anyone turned over, whether it won or not. A pot nobody
+    // contested shows no hand, so only showdowns count.
+    for (const h of summary.showdownHands || []) {
+      if (!h.evaluation) continue;
+      const s = entry(h.userId);
+      if (!s.best || compareHands(h.evaluation, s.best) > 0) s.best = h.evaluation;
+    }
+  }
+
+  // One player's game, as the result sheet shows it.
+  statsFor(userId) {
+    const s = this.stats.get(userId);
+    if (!s) return null;
+    return {
+      dealt: s.dealt,
+      won: s.won,
+      showdownsWon: s.showdownsWon,
+      biggestPot: s.biggestPot,
+      bestHand: s.best ? s.best.description || s.best.name : null,
+    };
+  }
+
   addChat(entry) {
     this.chat.push(entry);
     if (this.chat.length > Room.CHAT_MAX) this.chat.splice(0, this.chat.length - Room.CHAT_MAX);
@@ -264,6 +311,7 @@ class GameManager {
     }
     if (!room.table.canStartHand()) throw new Error('Need at least 2 players to start.');
     room.spectators.clear(); // a fresh game deals the last one's busted players back in
+    room.stats.clear();
     room.gameId = db.createGame(room.code);
     room.table.startHand();
   }

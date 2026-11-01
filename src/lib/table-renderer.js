@@ -23,6 +23,23 @@ const PHASE_LABEL = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'R
 // The tag played as each street lands ('turn' is already the it's-your-turn
 // chime, so the turn card gets its own name).
 const STREET_SOUND = { flop: 'flop', turn: 'turnCard', river: 'river' };
+// An all-in being run out, keyed by how many cards are on the board once the
+// street lands. HOLD is how long the new card lies face down before it turns
+// (the flop's three turn one after another instead, STAGGER apart), and ODDS
+// is when the chances on the nameplates catch up - only once the card that
+// changed them can be read, so the numbers never give the card away. The
+// server waits longer than each of these before dealing the next street.
+const RUNOUT_HOLD = { 3: 0, 4: 700, 5: 1300 };
+const RUNOUT_STAGGER = 320;
+const RUNOUT_FLIP_MS = 800;
+const RUNOUT_ODDS = {
+  0: 750,
+  3: 2 * RUNOUT_STAGGER + RUNOUT_FLIP_MS + 120,
+  4: RUNOUT_HOLD[4] + RUNOUT_FLIP_MS + 120,
+  5: RUNOUT_HOLD[5] + RUNOUT_FLIP_MS + 150,
+};
+// How long a change of odds takes to settle on the plate.
+const ODDS_MOVE_MS = 1100;
 // Table landmarks, in % of the camera box. Portrait (phones) stacks the
 // board lower so it clears the upper seats' bets.
 const CENTER = { x: 50, y: 50 };
@@ -192,6 +209,13 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
   let renderedHand = 0; // hand number the cards on screen belong to
   let renderedBoard = 0; // community cards already on the felt, for this hand
   let renderedShowdown = 0; // hand number whose showdown reveal has been drawn
+  let renderedReveal = 0; // hand number whose all-in hands have been turned up
+  // The chances drawn on the nameplates during a runout. They trail the
+  // server's by the time it takes the new card to turn over: see RUNOUT_ODDS.
+  // { hand, step, equity: Map(userId -> {win, tie}), prev: Map, at }
+  let oddsShown = null;
+  let oddsTimer = null;
+  let oddsKey = '';
   let botLevel = 'casual'; // difficulty used for the next bot the host adds
   // The waiting room is rebuilt whole on every update, so whether the host
   // has taken the blinds over by hand is held out here rather than in the
@@ -212,6 +236,10 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
   // Finished hands, newest first, for the sidebar. Kept per room in this
   // browser so a refresh doesn't wipe the record of the session.
   const HISTORY_KEY = `bbp-history-${roomCode}`;
+  // Per player as well as per room: two accounts in one browser (two tabs,
+  // one each) share its storage, and one closing the result must not close
+  // it for the other.
+  const DISMISSED_KEY = `bbp-result-closed-${roomCode}-${user.id}`;
   const HISTORY_MAX = 60;
   const history = loadHistory();
   const expanded = new Set(); // hands whose cards are showing
@@ -239,12 +267,32 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
   let emojiQuery = '';
   let openVotes = []; // vote-kicks currently running at this table
   let seatMenuFor = null; // userId whose seat menu is open
-  let dismissedGameOver = null; // key of a result the player has closed
+  // Key of the result the player has closed. Kept in the browser as well, so
+  // a reload doesn't bring back a result they've already put away: the server
+  // keeps sending it until the next game starts, for anyone who hasn't seen it.
+  let dismissedGameOver = loadDismissed();
   let askingLeave = false; // the leave confirmation is up
   let enteredAt = 0; // when the current screen's entrance began (motion.js)
   let showAskDone = 0; // hand whose "show your cards?" prompt has been answered
   let askingTransfer = null; // userId being offered the room, pending confirmation
   let askingSettings = false; // the settings panel is up
+
+  function loadDismissed() {
+    try {
+      return localStorage.getItem(DISMISSED_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function dismissGameOver(over) {
+    dismissedGameOver = gameOverKey(over);
+    try {
+      localStorage.setItem(DISMISSED_KEY, dismissedGameOver);
+    } catch {
+      // Unavailable storage: it stays closed for this visit, at least.
+    }
+  }
 
   function loadHistory() {
     try {
@@ -324,6 +372,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     socket.off('connect', resync);
     stopAvatars();
     clearInterval(clock);
+    clearTimeout(oddsTimer);
     timers.forEach(clearTimeout);
     window.removeEventListener('resize', onResize);
     document.removeEventListener('keydown', onKey);
@@ -1255,7 +1304,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     return '';
   }
 
-  const gameOverKey = (o) => `${o.hands}:${o.winner?.userId ?? 'none'}`;
+  const gameOverKey = (o) => o.id || `${o.hands}:${o.winner?.userId ?? 'none'}`;
 
   // Every sheet closes from its own top-right corner as well as from its
   // buttons and the dimmed area around it, since a corner cross is where
@@ -1347,6 +1396,29 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     </div>`;
   }
 
+  // How the winner's game went: hands they were dealt into, how many of
+  // those they took, and the most they won at once. Their best hand is the
+  // best one they turned over - a pot everyone folded to shows nothing.
+  function winnerStatsHTML(over, iWon) {
+    const s = over.winnerStats;
+    if (!s || !s.dealt) return '';
+    const rate = Math.round((s.won / s.dealt) * 100);
+    const tile = (value, label) => `<div class="win-stat"><b>${value}</b><span>${label}</span></div>`;
+    return `<section class="win-stats" aria-label="${iWon ? 'Your game' : 'Their game'}">
+      <div class="win-stats-head">${iWon ? 'Your game' : `${esc(over.winner.username)}’s game`}</div>
+      <div class="win-stats-grid">
+        ${tile(s.dealt, s.dealt === 1 ? 'Hand played' : 'Hands played')}
+        ${tile(s.won, s.won === 1 ? 'Hand won' : 'Hands won')}
+        ${tile(`${rate}%`, 'Win rate')}
+        ${tile(fmt(s.biggestPot), 'Biggest pot')}
+      </div>
+      <div class="win-stats-foot">
+        <span>Showdowns won <b>${s.showdownsWon}</b></span>
+        ${s.bestHand ? `<span>Best hand <b>${esc(s.bestHand)}</b></span>` : ''}
+      </div>
+    </section>`;
+  }
+
   function celebrationHTML(over) {
     const w = over.winner;
     const iWon = w?.userId === user.id;
@@ -1358,6 +1430,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       <p class="sheet-sub">${iWon ? 'Every chip on the table is yours.' : 'They finished with every chip on the table.'}</p>
       <div class="sheet-stack">${chipStackSVG(w?.chips || 0, { maxCols: 6, maxPerCol: 6 })}</div>
       <div class="sheet-amt">${fmt(w?.chips || 0)}</div>
+      ${winnerStatsHTML(over, iWon)}
       <div class="sheet-actions">
         <button class="btn btn-primary btn-lg" data-ov="close">Back to the waiting room</button>
         <button class="btn btn-ghost" data-ov="leave">Leave room</button>
@@ -1685,7 +1758,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     // two are notices, and closing one puts it away for this game.
     if (kind === 'dismiss') {
       if (closeSheet()) return;
-      if (shown?.gameOver) dismissedGameOver = gameOverKey(shown.gameOver);
+      if (shown?.gameOver) dismissGameOver(shown.gameOver);
       else bustAnswered = true; // staying on to watch, same as the button
       return drawOverlay(shown);
     }
@@ -1706,7 +1779,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       bustAnswered = true; // for this game only; being dealt back in clears it
       play('click');
     }
-    if (kind === 'close' && shown?.gameOver) dismissedGameOver = gameOverKey(shown.gameOver);
+    if (kind === 'close' && shown?.gameOver) dismissGameOver(shown.gameOver);
     drawOverlay(shown);
   }
 
@@ -3069,8 +3142,13 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       // Keyed off what's already drawn, not off `pt`: a plain redraw (taking
       // back a fold, ending a peek) passes no previous state, and must not
       // flip everyone's cards over a second time.
-      justShowdown: t.phase === 'showdown' && renderedShowdown !== t.handNumber,
+      // Hands turned up for a runout were already flipped then, and are not
+      // flipped a second time when the showdown arrives.
+      justShowdown: t.phase === 'showdown' && renderedShowdown !== t.handNumber && renderedReveal !== t.handNumber,
+      justRevealed: !!t.runout && renderedReveal !== t.handNumber,
+      odds: syncOdds(t),
     };
+    els.camera.classList.toggle('is-runout', !!t.runout);
 
     els.handChip.hidden = !t.handNumber;
     els.handNo.textContent = `#${t.handNumber}`;
@@ -3113,7 +3191,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       const fresh = els.seats.querySelector('[data-mine]');
       if (fresh && fresh.outerHTML === mineHTML) settleIn(fresh, mine);
     }
-    drawBoard(t, newHand, ctx.winCards);
+    drawBoard(t, newHand, ctx.winCards, !!t.runout);
     drawPot(t, summary);
     drawMuck();
     drawDock(cur);
@@ -3123,6 +3201,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     renderedHand = t.handNumber;
     renderedBoard = t.board.length;
     if (ctx.justShowdown) renderedShowdown = t.handNumber;
+    if (ctx.justRevealed) renderedReveal = t.handNumber;
     // Not only on the first draw: a hand turned over after the fact has to
     // reach the entry that's already in the list.
     if (t.phase === 'showdown') recordHand(t.lastHandSummary);
@@ -3549,6 +3628,70 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     </div>`;
   }
 
+  // The odds to draw this frame, and the timer that brings them up to date.
+  // A new street's odds are held back until its card has turned over; the
+  // first ones wait for the hands themselves to flip.
+  function syncOdds(t) {
+    const ro = t.runout;
+    if (!ro) {
+      clearTimeout(oddsTimer);
+      oddsKey = '';
+      oddsShown = null;
+      return null;
+    }
+    if (oddsShown && oddsShown.hand !== t.handNumber) oddsShown = null;
+    const key = `${t.handNumber}:${ro.step}`;
+    if ((!oddsShown || oddsShown.step !== ro.step) && oddsKey !== key) {
+      oddsKey = key;
+      clearTimeout(oddsTimer);
+      const hand = t.handNumber;
+      const step = ro.step;
+      const equity = new Map(ro.equity.map((e) => [e.userId, e]));
+      oddsTimer = setTimeout(
+        () => {
+          const now = latest?.table;
+          if (!now || now.handNumber !== hand || now.runout?.step !== step) return;
+          oddsShown = { hand, step, equity, prev: oddsShown?.equity || null, at: performance.now() };
+          draw();
+        },
+        reduceMotion ? 0 : (RUNOUT_ODDS[t.board.length] ?? 0)
+      );
+    }
+    return oddsShown;
+  }
+
+  // A player's chance of winning the all-in, on a tray under their plate -
+  // the same tray a bet hangs in, since nobody is betting any more. The bar
+  // along its foot is the same figure, and moves from the last street's
+  // value to this one's when it changes.
+  function oddsTrayHTML(p, ctx) {
+    const odds = ctx.odds;
+    if (!ctx.t.runout || p.folded) return '';
+    const e = odds?.equity.get(p.userId);
+    if (!e) return '<span class="pod-bet pod-odds is-pending"><b>…</b></span>';
+    const best = Math.max(...[...odds.equity.values()].map((x) => x.win));
+    const dead = e.win + e.tie <= 0.05;
+    const pct = (v) => (v > 0 && v < 1 ? '<1' : v > 99 && v < 100 ? '>99' : Math.round(v));
+    const from = odds.prev?.get(p.userId)?.win ?? 0;
+    const since = performance.now() - odds.at;
+    const moving = !reduceMotion && since < ODDS_MOVE_MS;
+    const cls = [
+      'pod-bet',
+      'pod-odds',
+      e.win === best && e.win > 0 && 'is-lead',
+      e.win >= 99.95 && 'is-locked',
+      dead && 'is-dead',
+      moving && 'is-moving',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const label = dead ? 'Dead' : e.tie >= 99.95 ? 'Split' : `${pct(e.win)}%`;
+    const tie = e.tie >= 0.5 && e.tie < 99.95 && !dead ? `<small>tie ${pct(e.tie)}%</small>` : '';
+    return `<span class="${cls}" style="--eq:${e.win}%;--eq-from:${from}%;--odds-elapsed:-${Math.round(since)}ms" aria-label="${esc(p.username)}: ${Math.round(e.win)}% to win">
+      <i class="odds-fill"></i><b>${label}</b>${tie}
+    </span>`;
+  }
+
   function seatHTML(p, L, ctx) {
     const { t } = ctx;
     const acting = t.actingSeat === p.seat && BETTING.includes(t.phase);
@@ -3559,11 +3702,11 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     const isLoser = !!ctx.summary && !isWinner;
     const away = p.left || p.sittingOut;
     const menuOpen = seatMenuFor === p.userId;
-    const hasBet = BETTING.includes(t.phase) && p.betThisStreet > 0;
+    const hasBet = BETTING.includes(t.phase) && !t.runout && p.betThisStreet > 0;
     // 'anchor' has moved to the group around the plate - the plate is now
     // placed by that group, so that the cards tucked behind it can be
     // positioned against the plate's own box.
-    const cls = ['pod', L.isMe && 'is-me', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', hasBet && 'has-bet', L.pod.y > 62 && 'is-low', L.high && 'is-high', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
+    const cls = ['pod', L.isMe && 'is-me', t.runout && !p.folded && 'is-contender', acting && 'is-acting', p.folded && !away && 'is-folded', away && 'is-away', isWinner && 'is-winner', isLoser && 'is-loser', menuOpen && 'has-menu', hasBet && 'has-bet', L.pod.y > 62 && 'is-low', L.high && 'is-high', L.side && `side-${L.side}`, p.isBot && levelClass(p.botLevel)]
       .filter(Boolean)
       .join(' ');
     const groupCls = ['anchor', 'seat-group', L.isMe && 'is-me', L.side && `side-${L.side}`]
@@ -3581,7 +3724,9 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     // nameplate, where it is read against the player it belongs to and can't
     // crowd anything on the table. Mine too - my plate is lifted clear of the
     // foot of the table to leave room for it (see computeLayout).
-    const betTray = hasBet ? `<span class="pod-bet"><b>${fmt(p.betThisStreet)}</b></span>` : '';
+    const betTray = hasBet
+      ? `<span class="pod-bet"><b>${fmt(p.betThisStreet)}</b></span>`
+      : oddsTrayHTML(p, ctx);
 
     let html = `<div class="${groupCls}" style="left:${L.pod.x}%;top:${L.pod.y}%;--i:${L.index}">
       ${L.isMe ? '' : handHTML(p, L, ctx)}
@@ -3661,7 +3806,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     const winCls = (c) => (winCards.size ? (winCards.has(c) ? ' is-win' : '') : '');
 
     if (L.isMe && p.holeCards) {
-      const faceUp = t.phase === 'showdown' && summary && !summary.uncontested;
+      const faceUp = (t.phase === 'showdown' && summary && !summary.uncontested) || !!t.runout;
       // “Turn my cards up as they're dealt”: they sit open for the whole hand,
       // so there's nothing to peek at. They can still be thrown to fold, which
       // is why this isn't the `shown` class used at showdown — that one ends
@@ -3682,7 +3827,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     // pinned to the rail in portrait carries its cards with it.
     if (p.holeCards) {
       return `<div class="hand pod-hand revealed${lost}" data-hand="${p.seat}">
-        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms`, tucked: true })).join('')}
+        ${p.holeCards.map((c, i) => cardHTML(c, { cls: (justShowdown || ctx.justRevealed ? 'flip-in' : '') + winCls(c), style: `--d:${i * 120}ms`, tucked: true })).join('')}
       </div>`;
     }
     // When they're checking their hand the cards tilt up and settle — you see
@@ -3693,7 +3838,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     </div>`;
   }
 
-  function drawBoard(t, newHand, winCards) {
+  function drawBoard(t, newHand, winCards, runout = false) {
     // Only cards that weren't on the felt a moment ago flip in. This counts
     // what's actually drawn rather than comparing against a previous state,
     // because redraws that aren't a step forward (taking back a fold, ending
@@ -3703,15 +3848,22 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     for (let i = 0; i < 5; i++) {
       const c = t.board[i];
       if (!c) {
-        html += '<div class="slot"></div>';
+        // Where the next card of a runout will land is marked, steadily.
+        const next = runout && (t.board.length === 0 ? i < 3 : i === t.board.length);
+        html += `<div class="slot${next ? ' is-next' : ''}"></div>`;
         continue;
       }
       const fresh = i >= prevLen && !reduceMotion;
       const win = winCards.size ? (winCards.has(c) ? 'is-win' : 'is-dim') : '';
-      html += cardHTML(c, { cls: `${fresh ? 'flip-in' : ''} ${win}`, style: `--d:${(i - prevLen) * 140}ms` });
+      // In a runout a card lands face down and is held there a moment before
+      // it turns, longer on each street; the flop's three go one by one.
+      const slow = fresh && runout;
+      const delay = slow ? (RUNOUT_HOLD[t.board.length] ?? 0) + (i - prevLen) * RUNOUT_STAGGER : (i - prevLen) * 140;
+      html += cardHTML(c, { cls: `${fresh ? 'flip-in' : ''}${slow ? ' is-slow' : ''} ${win}`, style: `--d:${delay}ms` });
     }
     els.board.innerHTML = html;
-    els.phase.textContent = PHASE_LABEL[t.phase] || '';
+    els.phase.textContent = runout ? `All in · ${t.board.length ? PHASE_LABEL[t.phase] : 'Hands up'}` : PHASE_LABEL[t.phase] || '';
+    els.phase.classList.toggle('is-runout', runout);
   }
 
   function drawPot(t, summary) {
@@ -3744,7 +3896,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     // Chips in the middle are what's been collected; the headline is the full
     // pot including bets still in front of players.
     els.pot.innerHTML = `<div class="pot-chips">${chipStackSVG(collected, { maxCols: 4, maxPerCol: 6 })}</div>
-      <div class="pot-label">Pot</div>
+      <div class="pot-label">${t.runout ? 'All-in pot' : 'Pot'}</div>
       <div class="pot-amt">${fmt(total)}</div>
       ${t.currentBet > 0 && BETTING.includes(t.phase) ? `<div class="pot-sub">Current bet ${fmt(t.currentBet)}</div>` : ''}`;
   }
@@ -3779,7 +3931,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     const actor = betting && t.actingSeat >= 0 ? t.seats[t.actingSeat] : null;
     // Throwing a hand away doesn't need the action on you: anyone still
     // holding live cards can fold, and one made out of turn waits for it.
-    const canFold = !!me && betting && me.hasCards && !me.folded && !me.allIn && !me.sittingOut;
+    const canFold = !!me && betting && !t.runout && me.hasCards && !me.folded && !me.allIn && !me.sittingOut;
     return { t, me, betting, myTurn, toCall, total, maxTotal, isRaise, minTotal, canRaise, canFold, actor };
   }
 
@@ -3901,6 +4053,10 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       kind = 'done';
       main = 'Hand complete';
       sub = 'Next hand shortly<span class="dots"></span>';
+    } else if (t.runout && !me.folded && !me.sittingOut) {
+      kind = 'self';
+      main = 'All in · running it out';
+      sub = `<span class="stat">Pot <b>${fmt(m.total)}</b></span>`;
     } else if (m.myTurn) {
       kind = 'turn';
       main = `<span class="turn-badge">Your turn<span class="turn-clock" id="turn-clock">${icons.clock}<span id="turn-secs">–</span></span></span>`;
@@ -3936,7 +4092,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     if (sizerOpen && !m.myTurn) setSizer(false);
     if (sizerOpen) q('sizer-amt').textContent = fmt(currentAmount());
 
-    const canPeek = !!me && me.hasCards && !me.folded && t.phase !== 'showdown' && !autoReveal();
+    const canPeek = !!me && me.hasCards && !me.folded && t.phase !== 'showdown' && !t.runout && !autoReveal();
     els.dock.querySelector('[data-peek]').classList.toggle('is-hidden', !canPeek);
     // Nothing left in the status column once a narrow screen has dropped the
     // lines it is already showing on the table. Said here rather than asked
@@ -5003,12 +5159,23 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     if (streetChanged && t.board.length > pt.board.length) {
       const dealt = t.board.length - pt.board.length;
       for (let i = 0; i < dealt; i++) play('deal', 0.12 * i);
-      if (STREET_SOUND[t.phase]) play(STREET_SOUND[t.phase], 0.12 * (dealt - 1));
+      // In a runout the street's tag sounds as its last card turns over,
+      // not as it lands face down.
+      const lag = t.runout && !reduceMotion
+        ? ((RUNOUT_HOLD[t.board.length] ?? 0) + (dealt - 1) * RUNOUT_STAGGER + RUNOUT_FLIP_MS / 2) / 1000
+        : 0.12 * (dealt - 1);
+      if (STREET_SOUND[t.phase]) play(STREET_SOUND[t.phase], lag);
+    }
+
+    // The betting is over and the hands go face up.
+    if (t.runout && !pt.runout) {
+      const others = cur.filter((p) => !p.folded && p.userId !== user.id).length;
+      for (let i = 0; i < others; i++) play('flip', 0.12 * i);
     }
 
     if (streetChanged && t.phase === 'showdown' && t.lastHandSummary) {
       const summary = t.lastHandSummary;
-      if (!summary.uncontested) {
+      if (!summary.uncontested && !pt.runout) {
         const others = cur.filter((p) => !p.folded && p.userId !== user.id).length;
         for (let i = 0; i < others; i++) play('flip', 0.12 * i);
       }
@@ -5030,6 +5197,8 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     }
 
     const streetChanged = pt.phase !== t.phase;
+    // An all-in starting sweeps the bets in, the same as a street ending.
+    const gathered = streetChanged || (!!t.runout && !pt.runout);
 
     // Call-out for whoever just acted (and the "knock" for a check).
     if (t.actionCount !== pt.actionCount && pt.actingSeat >= 0) {
@@ -5050,10 +5219,10 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       const added = p.committed - q.committed;
       if (added > 0) {
         // A bet that closes the street goes straight into the pot.
-        if (!streetChanged && BETTING.includes(t.phase)) flyChips(L.stack, L.bet, added);
+        if (!gathered && BETTING.includes(t.phase)) flyChips(L.stack, L.bet, added);
         else flyChips(L.stack, POT, added);
       }
-      if (streetChanged && q.betThisStreet > 0) flyChips(L.bet, POT, q.betThisStreet, 120);
+      if (gathered && q.betThisStreet > 0) flyChips(L.bet, POT, q.betThisStreet, 120);
     }
 
     if (streetChanged && t.phase === 'showdown' && t.lastHandSummary) {

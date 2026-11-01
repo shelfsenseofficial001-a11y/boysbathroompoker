@@ -196,6 +196,10 @@ export function feltSVG(id = 'green', aspect = 1.9) {
       <stop offset="60%" stop-color="${t.felt[1]}"/>
       <stop offset="100%" stop-color="${t.felt[2]}"/>
     </radialGradient>
+    <radialGradient id="${u}Hush" cx="50%" cy="50%" r="55%">
+      <stop offset="45%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity=".55"/>
+    </radialGradient>
     <radialGradient id="${u}Light" cx="50%" cy="38%" r="45%">
       <stop offset="0%" stop-color="#fff" stop-opacity=".09"/>
       <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
@@ -264,6 +268,10 @@ export function feltSVG(id = 'green', aspect = 1.9) {
     </g>
   </g>
   ${ring(T, `fill="url(#${u}Light)"`)}
+  <!-- Darkens the cloth towards the rail while an all-in is run out; hidden
+       otherwise (see .felt-hush). The cloth's own shape, so it never reaches
+       the floor around the table. -->
+  ${ring(T, `class="felt-hush" opacity="0" fill="url(#${u}Hush)"`)}
   <!-- The seam pressed into the cloth a little in from the rail, and the
        dashed line the bets are pushed over. -->
   ${ring(T + 2.4, `fill="none" stroke="#fff" stroke-opacity=".05" stroke-width="1" vector-effect="non-scaling-stroke"`)}

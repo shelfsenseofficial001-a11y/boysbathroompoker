@@ -4,11 +4,16 @@
 const EventEmitter = require('events');
 const { Deck } = require('./deck');
 const { evaluateHand, compareHands, kickers, sameHandRank, describeKickers } = require('./handEvaluator');
+const { computeEquity } = require('./equity');
 
 const PHASES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
 class Table {
-  constructor({ maxSeats = 9, smallBlind = 5, bigBlind = 10 } = {}) {
+  // `pacedRunout`: when nobody is left to bet, the remaining streets are
+  // dealt one at a time by whoever drives the table (see advanceRunout)
+  // rather than all at once, so an all-in can be watched. Off by default,
+  // where a hand plays straight through to its showdown.
+  constructor({ maxSeats = 9, smallBlind = 5, bigBlind = 10, pacedRunout = false } = {}) {
     this.maxSeats = maxSeats;
     this.smallBlind = smallBlind;
     this.bigBlind = bigBlind;
@@ -26,6 +31,10 @@ class Table {
     this.lastHandSummary = null;
     this.actionCount = 0; // bumps on every decision; used to key the turn timer
     this.events = new EventEmitter();
+    this.pacedRunout = pacedRunout;
+    // While an all-in is being run out: the hands are face up and each
+    // contender's chance of winning is known. null at any other time.
+    this.runout = null; // { step, equity: [{ userId, win, tie }] }
   }
 
   // ---- Seating ----
@@ -106,6 +115,12 @@ class Table {
     if (p.folded) return;
     p.folded = true;
     p.lastAction = 'left';
+    if (this.runout) {
+      const remaining = this._playersInHand().filter((q) => !q.folded);
+      if (remaining.length === 1) this._awardUncontestedPot(remaining[0]);
+      else this.runout.equity = this._equity();
+      return;
+    }
     if (this.actingSeat === idx) {
       this._afterAction(idx);
       return;
@@ -162,6 +177,7 @@ class Table {
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
     this.lastHandSummary = null;
+    this.runout = null;
 
     for (const p of this.seats) {
       if (!p) continue;
@@ -400,10 +416,16 @@ class Table {
       return;
     }
 
+    // With at most one player still holding chips there is nobody left to
+    // bet against: the rest of the board is simply dealt.
     const canStillAct = this._playersWhoCanAct();
-    if (this.phase === 'river' || canStillAct.length === 0) {
-      // Run out remaining streets automatically if everyone is all-in.
+    if (this.phase === 'river') {
       this._runToShowdown();
+      return;
+    }
+    if (canStillAct.length <= 1) {
+      if (this.pacedRunout) this._startRunout();
+      else this._runToShowdown();
       return;
     }
 
@@ -439,7 +461,51 @@ class Table {
     this._runShowdown();
   }
 
+  // Every contender's hand goes face up and the bets go into the middle; the
+  // board is then dealt a street at a time by advanceRunout. No timing lives
+  // here - the 'runout' event tells the caller to start the clock.
+  _startRunout() {
+    for (const p of this._playersInHand()) p.betThisStreet = 0;
+    this.currentBet = 0;
+    this.actingSeat = -1;
+    this.toAct = new Set();
+    this.runout = { step: 0, equity: this._equity() };
+    this.actionCount += 1;
+    this.events.emit('runout');
+  }
+
+  // Deals the next street of a runout, or - with the board complete - turns
+  // it into the showdown. Returns false when there is no runout to advance.
+  advanceRunout() {
+    if (!this.runout) return false;
+    if (this.board.length >= 5) {
+      this.runout = null;
+      this.phase = 'showdown';
+      this._runShowdown();
+      return true;
+    }
+    const idx = PHASES.indexOf(this.phase);
+    this.phase = PHASES[idx + 1];
+    if (this.phase === 'flop') this.board.push(...this.deck.drawMany(3));
+    else this.board.push(this.deck.draw());
+    this.runout = { step: this.runout.step + 1, equity: this._equity() };
+    this.actionCount += 1;
+    return true;
+  }
+
+  // Each contender's chance of taking the pot from here, rounded for show.
+  _equity() {
+    const live = this._playersInHand().filter((p) => !p.folded);
+    const eq = computeEquity(live.map((p) => p.holeCards), this.board);
+    return live.map((p, i) => ({
+      userId: p.userId,
+      win: Math.round(eq[i].win * 10) / 10,
+      tie: Math.round(eq[i].tie * 10) / 10,
+    }));
+  }
+
   _awardUncontestedPot(winner) {
+    this.runout = null;
     const potTotal = this._playersInHand().reduce((sum, p) => sum + p.committed, 0);
     winner.chips += potTotal;
     this.phase = 'showdown';
@@ -568,6 +634,7 @@ class Table {
       smallBlind: this.smallBlind,
       bigBlind: this.bigBlind,
       lastHandSummary: this.lastHandSummary,
+      runout: this.runout,
       actionCount: this.actionCount,
       maxSeats: this.maxSeats,
       seats: this.seats.map((p) => {
@@ -576,10 +643,13 @@ class Table {
         // Someone else's cards are visible exactly when they're part of the
         // showdown: everyone still in at a contested one, and anyone who
         // chose to show after a pot nobody contested. Folded hands stay down.
+        // An all-in being run out is shown face up from the moment the
+        // betting stops, which is the point of watching it.
         const shownAtShowdown =
-          this.phase === 'showdown' &&
-          !p.folded &&
-          !!this.lastHandSummary?.showdownHands.some((h) => h.userId === p.userId);
+          (!!this.runout && !p.folded) ||
+          (this.phase === 'showdown' &&
+            !p.folded &&
+            !!this.lastHandSummary?.showdownHands.some((h) => h.userId === p.userId));
         return {
           seat: p.seat,
           userId: p.userId,

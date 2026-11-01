@@ -115,3 +115,24 @@ test('a bot leaving records nothing', () => {
   assert.equal(recorded, false);
   assert.equal(called, false);
 });
+
+test("a game's stats count hands dealt, won and the best hand shown", () => {
+  const { Table } = require('../server/game/Table');
+  const room = new Room(1, 'Host');
+  const t = new Table();
+  t.addPlayer(1, 'a', 100);
+  t.addPlayer(2, 'b', 100);
+  t.startHand();
+  const flush = { category: 5, tiebreakers: [14, 9, 7, 4, 2], name: 'Flush', description: 'Flush, Ace high' };
+  const pair = { category: 1, tiebreakers: [9, 14, 7, 4], name: 'Pair', description: 'Pair of Nines' };
+  room.tallyHand(t, {
+    uncontested: false,
+    winners: [{ userId: 1, amount: 40 }],
+    showdownHands: [{ userId: 1, evaluation: flush }, { userId: 2, evaluation: pair }],
+  });
+  room.tallyHand(t, { uncontested: true, winners: [{ userId: 2, amount: 15 }], showdownHands: [] });
+
+  assert.deepEqual(room.statsFor(1), { dealt: 2, won: 1, showdownsWon: 1, biggestPot: 40, bestHand: 'Flush, Ace high' });
+  assert.deepEqual(room.statsFor(2), { dealt: 2, won: 1, showdownsWon: 0, biggestPot: 15, bestHand: 'Pair of Nines' });
+  assert.equal(room.statsFor(3), null);
+});
