@@ -14,7 +14,7 @@ import { computed } from 'vue';
 import SvgIcon from '../ui/SvgIcon.vue';
 
 const props = defineProps({
-  // 'lobby' | 'friends' | 'profile' | 'settings' | '' - which one is on screen.
+  // 'lobby' | 'equity' | 'friends' | 'profile' | 'settings' | '' - which one is on screen.
   active: { type: String, default: '' },
   // A guest has no profile to go to, so that tab offers them one instead.
   guest: { type: Boolean, default: false },
@@ -25,6 +25,7 @@ const emit = defineEmits(['pick']);
 // about what a thing is called or what it looks like.
 const items = computed(() => [
   { id: 'lobby', icon: 'trophy', label: 'Lobby' },
+  { id: 'equity', icon: 'percent', label: 'Equity' },
   // Beside the lobby on a wide screen; here, the only way to it.
   { id: 'friends', icon: 'chat', label: 'Friends' },
   props.guest

@@ -50,3 +50,45 @@ test('on the turn every river is counted', () => {
   const [, kings] = computeEquity([['As', 'Ah'], ['Kd', 'Kc']], ['2c', '7d', '9h', '3s']);
   assert.ok(Math.abs(kings.win - (2 / 44) * 100) < 1e-9);
 });
+
+test('a known dead card is never dealt to the board', () => {
+  // Kings need a king: with both left ones known to be gone, they are drawing dead.
+  const [, kings] = computeEquity([['As', 'Ah'], ['Kd', 'Kc']], ['2c', '7d', '9h', '3s'], ['Ks', 'Kh']);
+  assert.equal(kings.win, 0);
+  assert.equal(kings.lose, 100);
+});
+
+test('hands are named the way the table names them', async () => {
+  const { describeHand } = await import('../shared/equity.mjs');
+  assert.equal(describeHand(['As', 'Ah', 'Ad', 'Kc', 'Kd', '2s', '3h']).description, 'Full House, Aces full of Kings');
+  assert.equal(describeHand(['5s', '4h', '3d', '2c', 'Ad', 'Kh', 'Qc']).description, 'Straight, Five high');
+  assert.equal(describeHand(['9s', '9h', '4d', '2c', 'Jd']).description, 'Pair of Nines');
+});
+
+test('outs are the cards that put a hand ahead on the next card', async () => {
+  const { nextCardOuts } = await import('../shared/equity.mjs');
+  // Kings behind aces on the turn: the two kings left, of 44 unseen.
+  const r = nextCardOuts([['As', 'Ah'], ['Kd', 'Kc']], ['2c', '7d', '9h', '3s'], [], 1);
+  assert.equal(r.unseen, 44);
+  assert.deepEqual(r.outs.sort(), ['Kh', 'Ks']);
+  assert.equal(r.splits.length, 0);
+});
+
+test('the counts behind a result add up to it', () => {
+  const [a, b] = computeEquity([['As', 'Ah'], ['Kd', 'Kc']], ['2c', '7d', '9h']);
+  assert.equal(a.boards, 990);
+  assert.equal(a.wins + b.wins + a.ties, 990);
+  assert.equal(a.byCategory.reduce((n, x) => n + x, 0), a.wins);
+  assert.ok(Math.abs(a.equity - (a.win + a.tie / 2)) < 1e-9);
+  // Kings are behind a bigger pair, so they only ever win by improving:
+  // never with a pair or two pair.
+  assert.deepEqual(b.byCategory.slice(0, 3), [0, 0, 0]);
+  assert.ok(b.byCategory[3] > 0);
+});
+
+test('a two-way split is half a pot each', () => {
+  const [a, b] = computeEquity([['2s', '3h'], ['2d', '3c']], ['As', 'Ks', 'Qd', 'Jh', 'Tc']);
+  assert.equal(a.share, 0.5);
+  assert.equal(a.equity, 50);
+  assert.equal(b.equity, 50);
+});

@@ -38,6 +38,7 @@ import AuthModal from './components/auth/AuthModal.vue';
 import BottomNav from './components/layout/BottomNav.vue';
 import LandingPage from './components/landing/LandingPage.vue';
 import ProfileView from './components/profile/ProfileView.vue';
+import EquityCalculator from './components/equity/EquityCalculator.vue';
 import TopBar from './components/layout/TopBar.vue';
 import SiteFooter from './components/layout/SiteFooter.vue';
 import AuthTransition from './components/auth/AuthTransition.vue';
@@ -54,7 +55,7 @@ watch(
   { immediate: true }
 );
 
-const view = ref('boot'); // boot | home | lobby | table | profile | gone | blocked
+const view = ref('boot'); // boot | home | lobby | equity | table | profile | gone | blocked
 
 // Why the door is shut. Two very different things used to wear the same
 // sentence: a server that offers no way to sign in at all, and a server that
@@ -94,6 +95,9 @@ function readProfilePath() {
 // profile was opened, and never changed back - so refreshing anywhere after
 // that reopened somebody's profile, because that was still what the bar said.
 const LOBBY_PATHS = { main: '/lobby', settings: '/settings', friends: '/friends' };
+// The equity calculator: a tool page of its own, open to anybody, signed in
+// or not - there is no game, seat or chip on it.
+const EQUITY_PATH = '/equity';
 
 // What the current address asks for. Profiles first: that is the one address
 // somebody may have been handed rather than arrived at.
@@ -103,6 +107,7 @@ function readAddress() {
   const path = location.pathname.replace(/\/+$/, '') || '/';
   const page = Object.keys(LOBBY_PATHS).find((k) => LOBBY_PATHS[k] === path);
   if (page) return { view: 'lobby', page };
+  if (path === EQUITY_PATH) return { view: 'equity' };
   return { view: 'home' };
 }
 
@@ -198,6 +203,7 @@ async function onMenuPick(id, from = null, tab = null) {
   if (id === 'signup') return openAuth('signup');
   if (id === 'login') return openAuth('login');
   if (id === 'lobby') return goLobby();
+  if (id === 'equity') return goEquity();
   // Their own page, the same one anybody else would be given. "Edit profile"
   // is on it, and in Settings; this is the thing being edited.
   if (id === 'profile') {
@@ -243,7 +249,7 @@ const lobbyPage = ref('main');
 // through - and profiles are left alone, since openProfile pushes its own.
 watch([view, lobbyPage], ([now, page]) => {
   if (['boot', 'profile', 'gone', 'blocked'].includes(now)) return;
-  const path = now === 'lobby' ? LOBBY_PATHS[page] || '/lobby' : '/';
+  const path = now === 'lobby' ? LOBBY_PATHS[page] || '/lobby' : now === 'equity' ? EQUITY_PATH : '/';
   if (location.pathname === path) return;
   try {
     history.replaceState(null, '', path + location.search);
@@ -254,6 +260,7 @@ watch([view, lobbyPage], ([now, page]) => {
 
 const navActive = computed(() => {
   if (view.value === 'profile') return 'profile';
+  if (view.value === 'equity') return 'equity';
   if (view.value === 'lobby') {
     return ['settings', 'friends'].includes(lobbyPage.value) ? lobbyPage.value : 'lobby';
   }
@@ -263,7 +270,7 @@ const navActive = computed(() => {
 // Never over the table: the betting dock owns the foot of that screen. And
 // nothing to offer somebody who has not arrived yet.
 const showBottomNav = computed(
-  () => !!barUser.value && ['home', 'lobby', 'profile'].includes(view.value)
+  () => !!barUser.value && ['home', 'lobby', 'profile', 'equity'].includes(view.value)
 );
 
 // The back button on a lobby page, when the way back is out of the lobby.
@@ -292,6 +299,15 @@ function goHome() {
   } catch {
     // A sandboxed frame. The view has changed either way.
   }
+  window.scrollTo({ top: 0 });
+}
+
+// The equity calculator. Nothing to sign in for, so no guard: it is a tool,
+// and anybody reading the site can use it.
+function goEquity() {
+  if (!user.value && !auth.signedIn.value && view.value === 'boot') chosenWhileBooting = 'equity';
+  notice.value = '';
+  view.value = 'equity';
   window.scrollTo({ top: 0 });
 }
 
@@ -364,7 +380,8 @@ const BAR_LINKS = [
   // The rule after this one is where the bar stops listing places and
   // starts listing parts of the landing page. Two kinds of destination in
   // one row read as five of the same thing without it.
-  { id: 'lobby', label: 'Lobby', endsGroup: true },
+  { id: 'lobby', label: 'Lobby' },
+  { id: 'equity', label: 'Equity Calculator', endsGroup: true },
   { id: 'how', label: 'How it works', href: '#how', section: 'how' },
   { id: 'features', label: 'Features', href: '#features', section: 'features' },
   { id: 'faq', label: 'FAQ', href: '#faq', section: 'faq' },
@@ -384,6 +401,7 @@ const barLinks = computed(() =>
 // they are not named here.
 const barActive = computed(() => {
   if (view.value === 'lobby') return 'lobby';
+  if (view.value === 'equity') return 'equity';
   if (view.value === 'home' || view.value === 'boot') return 'home';
   return '';
 });
@@ -397,6 +415,7 @@ async function onNav(link) {
   // this opens the auth sheet instead of navigating, which is what goLobby
   // has always done.
   if (link.id === 'lobby') return goLobby();
+  if (link.id === 'equity') return goEquity();
   if (!link.section) return;
 
   if (view.value !== 'home' && view.value !== 'boot') {
@@ -502,6 +521,13 @@ async function boot() {
     // behaviour and it meant a logged-out visitor was signed straight back
     // in and dropped in the lobby, never seeing this page at all. Playing as
     // a guest is now something they ask for, with a button that says so.
+    //
+    // The equity calculator is the exception: it needs no account, so an
+    // address that asks for it gets it, and no sheet is put in front of it.
+    if (readAddress().view === 'equity') {
+      view.value = 'equity';
+      return;
+    }
     view.value = 'home';
 
     // The sheet, on a true first visit only, over the page rather than
@@ -815,6 +841,10 @@ async function enter() {
     // whatever the address says, because the table is where they actually
     // are.
     const asked = readAddress();
+    if (asked.view === 'equity') {
+      view.value = 'equity';
+      return;
+    }
     if (asked.view === 'lobby') {
       notice.value = '';
       view.value = 'lobby';
@@ -1177,6 +1207,8 @@ onBeforeUnmount(() => {
       @edit="onMenuPick('settings', null, 'profile')"
     />
 
+    <EquityCalculator v-else-if="view === 'equity'" />
+
     <RoomGoneScreen
       v-else-if="view === 'gone'"
       :code="goneCode"
@@ -1195,7 +1227,7 @@ onBeforeUnmount(() => {
     />
 
     <SiteFooter
-      v-if="view === 'home' || view === 'lobby' || view === 'boot' || view === 'profile'"
+      v-if="view === 'home' || view === 'lobby' || view === 'boot' || view === 'profile' || view === 'equity'"
       :show-feature-links="view === 'home' || view === 'boot'"
       @auth="openAuth"
       @guest="playAsGuest"

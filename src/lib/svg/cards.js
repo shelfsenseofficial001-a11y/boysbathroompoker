@@ -21,7 +21,7 @@ const DECK_COLORS = {
 // `deck` names a palette outright - which is what the settings swatches
 // need, each one drawn in the deck it offers rather than in the deck that
 // happens to be in use. Everything else asks the player's own setting.
-const suitColors = (deck) => DECK_COLORS[deck || getSettings().deck] || DECK_COLORS.two;
+export const suitColors = (deck) => DECK_COLORS[deck || getSettings().deck] || DECK_COLORS.two;
 const RANK_LABEL = { T: '10', J: 'J', Q: 'Q', K: 'K', A: 'A' };
 
 function suit(s, x, y, size, color) {
