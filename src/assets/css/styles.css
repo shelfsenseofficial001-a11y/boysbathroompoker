@@ -5859,3 +5859,12 @@ html { scroll-behavior: smooth; }
 .eq-stage.is-portrait.is-crowded .eq-min { display: none; }
 .eq-panel.is-min .eq-plate { border-bottom: 0; }
 .eq-panel.is-min .eq-odds { display: none; }
+
+/* Stepping away from the table, in the bar beside your picture. Lit while
+   you are out, because that is a state you are in rather than an action
+   waiting to be taken, and it is the only thing on screen saying so once
+   the felt scrolls your own seat out of view. */
+.sit-btn.is-away {
+  color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); background: rgba(230, 180, 80, 0.12);
+}
+.sit-btn.is-away:hover:not(:disabled) { background: rgba(230, 180, 80, 0.22); border-color: var(--gold); }

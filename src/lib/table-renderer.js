@@ -1927,6 +1927,9 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
         <span class="meta-chip hide-sm" id="hand-chip" ${t.handNumber ? '' : 'hidden'}>Hand <b id="hand-no">#${t.handNumber}</b></span>
       </div>
       <div class="topbar-user">
+        <!-- Stepping away without giving the chair up. Hidden until there
+             is a seat of mine to step away from; drawSitOut fills it in. -->
+        <button class="btn btn-ghost btn-sm sit-btn" id="sit-btn" data-sit hidden></button>
         ${userMenuHTML(user, TOPBAR_MENU, myFace())}
         <button class="btn btn-ghost btn-sm" data-leave aria-label="Leave room">${icons.leave}<span class="hide-sm">Leave</span></button>
       </div>
@@ -1934,6 +1937,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
   }
 
   function wireTopbar() {
+    root.querySelector('[data-sit]')?.addEventListener('click', toggleAway);
     root.querySelector('[data-leave]').addEventListener('click', () => {
       askingLeave = true;
       drawOverlay(shown);
@@ -2331,7 +2335,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     els = {
       stage: $('stage'), camera: $('camera'), board: $('board'), phase: $('phase'), pot: $('pot'),
       muck: $('muck'), seats: $('seats'), pending: $('pending'), fx: $('fx'), dock: $('dock'),
-      handChip: $('hand-chip'), handNo: $('hand-no'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
+      handChip: $('hand-chip'), handNo: $('hand-no'), sitBtn: $('sit-btn'), foldZone: $('fold-zone'), foldLabel: $('fold-zone-label'),
       feltLogo: root.querySelector('.felt-logo'),
       history: $('history'), historyList: $('history-list'),
       hhQ: $('hh-q'), hhWinner: $('hh-winner'), hhType: $('hh-type'), hhNo: $('hh-no'),
@@ -3118,6 +3122,56 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
   // ---------------------------------------------------------------------------
   // Drawing the live table
   // ---------------------------------------------------------------------------
+  // Stepping away from the table, and coming back. The seat stays mine
+  // either way - this is not leaving the room - so there is nothing to
+  // confirm: the worst it can do is cost the hand about to be dealt, and
+  // pressing it again undoes that.
+  async function toggleAway() {
+    const me = mySeat();
+    if (!me) return;
+    const away = !me.away;
+    play('click');
+    const res = await emitAck('setAway', { away }).catch((err) => ({ ok: false, error: err.message }));
+    if (!res.ok) return showError(res.error || 'Couldn’t do that just now.');
+    showNotice(
+      away
+        ? shown?.table.phase === 'waiting'
+          ? 'You’re sitting out. Take your seat back whenever you like.'
+          : 'You’ll sit out from the next hand. Your seat and chips are kept.'
+        : 'You’re back in from the next hand.'
+    );
+  }
+
+  function mySeat() {
+    return (shown?.table.seats || []).find((p) => p && p.userId === user.id && !p.left) || null;
+  }
+
+  // The bar's sit-out button: what it offers depends on which side of it
+  // you are on, and it is not drawn at all for somebody without a seat.
+  function drawSitOut() {
+    const btn = els.sitBtn;
+    if (!btn) return;
+    const me = mySeat();
+    btn.hidden = !me;
+    if (!me) return;
+    const away = !!me.away;
+    // The same rule the server keeps: there is no game to watch if stepping
+    // away leaves fewer than two to play it. Coming back is never blocked.
+    const others = (shown?.table.seats || []).filter(
+      (p) => p && !p.left && !p.away && p.chips > 0 && p.userId !== user.id
+    ).length;
+    const blocked = !away && others < 2;
+    btn.classList.toggle('is-away', away);
+    btn.disabled = blocked;
+    btn.setAttribute('aria-pressed', String(away));
+    btn.title = blocked
+      ? 'There would be nobody left to play — you can sit out once another player joins'
+      : away
+        ? 'Take your seat back and be dealt in again'
+        : 'Keep your seat and chips, but sit out the next hands';
+    btn.innerHTML = `${icons.chair}<span class="hide-sm">${away ? 'Sit back in' : 'Leave seat'}</span>`;
+  }
+
   function drawTable(prev, cur) {
     const t = cur.table;
     const pt = prev ? prev.table : null;
@@ -3150,6 +3204,7 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     };
     els.camera.classList.toggle('is-runout', !!t.runout);
 
+    drawSitOut();
     els.handChip.hidden = !t.handNumber;
     els.handNo.textContent = `#${t.handNumber}`;
 
@@ -3514,6 +3569,9 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
     if (p.left) return { text: 'Left', cls: 't-away' };
     // Waiting for the next deal (just joined, or restaked) rather than out
     // of the game: chips in front of them is what tells the two apart.
+    // Away by choice reads differently from waiting for a seat: one chose
+    // to sit this out, the other is waiting to be let in.
+    if (p.sittingOut && p.away) return { text: 'Away', cls: 't-away' };
     if (p.sittingOut) return p.chips > 0 ? { text: 'Next round', cls: 't-away' } : { text: 'Out', cls: 't-away' };
     if (acting && isMe) return { text: 'Your turn', cls: 't-turn' };
     if (p.folded) return { text: 'Folded', cls: 't-fold' };
@@ -4070,8 +4128,10 @@ export function renderTable(root, { user, roomCode, onLeave, onInvite, notice })
       // anything, so say what's actually happening to them.
       // Anything about me is mine alone and is said nowhere else; waiting on
       // somebody else is the acting seat's own ring saying it again.
-      kind = me.sittingOut || me.folded || me.allIn ? 'self' : 'wait';
-      main = me.sittingOut
+      kind = me.sittingOut || me.folded || me.allIn || me.away ? 'self' : 'wait';
+      main = me.away && me.sittingOut
+        ? 'You’re sitting out'
+        : me.sittingOut
         ? me.chips > 0
           ? 'You will join next round'
           : 'You’re out of chips'

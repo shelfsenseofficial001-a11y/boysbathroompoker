@@ -1387,6 +1387,33 @@ function attachSockets(io, sessionMiddleware) {
       roomsChanged();
     });
 
+    // Stepping away from the table without giving the chair up, and coming
+    // back to it. The seat, the chips and the room all stay theirs; they
+    // are simply not dealt in, from the next hand on.
+    socket.on('setAway', ({ away } = {}, ack) => {
+      const room = roomFor(userId);
+      if (!room) return ack?.({ ok: false, error: 'Not in a room.' });
+      const seat = room.table.seats.find((p) => p && p.userId === userId && !p.left);
+      if (!seat) return ack?.({ ok: false, error: 'You have no seat to step away from.' });
+      if (away && !seat.away && !room.table.canStepAway(userId)) {
+        return ack?.({ ok: false, error: 'There would be nobody left to play. Wait for another player to sit down.' });
+      }
+      if (!room.table.setAway(userId, away)) return ack?.({ ok: true });
+      ack?.({ ok: true, away: !!seat.away });
+      announce(
+        room,
+        seat.away ? `${nameOf()} is sitting out.` : `${nameOf()} is back in.`,
+        userId
+      );
+      broadcastRoom(room);
+      // Enough of them stepped away that the deal could not go ahead, and
+      // the table has been sitting between hands since. Coming back is what
+      // makes a hand possible again, so it starts one.
+      if (!seat.away && room.gameId && room.table.phase === 'showdown' && !room.handTimer && room.table.dealableCount() >= 2) {
+        startNextHand(room);
+      }
+    });
+
     // Turning your cards over for the table after the hand. Nobody is ever
     // made to: it's asked for, and it only counts for the hand just played.
     socket.on('showCards', (_payload, ack) => {

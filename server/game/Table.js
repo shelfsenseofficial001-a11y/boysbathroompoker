@@ -61,6 +61,11 @@ class Table {
       folded: false,
       allIn: false,
       sittingOut: false,
+      // Sitting this one out by choice: the chair and the chips stay
+      // theirs, and they are dealt out from the next hand until they say
+      // otherwise. Apart from `sittingOut`, which is the table's own answer
+      // to "can this seat play" and is worked out afresh at every deal.
+      away: false,
       lastAction: null,
     };
     return seat;
@@ -88,6 +93,46 @@ class Table {
     if (sum.showdownHands.some((h) => h.userId === userId)) return false;
     sum.showdownHands.push({ userId, username: p.username, holeCards: p.holeCards.slice(), shown: true });
     return true;
+  }
+
+  // Stepping away from the table, and coming back. The seat is kept either
+  // way; only whether it is dealt in changes, and not until the next hand -
+  // a hand already in front of them is theirs to finish.
+  setAway(userId, on) {
+    const p = this.seats.find((s) => s && s.userId === userId && !s.left);
+    if (!p) return false;
+    const away = !!on;
+    if (p.away === away) return false;
+    // Nobody may step away out of a game that cannot go on without them.
+    // Coming back is always allowed.
+    if (away && !this.canStepAway(userId)) return false;
+    p.away = away;
+    // Between hands there is nothing to finish, so a player coming back is
+    // back now rather than at a deal that cannot happen without them.
+    if (!away && this.phase === 'waiting') p.sittingOut = p.chips <= 0;
+    this.actionCount += 1;
+    return true;
+  }
+
+  // How many seats the next deal would include: chips to play with, and
+  // nobody stepped away. Not the same question as `canStartHand`, which
+  // reads `sittingOut` - the last deal's answer, and not rewritten until
+  // the next one.
+  dealableCount() {
+    return this.seats.filter((p) => p && !p.left && p.chips > 0 && !p.away).length;
+  }
+
+  // Whether this seat may step away: only while two others would still be
+  // left to play the hand. Heads-up there is no game without them, so the
+  // answer is no - and coming back is never refused.
+  canStepAway(userId) {
+    const p = this.seats.find((s) => s && s.userId === userId && !s.left);
+    if (!p) return false;
+    if (p.away) return true;
+    const others = this.seats.filter(
+      (q) => q && !q.left && !q.away && q.chips > 0 && q.userId !== userId
+    );
+    return others.length >= 2;
   }
 
   // Marks a player as looking at their cards, so everyone else sees the tell.
@@ -163,10 +208,13 @@ class Table {
     for (let i = 0; i < this.seats.length; i++) {
       const p = this.seats[i];
       if (p && p.left) this.seats[i] = null;
-      // Sitting out means exactly one thing: no chips to play with. Busted
-      // players drop out here, and anyone who has chips again - a late
-      // joiner waiting for this moment, or a rebuy - is dealt back in.
-      else if (p) p.sittingOut = p.chips <= 0;
+      // Who is dealt in, decided once per hand: you need chips, and you
+      // need to want them. Busted players drop out here, anyone who has
+      // chips again - a late joiner waiting for this moment, or a rebuy -
+      // is dealt back in, and anyone who stepped away stays out until they
+      // come back. This is the point where stepping away takes effect,
+      // which is what lets it be asked for mid-hand.
+      else if (p) p.sittingOut = p.chips <= 0 || !!p.away;
     }
     if (!this.canStartHand()) throw new Error('Need at least 2 players to start a hand.');
     this.handNumber += 1;
@@ -660,6 +708,7 @@ class Table {
           folded: p.folded,
           allIn: p.allIn,
           sittingOut: p.sittingOut,
+          away: !!p.away,
           lastAction: p.lastAction,
           holeCards: isViewer || shownAtShowdown ? p.holeCards : null,
           hasCards: p.holeCards.length > 0,

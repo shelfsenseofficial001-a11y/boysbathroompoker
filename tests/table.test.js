@@ -261,3 +261,69 @@ test('a runout ends when everyone but one walks away', () => {
   assert.equal(t.phase, 'showdown');
   assert.equal(t.lastHandSummary.winners[0].userId, 1);
 });
+
+test('stepping away keeps the seat and applies from the next hand', () => {
+  const t = tableWith([500, 500, 500]);
+  t.startHand();
+  const me = t.seats[1];
+  assert.equal(t.setAway(me.userId, true), true);
+  // The hand in front of them is still theirs: cards, chips and all.
+  assert.equal(me.away, true);
+  assert.equal(me.sittingOut, false);
+  assert.equal(me.holeCards.length, 2);
+
+  // Play the hand out, then deal the next one.
+  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
+    const p = actor(t);
+    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+  }
+  const chips = me.chips;
+  t.startHand();
+  assert.equal(me.sittingOut, true);
+  assert.equal(me.holeCards.length, 0);
+  assert.equal(me.chips, chips, 'their stack is untouched while they are away');
+  assert.ok(t.seats.includes(me), 'the seat is still theirs');
+  assert.equal(t._seatOrder().includes(me.seat), false, 'and takes no part in the hand');
+
+  // Back in, from the hand after that.
+  assert.equal(t.setAway(me.userId, false), true);
+  for (let i = 0; i < 30 && t.phase !== 'showdown'; i++) {
+    const p = actor(t);
+    t.applyAction(p.userId, t.currentBet > p.betThisStreet ? 'call' : 'check');
+  }
+  t.startHand();
+  assert.equal(me.sittingOut, false);
+  assert.equal(me.holeCards.length, 2);
+});
+
+test('nobody may step away out of a game that cannot go on without them', () => {
+  const t = tableWith([500, 500, 500]);
+  t.startHand();
+  // Three at the table: one may step away, and two would be left to play.
+  assert.equal(t.canStepAway(1), true);
+  assert.equal(t.setAway(1, true), true);
+  // The second may not - that would leave one player and no hand to deal.
+  assert.equal(t.canStepAway(2), false);
+  assert.equal(t.setAway(2, true), false);
+  assert.equal(t.seats[1].away, false);
+  // Coming back is never refused.
+  assert.equal(t.canStepAway(1), true);
+  assert.equal(t.setAway(1, false), true);
+});
+
+test('heads-up, stepping away is refused outright', () => {
+  const t = tableWith([500, 500]);
+  t.startHand();
+  assert.equal(t.canStepAway(1), false);
+  assert.equal(t.setAway(1, true), false);
+  assert.equal(t.dealableCount(), 2);
+});
+
+test('a seat that is away is not counted for the next deal', () => {
+  const t = tableWith([500, 500, 500]);
+  t.startHand();
+  t.setAway(1, true);
+  assert.equal(t.dealableCount(), 2);
+  t.seats[1].chips = 0; // and a busted seat is not either
+  assert.equal(t.dealableCount(), 1);
+});
