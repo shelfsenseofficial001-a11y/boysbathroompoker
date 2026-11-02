@@ -224,6 +224,9 @@ const oneCardExact = computed(() => (outs.value ? (outs.value.outs.length / outs
   <section class="eq-learn" aria-labelledby="eq-learn-title">
     <h2 id="eq-learn-title" class="eq-learn-title">How the odds are worked out</h2>
 
+    <!-- The heading stays put and the working scrolls under it, so the panel
+         keeps its own shape however much there is to read in it. -->
+    <div class="eq-learn-body">
     <p v-if="!ready" class="eq-learn-empty">
       Give two or more players both their cards. This panel then shows where each hand’s percentage comes from,
       and how to estimate it yourself at the table.
@@ -441,5 +444,6 @@ const oneCardExact = computed(() => (outs.value ? (outs.value.outs.length / outs
         </template>
       </div>
     </template>
+    </div>
   </section>
 </template>
