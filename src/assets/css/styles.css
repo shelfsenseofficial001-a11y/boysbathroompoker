@@ -5552,11 +5552,15 @@ html { scroll-behavior: smooth; }
    when "Drawing dead" becomes "Tie 1.7% · Lose 32.7%". Wide tables only:
    with seven or more, or on a phone, the room it would take is the room
    the seats need to clear each other. */
-.eq-stage:not(.is-crowded):not(.is-portrait) .eq-panel:not(.is-min) { width: 10.7em; }
+/* Wide enough for the longest line the odds can hold ("Tie <0.1% · Lose
+   >99.9%") AND the strip of controls beside it. The strip takes its width
+   out of the panel, so a panel sized before it existed left the text to be
+   cut off by it. */
+.eq-stage:not(.is-crowded):not(.is-portrait) .eq-panel:not(.is-min) { width: 13.6em; }
 /* Seven or more seats get the same treatment at a tighter size, so the ring
    stays even. Not on a tall table, where a full ring leaves the seats no
    width to give away. */
-.eq-stage.is-crowded:not(.is-portrait) .eq-panel:not(.is-min) { width: 9.9em; }
+.eq-stage.is-crowded:not(.is-portrait) .eq-panel:not(.is-min) { width: 12.8em; }
 .eq-odds.is-empty .eq-odds-head { color: var(--text-3); font-weight: 700; }
 .eq-odds.is-empty .eq-odds-bar { opacity: 0.5; }
 
