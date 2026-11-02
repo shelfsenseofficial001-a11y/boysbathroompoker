@@ -5676,8 +5676,13 @@ html { scroll-behavior: smooth; }
      hundreds of pixels every time a card lands - and a page that changes
      height under a reader who is scrolled into it jumps them about. */
   .eq-side-deck, .eq-side-learn {
-    position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto;
-    scrollbar-width: thin;
+    position: sticky; top: 84px; overflow-y: auto; scrollbar-width: thin;
+    /* A height, not a ceiling. Left to size themselves the row would be as
+       tall as whichever column had most in it, and the working's contents
+       change every time a card lands - which moved the row, and the pinned
+       table with it. The columns carry no background of their own, so the
+       space under a short panel is simply felt. */
+    height: calc(100vh - 100px);
   }
   .eq-main .eq-stage { margin-top: 70px; }
   /* The table holds its place while the working beside it is read. Only
