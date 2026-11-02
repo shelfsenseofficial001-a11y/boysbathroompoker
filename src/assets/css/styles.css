@@ -5473,6 +5473,15 @@ html { scroll-behavior: smooth; }
 
 /* A seat: its two cards, a nameplate in the game's style, and the odds
    hanging under the plate. */
+/* A seat out by the rail is anchored to its own side and grows inward,
+   rather than straddling its point: centred, half a panel hangs off the
+   edge of the table and is cut off by it. The ones along the top and foot
+   have the room, so they stay centred on where they sit. */
+/* Wide tables only. On a tall one the rail seats are close in already and
+   the board runs between them, so pulling them further inward is what puts
+   them on it. */
+.eq-stage:not(.is-portrait) .eq-seat.side-left { transform: translate(0, -50%); }
+.eq-stage:not(.is-portrait) .eq-seat.side-right { transform: translate(-100%, -50%); }
 .eq-seat {
   position: absolute; transform: translate(-50%, -50%); z-index: 2;
   display: flex; flex-direction: column; align-items: center;

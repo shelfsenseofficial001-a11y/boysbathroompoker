@@ -401,7 +401,10 @@ const felt = computed(() => feltSVG(look.felt, aspect.value));
 // Seats round the rail, player 1 at the foot and the rest clockwise.
 const seatPos = computed(() => {
   const n = players.value;
-  const rx = portrait.value ? 38 : 45;
+  // A tall table with a few at it has wide panels on narrow rails, so those
+  // seats come in off the edge; a full ring has no room to spare and stays
+  // where it was.
+  const rx = portrait.value ? (n > 6 ? 38 : 36) : 45;
   const ry = portrait.value ? 44 : 40;
   return Array.from({ length: n }, (_, p) => {
     const a = ((90 + (p * 360) / n) * Math.PI) / 180;
@@ -570,7 +573,10 @@ onBeforeUnmount(() => {
         v-for="(pos, p) in seatPos"
         :key="p"
         class="eq-seat"
-        :class="{ 'is-lead': leader === p, 'is-pending': pending && seatOdds(p) }"
+        :class="[
+          { 'is-lead': leader === p, 'is-pending': pending && seatOdds(p) },
+          pos.x < 30 ? 'side-left' : pos.x > 70 ? 'side-right' : '',
+        ]"
         :style="{ left: `${pos.x}%`, top: `${pos.y}%` }"
       >
         <div class="eq-hole">
