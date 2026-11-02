@@ -5413,7 +5413,7 @@ html { scroll-behavior: smooth; }
   --bw: clamp(34px, 13cqw, 62px);
   --seat-fs: clamp(9.5px, 3cqw, 12px);
 }
-.eq-stage.is-portrait.is-crowded { --cw: clamp(24px, 7.6cqw, 42px); --bw: clamp(26px, 9cqw, 48px); }
+.eq-stage.is-portrait.is-crowded { --cw: clamp(24px, 7.6cqw, 42px); --bw: clamp(24px, 8.4cqw, 46px); }
 /* Seven or more round a tall table put a seat level with each end of the
    board, so the board gives up the width they need. */
 .eq-stage.is-portrait.is-crowded .eq-center { width: 62%; }
@@ -5485,6 +5485,7 @@ html { scroll-behavior: smooth; }
    gold for whichever hand is ahead. */
 .eq-panel {
   min-width: 9.6em; overflow: hidden; border-radius: 0.9em;
+  display: flex; align-items: stretch;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 38%),
     linear-gradient(180deg, #172a22, #0a120e);
@@ -5502,23 +5503,35 @@ html { scroll-behavior: smooth; }
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14);
 }
 .eq-name { flex: 1; font-weight: 700; color: var(--text-1); white-space: nowrap; }
-/* The two controls on a nameplate. Bigger than they were, and with a hit
-   area bigger again: on a full ring a seat's type is barely ten pixels, and
-   at that size a button drawn to fit the icon is a button you have to aim
-   at. The extra reach is drawn nowhere and takes no room in the plate. */
-.eq-clear {
-  width: 1.85em; height: 1.85em; flex: none; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
-  position: relative;
+/* Everything but the controls: the nameplate, and the odds under it. */
+.eq-panel-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+/* The controls, in a strip down the panel's edge rather than on the
+   nameplate. On the plate they shared the one row the hole cards hang over,
+   so a press near their top went to a card; here each is as tall as its
+   share of the whole panel and nothing is above them. */
+.eq-tools {
+  flex: none; display: flex; flex-direction: column; align-self: stretch;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
-.eq-clear::after, .eq-min::after {
-  /* Generous above and below, where there is only the plate's padding, and
-     barely anything to either side, where the next button is: reach that
-     laps over its neighbour would take the neighbour's presses. */
-  content: ''; position: absolute; inset: -0.5em -0.12em; border-radius: 0.6em;
+.eq-tool {
+  flex: 1 1 0; width: 2.7em; min-height: 1.7em; padding: 0;
+  display: grid; place-items: center; border: 0; background: transparent;
+  color: var(--text-3); cursor: pointer; transition: background-color 0.15s, color 0.15s;
 }
-.eq-clear:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
-.eq-clear .icon { width: 1.1em; height: 1.1em; }
+.eq-tool + .eq-tool { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.eq-tool:hover:not(:disabled) { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
+.eq-tool:disabled { opacity: 0.3; cursor: not-allowed; }
+.eq-tool:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.eq-tool .icon { width: 1.2em; height: 1.2em; }
+.eq-tool.is-deal { color: var(--gold-hi); }
+.eq-tool.is-clear:hover { color: #ff8d86; background: rgba(224, 86, 79, 0.16); }
+/* Folded down there is no height left to divide, so they sit side by side. */
+.eq-panel.is-min .eq-tools { flex-direction: row; }
+.eq-panel.is-min .eq-tool + .eq-tool { border-top: 0; border-left: 1px solid rgba(255, 255, 255, 0.1); }
+/* The chevron points the way the panel will move: up to fold, down to open. */
+.eq-tools .eq-tool:first-child .icon { transition: transform 0.18s var(--ease-out); }
+.eq-panel:not(.is-min) .eq-tools .eq-tool:first-child .icon { transform: rotate(180deg); }
 
 .eq-odds { display: flex; flex-direction: column; align-items: center; gap: 0.32em; padding: 0.4em 0.7em 0.5em; }
 .eq-odds-head { font-size: 1.45em; font-weight: 800; line-height: 1; color: var(--text-1); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -5915,24 +5928,18 @@ html { scroll-behavior: smooth; }
 }
 .eq-stage.is-portrait.is-crowded .eq-deal.is-board .icon { width: 1.05em; height: 1.05em; }
 
-/* Folding a seat down to its nameplate. The chevron points the way the
-   panel will move: up to close it, down to open it again. */
-.eq-min {
-  width: 1.85em; height: 1.85em; flex: none; display: grid; place-items: center; padding: 0;
-  border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
-  position: relative;
-}
-.eq-min:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
-.eq-min:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.eq-min .icon { width: 1.05em; height: 1.05em; transition: transform 0.18s var(--ease-out); }
-.eq-panel:not(.is-min) .eq-min .icon { transform: rotate(180deg); }
 /* Nothing below the plate any more, so neither the divider under it nor the
    width the odds asked for. */
 .eq-panel.is-min { width: auto; min-width: 0; }
 /* A tall table with a full ring has no width to spare for a third control,
    and little left to fold away: those seats are down to a name and a figure
    already. */
-.eq-stage.is-portrait.is-crowded .eq-min { display: none; }
+.eq-stage.is-portrait.is-crowded .eq-tools .eq-tool:first-child { display: none; }
+/* And the strip itself is cut down: a tall table with a full ring measures
+   its clearances in single pixels, and the few the strip takes are the ones
+   the seats need to stay off the board and off each other. */
+.eq-stage.is-portrait.is-crowded .eq-tool { width: 1.8em; }
+.eq-stage.is-portrait.is-crowded .eq-tool .icon { width: 0.95em; height: 0.95em; }
 .eq-panel.is-min .eq-plate { border-bottom: 0; }
 .eq-panel.is-min .eq-odds { display: none; }
 

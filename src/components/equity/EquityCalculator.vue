@@ -593,46 +593,10 @@ onBeforeUnmount(() => {
           class="eq-panel"
           :class="[seatOdds(p) ? `is-${seatSummary(seatOdds(p)).kind}` : 'is-empty', { 'is-min': minimized.has(p) }]"
         >
+          <div class="eq-panel-body">
           <div class="eq-plate">
             <span class="eq-badge" :style="{ '--seat-c': SEAT_COLORS[p] }">{{ p + 1 }}</span>
             <span class="eq-name">Player {{ p + 1 }}</span>
-            <!-- Enough off the deck to give this seat a hand. -->
-            <button
-              v-if="seatNeeds(p)"
-              type="button"
-              class="eq-deal"
-              :disabled="deckEmpty"
-              :aria-label="`Deal Player ${p + 1} a random hand`"
-              title="Deal a random hand"
-              @click="dealHand(p)"
-            >
-              <SvgIcon name="sparkle" />
-            </button>
-            <!-- Folds the seat down to its nameplate, for a reader who wants
-                 the felt clear and only needs to know who is where. Before
-                 the clear, so the one that throws a hand away is last and
-                 is not where the other one was a moment ago. -->
-            <button
-              type="button"
-              class="eq-min"
-              :aria-expanded="!minimized.has(p)"
-              :aria-controls="`eq-odds-${p}`"
-              :aria-label="minimized.has(p) ? `Show Player ${p + 1}’s odds` : `Hide Player ${p + 1}’s odds`"
-              :title="minimized.has(p) ? 'Show odds' : 'Hide odds'"
-              @click="toggleMinimized(p)"
-            >
-              <SvgIcon name="chevron" />
-            </button>
-            <button
-              v-if="hands[p][0] || hands[p][1]"
-              type="button"
-              class="eq-clear"
-              :aria-label="`Clear player ${p + 1}’s hand`"
-              title="Clear hand"
-              @click="clearHand(p)"
-            >
-              <SvgIcon name="close" />
-            </button>
           </div>
           <!-- The same three rows whether or not there is a result yet, so a
                seat is the same size before and after its cards land and the
@@ -658,6 +622,49 @@ onBeforeUnmount(() => {
                       : 'Needs an opponent'
               }}
             </span>
+          </div>
+          </div>
+
+          <!-- The seat's two controls, in a strip down the panel's edge
+               rather than on the nameplate: on the plate they sat under the
+               hole cards, which overlap it, and a press near their top went
+               to a card. Down here each one is as tall as half the panel
+               and nothing is over them. -->
+          <div class="eq-tools">
+            <button
+              type="button"
+              class="eq-tool"
+              :aria-expanded="!minimized.has(p)"
+              :aria-controls="`eq-odds-${p}`"
+              :aria-label="minimized.has(p) ? `Show Player ${p + 1}’s odds` : `Hide Player ${p + 1}’s odds`"
+              :title="minimized.has(p) ? 'Show odds' : 'Hide odds'"
+              @click="toggleMinimized(p)"
+            >
+              <SvgIcon name="chevron" />
+            </button>
+            <!-- Enough off the deck to give this seat a hand, where a seat
+                 with one has the button that throws it away. -->
+            <button
+              v-if="seatNeeds(p)"
+              type="button"
+              class="eq-tool is-deal"
+              :disabled="deckEmpty"
+              :aria-label="`Deal Player ${p + 1} a random hand`"
+              title="Deal a random hand"
+              @click="dealHand(p)"
+            >
+              <SvgIcon name="sparkle" />
+            </button>
+            <button
+              v-if="hands[p][0] || hands[p][1]"
+              type="button"
+              class="eq-tool is-clear"
+              :aria-label="`Clear player ${p + 1}’s hand`"
+              title="Clear hand"
+              @click="clearHand(p)"
+            >
+              <SvgIcon name="close" />
+            </button>
           </div>
         </div>
       </div>
