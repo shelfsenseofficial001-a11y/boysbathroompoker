@@ -5671,13 +5671,23 @@ html { scroll-behavior: smooth; }
     grid-template-columns: clamp(290px, 21vw, 340px) minmax(0, 1fr) clamp(290px, 21vw, 350px);
   }
   .eq-main, .eq-side-deck, .eq-side-learn { order: 0; }
-  /* The deck stays in reach while the page scrolls; the working is read
-     top to bottom and scrolls with the page. */
-  .eq-side-deck {
+  /* Both side columns keep their place and scroll inside themselves. Left
+     to grow with the page, the working swings the document's height by
+     hundreds of pixels every time a card lands - and a page that changes
+     height under a reader who is scrolled into it jumps them about. */
+  .eq-side-deck, .eq-side-learn {
     position: sticky; top: 84px; max-height: calc(100vh - 100px); overflow-y: auto;
     scrollbar-width: thin;
   }
   .eq-main .eq-stage { margin-top: 70px; }
+  /* The table holds its place while the working beside it is read. Only
+     here: stacked, the three of them are one column, and pinning the table
+     inside it leaves the deck and the working to slide underneath. And only
+     while it fits, since a block taller than the window cannot be pinned
+     without hiding its own foot. */
+  @media (min-height: 760px) {
+    .eq-main { position: sticky; top: 84px; }
+  }
 
   /* The deck as a column: each suit a band of two rows. */
   .eq-side-deck .eq-deck { padding: 14px; gap: 10px; }
