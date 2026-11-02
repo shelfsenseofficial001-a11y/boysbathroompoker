@@ -5502,12 +5502,23 @@ html { scroll-behavior: smooth; }
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14);
 }
 .eq-name { flex: 1; font-weight: 700; color: var(--text-1); white-space: nowrap; }
+/* The two controls on a nameplate. Bigger than they were, and with a hit
+   area bigger again: on a full ring a seat's type is barely ten pixels, and
+   at that size a button drawn to fit the icon is a button you have to aim
+   at. The extra reach is drawn nowhere and takes no room in the plate. */
 .eq-clear {
-  width: 1.55em; height: 1.55em; flex: none; display: grid; place-items: center; padding: 0;
+  width: 1.85em; height: 1.85em; flex: none; display: grid; place-items: center; padding: 0;
   border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
+  position: relative;
+}
+.eq-clear::after, .eq-min::after {
+  /* Generous above and below, where there is only the plate's padding, and
+     barely anything to either side, where the next button is: reach that
+     laps over its neighbour would take the neighbour's presses. */
+  content: ''; position: absolute; inset: -0.5em -0.12em; border-radius: 0.6em;
 }
 .eq-clear:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
-.eq-clear .icon { width: 0.95em; height: 0.95em; }
+.eq-clear .icon { width: 1.1em; height: 1.1em; }
 
 .eq-odds { display: flex; flex-direction: column; align-items: center; gap: 0.32em; padding: 0.4em 0.7em 0.5em; }
 .eq-odds-head { font-size: 1.45em; font-weight: 800; line-height: 1; color: var(--text-1); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -5669,20 +5680,24 @@ html { scroll-behavior: smooth; }
   .eq-layout {
     display: grid; align-items: start; gap: 26px;
     grid-template-columns: clamp(290px, 21vw, 340px) minmax(0, 1fr) clamp(290px, 21vw, 350px);
+    /* The row is given its height rather than taking it from whichever
+       column has most in it. The working's contents change with every card,
+       and a row that follows them moves the pinned table with it. `minmax`
+       so a table too tall for the window still gets the room it needs. */
+    grid-template-rows: minmax(calc(100vh - 100px), auto);
   }
   .eq-main, .eq-side-deck, .eq-side-learn { order: 0; }
   /* Both side columns keep their place and scroll inside themselves. Left
      to grow with the page, the working swings the document's height by
      hundreds of pixels every time a card lands - and a page that changes
      height under a reader who is scrolled into it jumps them about. */
+  /* Each stays put while the page runs on to the footer beneath it. They
+     are left to size themselves: given the row's full height they would
+     fill it exactly, and a sticky box with no room to move inside its own
+     row simply scrolls away with it - which slid both of them up behind
+     the bar. */
   .eq-side-deck, .eq-side-learn {
-    position: sticky; top: 84px;
-    /* A height, not a ceiling. Left to size themselves the row would be as
-       tall as whichever column had most in it, and the working's contents
-       change every time a card lands - which moved the row, and the pinned
-       table with it. The columns carry no background of their own, so the
-       space under a short panel is simply felt. */
-    height: calc(100vh - 100px);
+    position: sticky; top: 84px; max-height: calc(100vh - 100px);
   }
   .eq-side-deck { overflow-y: auto; scrollbar-width: thin; }
   /* The working is a card, not a strip of page: it keeps its corners and
@@ -5690,7 +5705,7 @@ html { scroll-behavior: smooth; }
      `max-height` rather than `height`, so a panel with little in it is
      still only as tall as what it holds. */
   .eq-side-learn { overflow: visible; }
-  .eq-learn { max-height: 100%; overflow: hidden; }
+  .eq-learn { max-height: calc(100vh - 100px); overflow: hidden; }
   .eq-main .eq-stage { margin-top: 70px; }
   /* The table holds its place while the working beside it is read. Only
      here: stacked, the three of them are one column, and pinning the table
@@ -5865,14 +5880,14 @@ html { scroll-behavior: smooth; }
    needs a hand. Quiet until wanted - it is a shortcut, not the main way
    cards get onto the table. */
 .eq-deal {
-  width: 1.55em; height: 1.55em; flex: none; display: grid; place-items: center; padding: 0;
+  width: 1.85em; height: 1.85em; flex: none; display: grid; place-items: center; padding: 0;
   border: 1px solid rgba(230, 180, 80, 0.4); border-radius: 50%;
   background: rgba(230, 180, 80, 0.1); color: var(--gold-hi); cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .eq-deal:hover:not(:disabled) { background: rgba(230, 180, 80, 0.24); border-color: var(--gold); }
 .eq-deal:disabled { opacity: 0.3; cursor: not-allowed; }
-.eq-deal .icon { width: 0.95em; height: 0.95em; }
+.eq-deal .icon { width: 1.1em; height: 1.1em; }
 .eq-deal:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* The board's one stands as tall as the cards it deals to, so it reads as
@@ -5903,12 +5918,13 @@ html { scroll-behavior: smooth; }
 /* Folding a seat down to its nameplate. The chevron points the way the
    panel will move: up to close it, down to open it again. */
 .eq-min {
-  width: 1.5em; height: 1.5em; flex: none; display: grid; place-items: center; padding: 0;
+  width: 1.85em; height: 1.85em; flex: none; display: grid; place-items: center; padding: 0;
   border: 0; border-radius: 50%; background: transparent; color: var(--text-3); cursor: pointer;
+  position: relative;
 }
 .eq-min:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.1); }
 .eq-min:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.eq-min .icon { width: 0.85em; height: 0.85em; transition: transform 0.18s var(--ease-out); }
+.eq-min .icon { width: 1.05em; height: 1.05em; transition: transform 0.18s var(--ease-out); }
 .eq-panel:not(.is-min) .eq-min .icon { transform: rotate(180deg); }
 /* Nothing below the plate any more, so neither the divider under it nor the
    width the odds asked for. */

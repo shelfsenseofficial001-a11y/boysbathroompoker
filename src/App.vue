@@ -218,9 +218,15 @@ async function onMenuPick(id, from = null, tab = null) {
     // Where to send them when they press back. Captured before the view
     // changes, because afterwards there is nothing left to say where they
     // came from.
-    const origin = from || (view.value === 'profile' && profileName.value
-      ? { view: 'profile', handle: profileName.value }
-      : null);
+    // Settings is a page of the lobby, so anybody who opens it from
+    // somewhere else has to be carried back there by hand - otherwise Back
+    // lands them in the lobby, which is not where they were.
+    const origin = from
+      || (view.value === 'profile' && profileName.value
+        ? { view: 'profile', handle: profileName.value }
+        : ['equity', 'home'].includes(view.value)
+          ? { view: view.value }
+          : null);
     if (view.value !== 'lobby') {
       view.value = 'lobby';
       await nextTick();
@@ -276,6 +282,8 @@ const showBottomNav = computed(
 // The back button on a lobby page, when the way back is out of the lobby.
 function onBackTo(origin) {
   if (origin?.view === 'profile' && origin.handle) return openProfile(origin.handle);
+  if (origin?.view === 'equity') return goEquity();
+  if (origin?.view === 'home') return goHome();
   goLobby();
 }
 

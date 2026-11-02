@@ -1,3 +1,15 @@
+<script>
+// Module scope, and deliberately not in `<script setup>` below: that block
+// is the setup function and runs again for every instance of the component,
+// so anything meant to outlive one has to be declared out here.
+//
+// The table as it was last left. Settings is a page of the lobby, so opening
+// it swaps this screen out for that one and takes this component with it -
+// and somebody stepping into Settings for a moment should not come back to
+// an empty table. Memory only: a reload starts afresh, as a reload should.
+const kept = { players: 2, hands: null, board: null };
+</script>
+
 <script setup>
 // The equity calculator: put cards in hands and on the board, and read off
 // each hand's chance of winning from here.
@@ -61,9 +73,11 @@ const face = (c) => {
 };
 
 // ---- The cards on the table -------------------------------------------------
-const players = ref(2);
-const hands = reactive(Array.from({ length: MAX_PLAYERS }, () => [null, null]));
-const board = reactive([null, null, null, null, null]);
+const players = ref(kept.players);
+const hands = reactive(
+  kept.hands ? kept.hands.map((h) => [...h]) : Array.from({ length: MAX_PLAYERS }, () => [null, null])
+);
+const board = reactive(kept.board ? [...kept.board] : [null, null, null, null, null]);
 
 // Slots are { kind: 'hand', p, i } or { kind: 'board', i }.
 const slotKey = (s) => (s.kind === 'hand' ? `h${s.p}-${s.i}` : `b${s.i}`);
@@ -435,6 +449,10 @@ onBeforeUnmount(() => {
   clearTimeout(timer);
   watcher?.disconnect();
   worker?.terminate();
+  // The table as it stands, for whenever this screen comes back.
+  kept.players = players.value;
+  kept.hands = hands.map((h) => [...h]);
+  kept.board = [...board];
 });
 </script>
 
@@ -590,18 +608,10 @@ onBeforeUnmount(() => {
             >
               <SvgIcon name="sparkle" />
             </button>
-            <button
-              v-if="hands[p][0] || hands[p][1]"
-              type="button"
-              class="eq-clear"
-              :aria-label="`Clear player ${p + 1}’s hand`"
-              title="Clear hand"
-              @click="clearHand(p)"
-            >
-              <SvgIcon name="close" />
-            </button>
             <!-- Folds the seat down to its nameplate, for a reader who wants
-                 the felt clear and only needs to know who is where. -->
+                 the felt clear and only needs to know who is where. Before
+                 the clear, so the one that throws a hand away is last and
+                 is not where the other one was a moment ago. -->
             <button
               type="button"
               class="eq-min"
@@ -612,6 +622,16 @@ onBeforeUnmount(() => {
               @click="toggleMinimized(p)"
             >
               <SvgIcon name="chevron" />
+            </button>
+            <button
+              v-if="hands[p][0] || hands[p][1]"
+              type="button"
+              class="eq-clear"
+              :aria-label="`Clear player ${p + 1}’s hand`"
+              title="Clear hand"
+              @click="clearHand(p)"
+            >
+              <SvgIcon name="close" />
             </button>
           </div>
           <!-- The same three rows whether or not there is a result yet, so a
