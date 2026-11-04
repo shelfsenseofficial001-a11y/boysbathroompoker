@@ -193,7 +193,6 @@ function onBrandClick(e) {
           :aria-current="isActive(link) ? 'page' : undefined"
           @click="onLink(link, $event)"
         >
-          <SvgIcon v-if="link.icon" :name="link.icon" />
           {{ link.label }}
         </a>
         <button
@@ -205,7 +204,6 @@ function onBrandClick(e) {
           :title="link.why || undefined"
           @click="emit('nav', link)"
         >
-          <SvgIcon v-if="link.icon" :name="link.icon" />
           {{ link.label }}
         </button>
       </template>

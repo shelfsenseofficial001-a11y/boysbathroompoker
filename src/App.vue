@@ -250,6 +250,13 @@ async function onMenuPick(id, from = null, tab = null) {
   }
 }
 
+// The bar's code box is a shortcut to the lobby's own form, so on the lobby
+// itself it is the same field twice on one screen. It goes there, and comes
+// back the moment you are anywhere else.
+const showBarJoin = computed(
+  () => !!barUser.value && !(view.value === 'lobby' && lobbyPage.value === 'main')
+);
+
 // Which page the lobby is showing. Settings lives inside the lobby view, so
 // the view alone cannot say which of the two is on screen - and the bottom
 // tray has to light the right one.
@@ -395,10 +402,13 @@ const showGuestOption = computed(
 // carrying the icon their tab carries on a phone. The landing page's own
 // sections are not places - they are paragraphs on one - so they are listed
 // only while that page is the one being read, after the rule.
+// Words alone up here. The bar is a row of four short labels and an icon
+// beside each one only crowded it; the icons earn their place on the
+// phone's tray, where a tab is a target before it is a word.
 const APP_LINKS = [
-  { id: 'lobby', label: 'Play', icon: 'cards' },
-  { id: 'equity', label: 'Equity', icon: 'percent' },
-  { id: 'friends', label: 'Friends', icon: 'chat', account: true },
+  { id: 'lobby', label: 'Play' },
+  { id: 'equity', label: 'Equity' },
+  { id: 'friends', label: 'Friends', account: true },
 ];
 const SECTION_LINKS = [
   { id: 'how', label: 'How it works', href: '#how', section: 'how' },
@@ -1163,7 +1173,7 @@ onBeforeUnmount(() => {
       :links="barLinks"
       :active="barActive"
       :guest-upgrade="guestUpgrade"
-      :can-join="!!barUser"
+      :can-join="showBarJoin"
       @join="joinByCode"
       @pick="onMenuPick"
       @nav="onNav"

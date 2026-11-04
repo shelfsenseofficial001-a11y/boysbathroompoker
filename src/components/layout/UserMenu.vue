@@ -197,7 +197,12 @@ onBeforeUnmount(() => {
       >
         <img v-if="picture" class="user-face" :src="picture" alt="" />
         <span v-else class="contents" v-html="avatar" />
-        <span class="user-name">{{ user.username }}</span>
+        <span class="user-name">
+          {{ user.username }}
+          <!-- What being a guest actually means, said where the name is
+               rather than left for them to find out when it ends. -->
+          <em v-if="!auth.hasAccount.value" class="user-sub">this browser only</em>
+        </span>
         <SvgIcon name="chevronDown" />
       </button>
       <div

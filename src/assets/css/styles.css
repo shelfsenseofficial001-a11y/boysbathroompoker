@@ -522,16 +522,16 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .topbar:has(.topbar-meta) [data-leave] { height: 32px; min-height: 32px; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
 .user-pill {
-  /* The same 44px as every other control in the bar, so the row is one line
-     of one height and the pill does not grow by a hair when its border
+  /* The same height as every other control in the bar, so the row is one
+     line of one height and the pill does not grow by a hair when its border
      appears on hover - the border is there from the start, transparent. */
-  display: flex; align-items: center; gap: 8px; height: 44px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px; height: 38px; box-sizing: border-box;
   font: 600 13px var(--font-ui); color: var(--text-2);
   background: none; border: 1px solid transparent; border-radius: 999px; padding: 0 12px 0 4px; cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .user-pill:hover { color: var(--text-1); background: var(--bg-2); border-color: var(--line-2); }
-.user-pill svg { width: 34px; height: 34px; }
+.user-pill svg { width: 28px; height: 28px; }
 .user-pill .icon { width: 15px; height: 15px; opacity: 0; transition: opacity 0.15s; }
 .user-pill:hover .icon { opacity: 0.7; }
 /* The chevron on a pill that opens a menu is always there - it is the only
@@ -4164,10 +4164,13 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
    is the first thing dropped when the bar runs out of width. */
 .topbar-nav { display: none; flex: 1 1 auto; justify-content: center; gap: 4px; min-width: 0; flex-wrap: nowrap; }
 .topbar-link {
-  /* 44px, like every other target in this bar: a thumb finds it first time.
+  /* 38px in a 56px bar: the same height as everything beside it, with air
+     left above and below. At 44 they filled the bar edge to edge and the
+     row read as one solid block. The big targets are on the phone's tray,
+     which is the surface a thumb actually uses.
      The border is transparent until the pill is lit, so lighting it moves
      nothing beside it. */
-  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px;
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 13px;
   border: 1px solid transparent; border-radius: 11px; white-space: nowrap;
   /* Longhands rather than the `font` shorthand. Two shapes wear this class -
      an anchor for the pages with an address, a button for the lobby, which
@@ -5376,7 +5379,12 @@ html { scroll-behavior: smooth; }
 #how, #features, #faq { scroll-margin-top: 72px; }
 
 /* ---------- The face in the account control ---------- */
-.user-face { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; display: block; }
+/* A guest's name, with what a guest is under it. Two short lines inside
+   the pill's own height, so the bar's row stays one height. */
+.user-pill .user-name { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+.user-sub { font: 600 10.5px var(--font-ui); font-style: normal; color: var(--text-3); }
+.user-pill:hover .user-sub { color: var(--text-2); }
+.user-face { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex: none; display: block; }
 .umenu-who { display: flex; align-items: center; gap: 10px; }
 .umenu-whoname { margin: 0; }
 .umenu-face {
@@ -5990,7 +5998,7 @@ html { scroll-behavior: smooth; }
   font: 700 11px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
 }
 .topbar-code {
-  width: 122px; height: 44px; padding: 0 12px;
+  width: 122px; height: 38px; padding: 0 11px;
   border-radius: 11px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, 0.32);
   color: var(--text-1); font: 600 15px/1 var(--font-ui);
   /* Spaced out and upper case, so a code read aloud over a call can be
@@ -5999,9 +6007,15 @@ html { scroll-behavior: smooth; }
 }
 .topbar-code::placeholder { letter-spacing: 0.02em; text-transform: none; color: var(--text-3); font-weight: 500; }
 .topbar-code:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
-.btn.topbar-go { height: 44px; border-radius: 11px; }
-.topbar-keep { height: 44px; white-space: nowrap; color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.45); background: rgba(230, 180, 80, 0.1); }
-.topbar-keep:hover:not(:disabled) { background: rgba(230, 180, 80, 0.2); border-color: var(--gold); }
+.btn.topbar-go { height: 38px; border-radius: 11px; }
+/* The guest's one offer, said plainly rather than shouted. Gold in this bar
+   means "you are here" - the lit pill - and a second gold thing beside it
+   was arguing with it for the eye. */
+.topbar-keep {
+  height: 38px; white-space: nowrap;
+  color: var(--text-1); border-color: var(--line-2); background: rgba(255, 255, 255, 0.04);
+}
+.topbar-keep:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.28); }
 /* Only once the bar has width for it. Below this the lobby's own form is
    the way in, and it is the first thing on that page. */
 @media (min-width: 1060px) {
