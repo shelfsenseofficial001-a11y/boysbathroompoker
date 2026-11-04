@@ -28,8 +28,21 @@ const props = defineProps({
   // that is in none of them. The section links are not named here - they are
   // lit by what is on screen, which this works out for itself below.
   active: { type: String, default: '' },
+  // A guest is already somebody, so the bar offers them the one thing they
+  // have not got rather than a second way to be someone.
+  guestUpgrade: { type: Boolean, default: false },
+  // Whether there is anybody to join a table as.
+  canJoin: { type: Boolean, default: false },
 });
-const emit = defineEmits(['pick', 'renamed', 'auth', 'home', 'guest', 'nav']);
+const emit = defineEmits(['pick', 'renamed', 'auth', 'home', 'guest', 'nav', 'join']);
+
+// The room code box. The shortest path to the thing everybody is here for,
+// so it rides in the bar rather than waiting two screens in.
+//
+// The code is left in the box: a join that works takes the whole bar with
+// it, table screens having their own, and a join that fails is one the
+// typist wants back rather than cleared from under them.
+const code = ref('');
 
 // Which part of the landing page is under the reader. Watched only while
 // that page is the one being shown: everywhere else the sections do not
@@ -168,29 +181,33 @@ function onBrandClick(e) {
            address, so it is a button rather than a link that lies about
            where it goes. -->
       <template v-for="link in links" :key="link.id">
+        <!-- Decoration between the places and the parts of a page, so it is
+             hidden from a screen reader, which hears the grouping from the
+             order. -->
+        <span v-if="link.startsGroup" class="topbar-sep" aria-hidden="true" />
         <a
           v-if="link.href"
           class="topbar-link"
-          :class="{ 'is-on': isActive(link) }"
+          :class="{ 'is-on': isActive(link), 'is-section': link.section }"
           :href="link.href"
           :aria-current="isActive(link) ? 'page' : undefined"
           @click="onLink(link, $event)"
         >
+          <SvgIcon v-if="link.icon" :name="link.icon" />
           {{ link.label }}
         </a>
         <button
           v-else
           type="button"
           class="topbar-link"
-          :class="{ 'is-on': isActive(link) }"
+          :class="{ 'is-on': isActive(link), 'is-dim': link.disabled }"
           :aria-current="isActive(link) ? 'page' : undefined"
+          :title="link.why || undefined"
           @click="emit('nav', link)"
         >
+          <SvgIcon v-if="link.icon" :name="link.icon" />
           {{ link.label }}
         </button>
-        <!-- Decoration between two groups of links, so it is hidden from a
-             screen reader, which hears the grouping from the order. -->
-        <span v-if="link.endsGroup" class="topbar-sep" aria-hidden="true" />
       </template>
     </nav>
 
@@ -221,10 +238,36 @@ function onBrandClick(e) {
       @home="emit('home')"
     />
 
+    <!-- Five characters and a button: the whole of joining a table, kept
+         where it can be reached from any screen. -->
+    <form v-if="canJoin && !loading" class="topbar-join" @submit.prevent="emit('join', code)">
+      <label class="topbar-join-label" for="bar-code">Join</label>
+      <input
+        id="bar-code"
+        v-model="code"
+        class="topbar-code"
+        type="text"
+        maxlength="5"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Room code"
+      />
+      <button class="btn btn-ghost btn-sm topbar-go" type="submit" :disabled="!code.trim()">Go</button>
+    </form>
+
     <div class="topbar-user">
       <span v-if="loading" class="topbar-wait" aria-hidden="true">
         <span class="sk sk-pill" />
       </span>
+      <BaseButton
+        v-if="guestUpgrade && !loading"
+        class="topbar-keep"
+        variant="ghost"
+        size="sm"
+        @click="$emit('auth', 'signup')"
+      >
+        Keep this account
+      </BaseButton>
       <div v-else-if="showAuth" class="topbar-auth">
         <BaseButton variant="ghost" size="sm" @click="$emit('auth', 'login')">Log in</BaseButton>
         <BaseButton variant="primary" size="sm" @click="$emit('auth', 'signup')">Sign up</BaseButton>

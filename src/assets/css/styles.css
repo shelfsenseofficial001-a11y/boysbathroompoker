@@ -522,13 +522,17 @@ svg, img { -webkit-user-drag: none; user-drag: none; }
 .topbar:has(.topbar-meta) [data-leave] { height: 32px; min-height: 32px; }
 .topbar-user { display: flex; align-items: center; gap: 10px; }
 .user-pill {
-  display: flex; align-items: center; gap: 8px; font: 600 13px var(--font-ui); color: var(--text-2);
-  background: none; border: 1px solid transparent; border-radius: 999px; padding: 3px 10px 3px 3px; cursor: pointer;
+  /* The same 44px as every other control in the bar, so the row is one line
+     of one height and the pill does not grow by a hair when its border
+     appears on hover - the border is there from the start, transparent. */
+  display: flex; align-items: center; gap: 8px; height: 44px; box-sizing: border-box;
+  font: 600 13px var(--font-ui); color: var(--text-2);
+  background: none; border: 1px solid transparent; border-radius: 999px; padding: 0 12px 0 4px; cursor: pointer;
   transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
 .user-pill:hover { color: var(--text-1); background: var(--bg-2); border-color: var(--line-2); }
-.user-pill svg { width: 26px; height: 26px; }
-.user-pill .icon { width: 14px; height: 14px; opacity: 0; transition: opacity 0.15s; }
+.user-pill svg { width: 34px; height: 34px; }
+.user-pill .icon { width: 15px; height: 15px; opacity: 0; transition: opacity 0.15s; }
 .user-pill:hover .icon { opacity: 0.7; }
 /* The chevron on a pill that opens a menu is always there - it is the only
    sign the pill does anything - and turns over while the menu is down. */
@@ -4158,10 +4162,13 @@ input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; marg
 /* The middle of the bar: where this page can take you. It sits between the
    mark and the account, takes the slack so neither of those has to move, and
    is the first thing dropped when the bar runs out of width. */
-.topbar-nav { display: none; flex: 1; justify-content: center; gap: 4px; min-width: 0; }
+.topbar-nav { display: none; flex: 1 1 auto; justify-content: center; gap: 4px; min-width: 0; flex-wrap: nowrap; }
 .topbar-link {
-  display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
-  border-radius: 999px; white-space: nowrap;
+  /* 44px, like every other target in this bar: a thumb finds it first time.
+     The border is transparent until the pill is lit, so lighting it moves
+     nothing beside it. */
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px;
+  border: 1px solid transparent; border-radius: 11px; white-space: nowrap;
   /* Longhands rather than the `font` shorthand. Two shapes wear this class -
      an anchor for the pages with an address, a button for the lobby, which
      has none - and the shorthand was reaching only one of them, leaving
@@ -5332,12 +5339,20 @@ html { scroll-behavior: smooth; }
 /* The page being read, said twice over: gold, and a rule under it. Colour
    alone would leave it unmarked for anyone who cannot tell gold from grey,
    and `aria-current="page"` says it a third time for a screen reader. */
-.topbar-link.is-on { color: var(--gold); }
-.topbar-link.is-on::after {
-  content: ''; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
-  border-radius: 2px; background: var(--gold);
-}
 .topbar-link { position: relative; }
+/* Where you are, as a lit pill rather than a hairline under a word: at a
+   glance across a bar of five, a 2px rule under one of them is a thing you
+   have to go looking for. */
+.topbar-link.is-on {
+  color: var(--gold-hi);
+  background: rgba(230, 180, 80, 0.13);
+  border-color: rgba(230, 180, 80, 0.42);
+}
+.topbar-link.is-on:hover { background: rgba(230, 180, 80, 0.2); }
+/* A place that needs an account. Shown, so the shape of the app is the same
+   for everybody, and dimmed, with a title saying why. */
+.topbar-link.is-dim { color: var(--text-3); }
+.topbar-link.is-dim:hover { color: var(--text-2); background: rgba(255, 255, 255, 0.04); }
 
 /* Where the bar stops listing places and starts listing parts of a page.
    A hairline rather than a bullet or a gap: the row is already spaced, and
@@ -5361,7 +5376,7 @@ html { scroll-behavior: smooth; }
 #how, #features, #faq { scroll-margin-top: 72px; }
 
 /* ---------- The face in the account control ---------- */
-.user-face { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; display: block; }
+.user-face { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; display: block; }
 .umenu-who { display: flex; align-items: center; gap: 10px; }
 .umenu-whoname { margin: 0; }
 .umenu-face {
@@ -5964,3 +5979,42 @@ html { scroll-behavior: smooth; }
   color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.55); background: rgba(230, 180, 80, 0.12);
 }
 .sit-btn.is-away:hover:not(:disabled) { background: rgba(230, 180, 80, 0.22); border-color: var(--gold); }
+
+/* ==========================================================================
+   The bar's own controls: join by code, and the guest's one offer
+   ========================================================================== */
+/* Five characters and a button. It sits in the bar because joining a table
+   is what nearly everybody arrives to do, and it used to be two screens in. */
+.topbar-join { display: none; align-items: center; gap: 8px; flex: none; }
+.topbar-join-label {
+  font: 700 11px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
+}
+.topbar-code {
+  width: 122px; height: 44px; padding: 0 12px;
+  border-radius: 11px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, 0.32);
+  color: var(--text-1); font: 600 15px/1 var(--font-ui);
+  /* Spaced out and upper case, so a code read aloud over a call can be
+     typed and checked without squinting at it. */
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+.topbar-code::placeholder { letter-spacing: 0.02em; text-transform: none; color: var(--text-3); font-weight: 500; }
+.topbar-code:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
+.btn.topbar-go { height: 44px; border-radius: 11px; }
+.topbar-keep { height: 44px; white-space: nowrap; color: var(--gold-hi); border-color: rgba(230, 180, 80, 0.45); background: rgba(230, 180, 80, 0.1); }
+.topbar-keep:hover:not(:disabled) { background: rgba(230, 180, 80, 0.2); border-color: var(--gold); }
+/* Only once the bar has width for it. Below this the lobby's own form is
+   the way in, and it is the first thing on that page. */
+@media (min-width: 1060px) {
+  .topbar-join { display: flex; }
+}
+/* The landing page's own sections. They are paragraphs on a page rather
+   than places, so they are the first thing to go when the bar runs short of
+   room - the page scrolls to them and the footer lists them either way. */
+@media (max-width: 1099px) {
+  .topbar-link.is-section, .topbar-sep { display: none; }
+}
+
+/* The tab you are on, marked under the word as well as in its colour, so it
+   is not colour alone doing the telling. */
+.bottom-nav-mark { width: 18px; height: 2px; border-radius: 2px; background: transparent; }
+.bottom-nav-item.is-on .bottom-nav-mark { background: var(--gold); }

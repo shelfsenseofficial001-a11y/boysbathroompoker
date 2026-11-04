@@ -45,6 +45,8 @@ export const icons = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   // A chair seen from the side: back, seat, and a leg at each end. For
   // stepping away from one and taking it back.
+  // Two cards held in a hand: the app's own game, for the Play tab.
+  cards: svg('<rect x="3" y="6" width="12" height="15" rx="2.5"/><path d="M8 3h9a2.5 2.5 0 0 1 2.5 2.5V17"/>'),
   chair: svg('<path d="M8 3v10"/><path d="M8 7h5.5"/><path d="M5.5 13h13"/><path d="M8 13v7"/><path d="M16.5 13v7"/>'),
   percent: svg('<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/>'),
   // The same cross as `fold`, under the name the dismiss buttons use.

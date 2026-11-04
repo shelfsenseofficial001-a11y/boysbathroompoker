@@ -157,8 +157,13 @@ const hintSignedIn = ref(readHint());
 const booting = computed(() => view.value === 'boot');
 
 // The bar lives in the shell, so what it shows has to be decided here.
-const showAuth = computed(
-  () => supabaseConfigured && !booting.value && (!auth.signedIn.value || auth.isGuest.value)
+// Log in and Sign up are for somebody the app does not know yet. A guest IS
+// somebody - they have a name, a face and a record - so the bar shows them
+// their account control, and the one thing left to offer them goes beside
+// it as `guestUpgrade` rather than as a second identity.
+const showAuth = computed(() => supabaseConfigured && !booting.value && !auth.signedIn.value);
+const guestUpgrade = computed(
+  () => supabaseConfigured && !booting.value && auth.signedIn.value && auth.isGuest.value
 );
 const barUser = computed(() => {
   if (user.value) return user.value;
@@ -268,7 +273,10 @@ const navActive = computed(() => {
   if (view.value === 'profile') return 'profile';
   if (view.value === 'equity') return 'equity';
   if (view.value === 'lobby') {
-    return ['settings', 'friends'].includes(lobbyPage.value) ? lobbyPage.value : 'lobby';
+    // Settings is part of you rather than a place of its own, so the You tab
+    // stays lit while you are in it - the tray has no tab to light otherwise.
+    if (lobbyPage.value === 'settings') return 'profile';
+    return lobbyPage.value === 'friends' ? 'friends' : 'lobby';
   }
   return '';
 });
@@ -383,13 +391,16 @@ const showGuestOption = computed(
 // that page the bar catches the click and goes there first. `lobby` has no
 // href because it has no address - the lobby is a view this app switches to,
 // not a route - so it is a button, and honest about it.
-const BAR_LINKS = [
-  { id: 'home', label: 'Home', href: '/' },
-  // The rule after this one is where the bar stops listing places and
-  // starts listing parts of the landing page. Two kinds of destination in
-  // one row read as five of the same thing without it.
-  { id: 'lobby', label: 'Lobby' },
-  { id: 'equity', label: 'Equity Calculator', endsGroup: true },
+// Where the app can be: the same handful of places, named as places and
+// carrying the icon their tab carries on a phone. The landing page's own
+// sections are not places - they are paragraphs on one - so they are listed
+// only while that page is the one being read, after the rule.
+const APP_LINKS = [
+  { id: 'lobby', label: 'Play', icon: 'cards' },
+  { id: 'equity', label: 'Equity', icon: 'percent' },
+  { id: 'friends', label: 'Friends', icon: 'chat', account: true },
+];
+const SECTION_LINKS = [
   { id: 'how', label: 'How it works', href: '#how', section: 'how' },
   { id: 'features', label: 'Features', href: '#features', section: 'features' },
   { id: 'faq', label: 'FAQ', href: '#faq', section: 'faq' },
@@ -398,17 +409,30 @@ const BAR_LINKS = [
 // they point at nothing: in the lobby they were four-fifths of the bar, all
 // of it leaving the page you were on, and "FAQ" beside "Lobby" reads as a
 // page of the app rather than a paragraph on another one.
-const barLinks = computed(() =>
-  view.value === 'home' || view.value === 'boot'
-    ? BAR_LINKS
-    : BAR_LINKS.filter((link) => !link.section)
-);
+const barLinks = computed(() => {
+  // Friends needs an account to have any; a guest sees it dimmed rather than
+  // not at all, so the shape of the app is the same whoever is reading it.
+  const places = APP_LINKS.map((link) =>
+    link.account && !auth.hasAccount.value ? { ...link, disabled: true, why: 'Friends needs an account' } : link
+  );
+  // Somebody who is in is shown the places they can go, wherever they are
+  // standing - the landing page included, where the brand is the way back.
+  // Somebody who is not is there to find out what this is, so they get the
+  // page's own sections instead, and the one tool that needs no account.
+  if (auth.signedIn.value) return places;
+  return [
+    { id: 'home', label: 'Home', href: '/' },
+    places[1],
+    { ...SECTION_LINKS[0], startsGroup: true },
+    ...SECTION_LINKS.slice(1),
+  ];
+});
 
 // Which of them is the page being read. The three section links answer this
 // for themselves - they are lit by what is on screen, not by the view - so
 // they are not named here.
 const barActive = computed(() => {
-  if (view.value === 'lobby') return 'lobby';
+  if (view.value === 'lobby') return lobbyPage.value === 'friends' ? 'friends' : 'lobby';
   if (view.value === 'equity') return 'equity';
   if (view.value === 'home' || view.value === 'boot') return 'home';
   return '';
@@ -424,6 +448,10 @@ async function onNav(link) {
   // has always done.
   if (link.id === 'lobby') return goLobby();
   if (link.id === 'equity') return goEquity();
+  // A place a guest cannot go yet offers the way to go there, rather than
+  // opening an empty version of it.
+  if (link.disabled) return openAuth('signup');
+  if (link.id === 'friends') return onMenuPick('friends');
   if (!link.section) return;
 
   if (view.value !== 'home' && view.value !== 'boot') {
@@ -908,6 +936,32 @@ async function followInvite({ code, invite, fromInvite = true }) {
   }
 }
 
+// A room code, typed into the bar. The same call the lobby's own form
+// makes - the point of having it up here is only that it is always within
+// reach, not that it joins any differently.
+async function joinByCode(code) {
+  const wanted = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{5}$/.test(wanted)) {
+    showToast('A room code is five letters and numbers.', { atPage: true });
+    return false;
+  }
+  try {
+    const res = await emitAck('joinRoom', { code: wanted });
+    // A private room's host has to answer the door; the lobby is where that
+    // waiting is shown, so that is where they are sent to do it.
+    if (res.knocking) {
+      showToast('Asking the host to let you in…', { info: true, atPage: true });
+      await goLobby();
+      return true;
+    }
+    onEnterRoom({ code: res.code, notice: null });
+    return true;
+  } catch (err) {
+    showToast(err.message, { atPage: true });
+    return false;
+  }
+}
+
 function onEnterRoom({ code, notice: message }) {
   roomCode.value = code;
   notice.value = message || '';
@@ -1108,6 +1162,9 @@ onBeforeUnmount(() => {
       :loading="booting"
       :links="barLinks"
       :active="barActive"
+      :guest-upgrade="guestUpgrade"
+      :can-join="!!barUser"
+      @join="joinByCode"
       @pick="onMenuPick"
       @nav="onNav"
       @auth="openAuth"

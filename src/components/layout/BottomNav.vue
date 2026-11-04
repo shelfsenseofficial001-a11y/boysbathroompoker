@@ -21,17 +21,20 @@ const props = defineProps({
 });
 const emit = defineEmits(['pick']);
 
-// The same ids and icons the account menu uses, so the two never disagree
-// about what a thing is called or what it looks like.
+// The same four places the bar lists on a wide screen, in the same order
+// and under the same names. A tray that offered a different set was the
+// app disagreeing with itself about where it can be.
+//
+// "You" stands where the account control stands up there: on a phone there
+// is no room beside the brand for a face and a name, so it takes a tab, and
+// everything the drawer used to hide sits behind it.
 const items = computed(() => [
-  { id: 'lobby', icon: 'trophy', label: 'Lobby' },
+  { id: 'lobby', icon: 'cards', label: 'Play' },
   { id: 'equity', icon: 'percent', label: 'Equity' },
-  // Beside the lobby on a wide screen; here, the only way to it.
   { id: 'friends', icon: 'chat', label: 'Friends' },
   props.guest
-    ? { id: 'signup', icon: 'key', label: 'Account', for: 'profile' }
-    : { id: 'profile', icon: 'key', label: 'Profile', for: 'profile' },
-  { id: 'settings', icon: 'gear', label: 'Settings' },
+    ? { id: 'signup', icon: 'key', label: 'You', for: 'profile' }
+    : { id: 'profile', icon: 'key', label: 'You', for: 'profile' },
 ]);
 
 const isOn = (item) => props.active === (item.for || item.id);
@@ -50,6 +53,9 @@ const isOn = (item) => props.active === (item.for || item.id);
     >
       <SvgIcon :name="item.icon" />
       <span>{{ item.label }}</span>
+      <!-- The mark that says which tab you are on, under the word rather
+           than only in its colour. -->
+      <i class="bottom-nav-mark" aria-hidden="true"></i>
     </button>
   </nav>
 </template>
