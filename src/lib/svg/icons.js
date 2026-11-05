@@ -49,6 +49,11 @@ export const icons = {
   cards: svg('<rect x="3" y="6" width="12" height="15" rx="2.5"/><path d="M8 3h9a2.5 2.5 0 0 1 2.5 2.5V17"/>'),
   chair: svg('<path d="M8 3v10"/><path d="M8 7h5.5"/><path d="M5.5 13h13"/><path d="M8 13v7"/><path d="M16.5 13v7"/>'),
   percent: svg('<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/>'),
+  // A seat being opened, a screen with a hand in it, and a lock: the three
+  // choices on the Play page, and what is not ready yet.
+  plusCircle: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 8.5v7M8.5 12h7"/>'),
+  screen: svg('<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20h6M12 16.5V20"/><path d="m9.5 8.5-1.8 2 1.8 2M14.5 8.5l1.8 2-1.8 2"/>'),
+  lock: svg('<rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
   // The same cross as `fold`, under the name the dismiss buttons use.
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
   minus: svg('<path d="M5 12h14"/>'),

@@ -145,7 +145,7 @@ test('every page a reload can land on is served the app shell', () => {
   // /equity and /tables shipped broken.
   const line = src.split('\n').find((l) => l.startsWith('app.get(/^') && l.includes('settings'));
   assert.ok(line, 'the page route should still be a single regex');
-  for (const page of ['lobby', 'tables', 'equity', 'settings', 'friends']) {
+  for (const page of ['lobby', 'create', 'play-ai', 'tables', 'equity', 'settings', 'friends']) {
     assert.ok(line.includes(page), `${page} should be served the shell on reload`);
   }
 });

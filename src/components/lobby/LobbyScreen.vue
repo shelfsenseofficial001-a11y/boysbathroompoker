@@ -7,12 +7,13 @@ import { ref, onMounted, nextTick } from 'vue';
 import { emitAck } from '../../lib/socket.js';
 import { showToast } from '../../lib/toast.js';
 import { playEntrance } from '../../lib/motion.js';
-import HostRoomForm from './HostRoomForm.vue';
 import JoinRoomForm from './JoinRoomForm.vue';
+import PlayChoices from './PlayChoices.vue';
+import CreateTablePage from './CreateTablePage.vue';
+import PlayAiPage from './PlayAiPage.vue';
 import RoomList from './RoomList.vue';
 import SettingsPage from './SettingsPage.vue';
 import FriendsSidebar from '../friends/FriendsSidebar.vue';
-import SvgIcon from '../ui/SvgIcon.vue';
 
 const props = defineProps({
   // Null when nobody is signed in. The homepage still renders - it is the
@@ -105,9 +106,9 @@ function fail(message) {
   error.value = message || 'That didn’t work. Try again.';
 }
 
-function entered({ code, notice }) {
+function entered({ code, notice, invite }) {
   error.value = '';
-  emit('enter-room', { code, notice });
+  emit('enter-room', { code, notice, invite });
 }
 
 async function watchRoom(code) {
@@ -127,36 +128,35 @@ onMounted(() => playEntrance(screen.value));
   <div ref="screen" class="lobby-screen">
     <main v-show="page === 'main'" class="page">
       <div class="lobby-col">
-        <section class="hero" data-enter>
-          <div class="eyebrow">Play-money Texas Hold’em</div>
-          <h1 class="display">Pull up a chair.</h1>
-          <p class="lead">
-            Host a private table or join friends with a room code. Chips are fake — strictly for
-            bragging rights.
-          </p>
-        </section>
-        <!-- Hosting and joining go through the socket, so they wait for the
-             server's own record of this player. Signed out there is nothing to
-             wait for; signed in it is a moment, and saying so beats three dead
-             panels. -->
+        <!-- The three doors out of here, and nothing else. Hosting used to be
+             a form sat on this page, which meant arriving at the lobby meant
+             arriving in the middle of a decision; it is a page of its own
+             now, and this is the way to it. -->
         <template v-if="user">
-          <div class="lobby-grid">
-            <HostRoomForm @entered="entered" @fail="fail" />
-            <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
-          </div>
-          <!-- The list itself lives on Tables; this is the way to it. -->
-          <button type="button" class="lobby-to-tables" @click="showPage('tables')">
-            <span class="lobby-to-tables-text">
-              <b>Or look at what is already running</b>
-              <em>Every public table, the stakes, and whether there is a seat.</em>
-            </span>
-            <SvgIcon name="chevron" />
-          </button>
+          <PlayChoices
+            @host="showPage('create')"
+            @join="showPage('tables')"
+            @ai="showPage('ai')"
+          />
           <p class="error-text" role="alert">{{ error }}</p>
         </template>
         <p v-else class="lead lobby-signed-out">Finding your seat…</p>
       </div>
     </main>
+
+    <CreateTablePage
+      v-if="page === 'create' && user"
+      @entered="entered"
+      @fail="fail"
+      @back="showPage('main')"
+    />
+
+    <PlayAiPage
+      v-if="page === 'ai' && user"
+      @entered="entered"
+      @fail="fail"
+      @back="showPage('main')"
+    />
 
     <!-- A rail down the right edge of the window on a wide screen, under the
          bar. Narrower than that it is hidden here and reached from the
@@ -174,11 +174,15 @@ onMounted(() => playEntrance(screen.value));
          it. Hosting is one press away at the end of the list. -->
     <main v-if="page === 'tables'" class="page lobby-tables-page">
       <template v-if="user">
+        <!-- A private table is not on the list, so the only way to one is the
+             code somebody sent you. It sits here with the list rather than in
+             the bar, where it was a text field in a row of places. -->
+        <JoinRoomForm ref="joinForm" class="tables-join" @entered="entered" @fail="fail" />
         <RoomList
           @join="onTableJoin"
           @watch="watchRoom"
           @fail="fail"
-          @host="showPage('main')"
+          @host="showPage('create')"
         />
         <p class="error-text" role="alert">{{ error }}</p>
       </template>

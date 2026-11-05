@@ -22,7 +22,7 @@ import { supabaseConfigured } from './lib/supabase.js';
 import { markRoomGone } from './lib/rooms.js';
 import { useAuth } from './composables/useAuth.js';
 import { startFriends, stopFriends } from './composables/useFriends.js';
-import { useInvite } from './composables/useInvite.js';
+import { useInvite, openInvitePicker } from './composables/useInvite.js';
 import ChatWindow from './components/friends/ChatWindow.vue';
 import InvitePicker from './components/friends/InvitePicker.vue';
 import InviteToast from './components/friends/InviteToast.vue';
@@ -94,7 +94,14 @@ function readProfilePath() {
 // looking at. Until these existed the address only ever changed when a
 // profile was opened, and never changed back - so refreshing anywhere after
 // that reopened somebody's profile, because that was still what the bar said.
-const LOBBY_PATHS = { main: '/lobby', tables: '/tables', settings: '/settings', friends: '/friends' };
+const LOBBY_PATHS = {
+  main: '/lobby',
+  create: '/create',
+  ai: '/play-ai',
+  tables: '/tables',
+  settings: '/settings',
+  friends: '/friends',
+};
 // The equity calculator: a tool page of its own, open to anybody, signed in
 // or not - there is no game, seat or chip on it.
 const EQUITY_PATH = '/equity';
@@ -956,10 +963,16 @@ async function followInvite({ code, invite, fromInvite = true }) {
   }
 }
 
-function onEnterRoom({ code, notice: message }) {
+async function onEnterRoom({ code, notice: message, invite }) {
   roomCode.value = code;
   notice.value = message || '';
   view.value = 'table';
+  // A table made with "ask friends to join" ticked. The picker is the
+  // table's own, so it cannot open until the table is on screen: it needs
+  // the room the screen registers on mount.
+  if (!invite) return;
+  await nextTick();
+  openInvitePicker();
 }
 
 // Walking out is your own doing and needs no fanfare; being removed happens

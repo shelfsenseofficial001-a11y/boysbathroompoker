@@ -6101,19 +6101,6 @@ html { scroll-behavior: smooth; }
 
 .rooms-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
-/* The way from Play to the list, across the bottom of the front page. */
-.lobby-to-tables {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%;
-  margin-top: 20px; padding: 16px 18px; text-align: left; cursor: pointer;
-  border-radius: var(--r-l); border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
-  transition: background-color 0.15s, border-color 0.15s;
-}
-.lobby-to-tables:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--line-2); }
-.lobby-to-tables:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.lobby-to-tables-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.lobby-to-tables-text b { font: 700 15px var(--font-ui); color: var(--text-1); }
-.lobby-to-tables-text em { font-style: normal; font-size: var(--fs-small); color: var(--text-3); }
-.lobby-to-tables .icon { width: 18px; height: 18px; color: var(--text-3); rotate: -90deg; flex: none; }
 
 @media (max-width: 1080px) {
   .rooms-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -6122,3 +6109,193 @@ html { scroll-behavior: smooth; }
   .rooms-cards { grid-template-columns: minmax(0, 1fr); }
   .rooms-filter { width: 100%; overflow-x: auto; }
 }
+
+/* ---- Play: the three doors ------------------------------------------------
+   Three cards on the felt's own colour, each one a step rather than an
+   equal option. The button is the loud thing on each card, because on a
+   card with one button the button is the card.                             */
+
+.play-choices { display: flex; flex-direction: column; gap: 26px; }
+.play-choices-head { max-width: 46ch; }
+.play-choices-head .lead { margin-top: 10px; }
+
+.play-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;
+  align-items: stretch;
+}
+
+.play-card {
+  display: flex; flex-direction: column; gap: 12px; position: relative;
+  padding: 24px 22px 22px; border-radius: var(--r-l);
+  border: 1px solid var(--line); background: var(--bg-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.play-card:hover { border-color: var(--line-2); background: var(--bg-3); }
+
+/* The number, in the corner it reads from. Small, flat and quiet: it says
+   which card to try first, not that this card matters more. */
+.play-step {
+  align-self: flex-start;
+  font: 700 10px/1 var(--font-ui); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-3); padding: 6px 9px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.03);
+}
+
+.play-card-icon {
+  display: grid; place-items: center; width: 44px; height: 44px; margin-top: 4px;
+  border-radius: var(--r-m); color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent);
+}
+.play-card-icon .icon { width: 22px; height: 22px; }
+
+/* The browser's own h2 margin would sit on top of the flex gap. */
+.play-card-title { margin: 0; font: 700 20px/1.2 var(--font-ui); color: var(--text-1); }
+.play-card-text {
+  font-size: var(--fs-small); line-height: 1.55; color: var(--text-2);
+  /* The three descriptions are different lengths; this keeps the buttons on
+     one line across the row instead of stepping down the page. */
+  flex: 1 1 auto;
+}
+
+/* The press. Gold face, a darker gold edge underneath standing in for its
+   thickness, and the edge is what the press spends: the face drops onto it
+   rather than moving the card around it. */
+.play-cta {
+  margin-top: 6px; padding: 13px 18px; width: 100%; cursor: pointer;
+  font: 700 15px/1 var(--font-ui); color: #2a1d02; text-align: center;
+  border: 0; border-radius: var(--r-m);
+  background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+  box-shadow: 0 4px 0 var(--gold-lo);
+  transition: translate 0.08s, box-shadow 0.08s, filter 0.15s;
+}
+.play-cta:hover:not(:disabled) { filter: brightness(1.06); }
+.play-cta:active:not(:disabled) { translate: 0 4px; box-shadow: 0 0 0 var(--gold-lo); }
+.play-cta:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+.play-cta:disabled { cursor: default; filter: saturate(0.4) brightness(0.8); }
+
+@media (max-width: 1080px) {
+  .play-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Two above, one below: the odd card takes the full width rather than
+     leaving a hole beside it. */
+  .play-cards > .play-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 680px) {
+  .play-cards { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .play-card { padding: 20px 18px 18px; gap: 10px; }
+  .play-card-title { font-size: 18px; }
+  /* One to a row: each card is its own height, so stretching the paragraph
+     to line the buttons up only opens a gap under the title. */
+  .play-card-text { flex: 0 0 auto; }
+}
+
+/* ---- Create a table ---------------------------------------------------- */
+
+.create-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px; align-items: start;
+}
+@media (max-width: 860px) { .create-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.create-side { display: flex; flex-direction: column; gap: 16px; }
+
+.create-count { display: flex; align-items: center; gap: 10px; }
+.create-step {
+  width: 38px; height: 38px; flex: none; cursor: pointer;
+  display: grid; place-items: center; font: 600 20px/1 var(--font-ui);
+  color: var(--text-1); border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.04);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.create-step:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); border-color: var(--gold); }
+.create-step:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.create-step:disabled { opacity: 0.35; cursor: default; }
+.create-count-n {
+  min-width: 2ch; text-align: center; font: 700 20px/1 var(--font-ui); color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.create-count-note { color: var(--text-3); }
+.create-guest-note { color: var(--text-3); }
+
+/* The four house players, as chips each in its own colour - the same four
+   colours the table itself gives them, so a Solid here is a Solid there. */
+.create-levels, .ai-levels { display: grid; gap: 8px; }
+.create-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ai-levels { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .ai-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) {
+  .ai-levels, .create-levels { grid-template-columns: minmax(0, 1fr); }
+}
+
+.create-level, .ai-level {
+  display: flex; flex-direction: column; gap: 5px; text-align: left; cursor: pointer;
+  padding: 12px 13px; border-radius: var(--r-m);
+  border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.create-level:hover, .ai-level:hover { border-color: var(--lvl); }
+.create-level.is-on, .ai-level.is-on {
+  border-color: var(--lvl);
+  background: color-mix(in srgb, var(--lvl) 13%, transparent);
+}
+.create-level:focus-visible, .ai-level:focus-visible { outline: 2px solid var(--lvl); outline-offset: 2px; }
+.create-level b, .ai-level b { font: 700 14px var(--font-ui); color: var(--text-1); }
+.create-level em, .ai-level em {
+  font-style: normal; font-size: var(--fs-small); line-height: 1.45; color: var(--text-3);
+}
+.create-level .dot { margin-bottom: 2px; }
+.ai-level-top { display: flex; align-items: center; gap: 8px; }
+
+.ai-long {
+  font-size: var(--fs-small); line-height: 1.6; color: var(--text-2);
+  padding: 12px 14px; border-radius: var(--r-m);
+  border-left: 2px solid var(--line-2); background: rgba(255, 255, 255, 0.025);
+}
+.ai-start { max-width: 280px; }
+@media (max-width: 680px) { .ai-start { max-width: none; } }
+
+/* ---- Custom AI players, not built yet ---------------------------------- */
+
+.ai-soon { margin-top: 20px; opacity: 0.72; }
+.ai-soon-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 16px;
+}
+.ai-soon-head .help-text { margin-top: 6px; max-width: 54ch; }
+.ai-soon-tag {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  font: 700 11px/1 var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-3); padding: 8px 12px; border-radius: 999px;
+  border: 1px dashed var(--line-2); background: rgba(255, 255, 255, 0.03);
+}
+.ai-soon-tag .icon { width: 13px; height: 13px; }
+
+.ai-bots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .ai-bots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .ai-bots { grid-template-columns: minmax(0, 1fr); } }
+
+/* Drawn as the real thing would be, then held behind glass: greyed, dimmed
+   and with the padlock where the rating of a real one would be pressed. */
+.ai-bot {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 18px 12px 14px; border-radius: var(--r-m); text-align: center;
+  border: 1px dashed var(--line-2); background: rgba(255, 255, 255, 0.02);
+  filter: grayscale(1);
+}
+.ai-bot-face {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
+  font: 700 22px/1 var(--font-display); color: var(--text-2);
+  background: var(--bg-3); border: 1px solid var(--line-2);
+}
+.ai-bot-name { font: 700 14px var(--font-ui); color: var(--text-2); }
+.ai-bot-rating {
+  font: 700 12px/1 var(--font-ui); color: var(--text-3); font-variant-numeric: tabular-nums;
+  padding: 4px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.05);
+}
+.ai-bot-trait { font-style: normal; font-size: 12px; line-height: 1.4; color: var(--text-3); }
+.ai-bot-lock { position: absolute; top: 10px; right: 10px; color: var(--text-3); }
+.ai-bot-lock .icon { width: 14px; height: 14px; }
+
+/* The code box, with the list it is an alternative to. */
+.tables-join { margin-bottom: 20px; }
