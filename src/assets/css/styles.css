@@ -4896,25 +4896,37 @@ html { scroll-behavior: smooth; }
 .friend-acts .btn:first-child { flex: 1; }
 
 /* ---------- The friends list ---------- */
-/* A rail down the right edge of the window, under the bar, where there is
-   room for one; a page behind the bottom tray where there isn't (the tray
-   shows at 1024px and under). The lobby and footer step left to make room,
-   and the bar's contents follow them so the brand and the avatar still line
-   up with the column under them. */
+/* A column of the lobby, where there is room for one; a page behind the
+   bottom tray where there isn't (the tray shows at 1024px and under).
+   
+   A column, and nothing more than that. It used to be fixed to the right
+   edge of the window, which meant everything else had to be moved out from
+   under it by hand: the lobby and the footer were pushed left by its width,
+   and the bar was re-padded on both sides so the brand and the avatar still
+   lined up with the column beneath them. So one list on one page of the app
+   was reaching out and respacing the chrome of every screen it appeared on.
+   Now the lobby is two columns while the list is there, and the bar, the
+   footer and every other page are left alone. */
 .lobby-friends { display: none; }
 @media (min-width: 1025px) {
-  .app-shell:has(.lobby-friends) { --rail-w: 300px; }
-  .lobby-friends {
-    display: block; position: fixed; top: 56px; right: 0; bottom: 0; width: var(--rail-w);
-    z-index: 30; overflow-y: auto; overscroll-behavior: contain;
-    border: 0; border-left: 1px solid var(--line); border-radius: 0; box-shadow: none;
-    background: rgba(6, 11, 9, 0.96); padding: 20px 14px;
+  .lobby-screen:has(> .lobby-friends) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
   }
-  .app-shell:has(.lobby-friends) > .lobby-screen,
-  .app-shell:has(.lobby-friends) > .site-foot { margin-right: var(--rail-w); }
-  .app-shell:has(.lobby-friends) .topbar-page {
-    padding-left: max(18px, calc((100% - var(--rail-w) - var(--page-w, 980px)) / 2 + 20px));
-    padding-right: calc(max(18px, calc((100% - var(--rail-w) - var(--page-w, 980px)) / 2 + 20px)) + var(--rail-w));
+  .lobby-friends {
+    display: block;
+    /* In the flow, so it takes its own room rather than being given it, and
+       stuck to the top so it stays beside the page as the page scrolls. */
+    position: sticky; top: 76px; max-height: calc(100vh - 96px);
+    overflow-y: auto; overscroll-behavior: contain;
+    /* A panel, not an edge. A rail's border down one side made sense when it
+       was stuck to the window; in a column it stopped wherever the list ran
+       out and read as an unfinished line. */
+    margin: 40px 20px 0 0;
+    border: 1px solid var(--line); border-radius: var(--r-l); box-shadow: var(--shadow-1);
+    background: linear-gradient(180deg, rgba(21, 38, 31, 0.9), rgba(12, 22, 18, 0.9));
+    padding: 18px 14px;
   }
 }
 .lobby-friends-page .friends { max-width: 560px; margin: 0 auto; }
