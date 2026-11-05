@@ -1,6 +1,8 @@
 <script setup>
-// The lobby: host a table, join one by code, or pick one off the open list.
-// Settings sits behind the avatar menu as a page of its own.
+// The lobby: host a table or join one by code. Browsing the open tables is
+// its own page now - the two are different errands, and a list of ten
+// strangers' games sat under the form that opens your own, pushing it off
+// the screen. Settings sits behind the avatar menu, also as a page.
 import { ref, onMounted, nextTick } from 'vue';
 import { emitAck } from '../../lib/socket.js';
 import { showToast } from '../../lib/toast.js';
@@ -10,6 +12,7 @@ import JoinRoomForm from './JoinRoomForm.vue';
 import RoomList from './RoomList.vue';
 import SettingsPage from './SettingsPage.vue';
 import FriendsSidebar from '../friends/FriendsSidebar.vue';
+import SvgIcon from '../ui/SvgIcon.vue';
 
 const props = defineProps({
   // Null when nobody is signed in. The homepage still renders - it is the
@@ -26,9 +29,10 @@ const emit = defineEmits(['enter-room', 'logout', 'auth', 'back-to', 'page', 'pr
 // The avatar menu, the auth buttons and the footer all belong to the app
 // shell now (src/App.vue), so this screen is only the lobby itself.
 
-// Which of the lobby's two pages is showing. Settings is a page rather than
-// a panel at the foot of the list: it has nothing to do with hosting or
-// joining a game.
+// Which of the lobby's pages is showing: the front page that hosts and
+// joins, the open tables, the friends list, or settings. Each is a page
+// rather than a panel at the foot of the last, because none of them has
+// anything to do with the others.
 const page = ref('main');
 const error = ref('');
 const screen = ref(null);
@@ -77,6 +81,30 @@ function leavePage() {
 
 defineExpose({ showPage });
 
+// A seat taken off the Tables page. The code came from the server's own
+// list rather than from a box somebody typed into, so it goes straight to
+// the server - there is no field here to mark as wrong.
+async function onTableJoin(code) {
+  error.value = '';
+  try {
+    const res = await emitAck('joinRoom', { code, fromList: true });
+    if (res.knocking) return showToast('Asking the host to let you in…', { info: true });
+    entered({ code: res.code, notice: null });
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
+// Something the server turned down - a code that is not a room, a table
+// that filled while the page was being read. Said on the page rather than
+// in a toast: it belongs to the form it came from, which is still on screen.
+//
+// This was being called from three places and declared in none of them, so
+// every one of those paths threw instead of showing the message.
+function fail(message) {
+  error.value = message || 'That didn’t work. Try again.';
+}
+
 function entered({ code, notice }) {
   error.value = '';
   emit('enter-room', { code, notice });
@@ -116,7 +144,14 @@ onMounted(() => playEntrance(screen.value));
             <HostRoomForm @entered="entered" @fail="fail" />
             <JoinRoomForm ref="joinForm" @entered="entered" @fail="fail" />
           </div>
-          <RoomList @join="joinForm?.join($event, true)" @watch="watchRoom" @fail="fail" />
+          <!-- The list itself lives on Tables; this is the way to it. -->
+          <button type="button" class="lobby-to-tables" @click="showPage('tables')">
+            <span class="lobby-to-tables-text">
+              <b>Or look at what is already running</b>
+              <em>Every public table, the stakes, and whether there is a seat.</em>
+            </span>
+            <SvgIcon name="chevron" />
+          </button>
           <p class="error-text" role="alert">{{ error }}</p>
         </template>
         <p v-else class="lead lobby-signed-out">Finding your seat…</p>
@@ -134,6 +169,21 @@ onMounted(() => playEntrance(screen.value));
       @profile="emit('profile', $event)"
       @auth="emit('auth', $event)"
     />
+
+    <!-- Tables: the open list, on a page of its own with the width to show
+         it. Hosting is one press away at the end of the list. -->
+    <main v-if="page === 'tables'" class="page lobby-tables-page">
+      <template v-if="user">
+        <RoomList
+          @join="onTableJoin"
+          @watch="watchRoom"
+          @fail="fail"
+          @host="showPage('main')"
+        />
+        <p class="error-text" role="alert">{{ error }}</p>
+      </template>
+      <p v-else class="lead lobby-signed-out">Finding your seat…</p>
+    </main>
 
     <main v-if="page === 'friends'" class="page lobby-friends-page">
       <FriendsSidebar @profile="emit('profile', $event)" @auth="emit('auth', $event)" />

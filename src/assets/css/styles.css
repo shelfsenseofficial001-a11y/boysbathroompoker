@@ -5991,26 +5991,6 @@ html { scroll-behavior: smooth; }
 /* ==========================================================================
    The bar's own controls: join by code, and the guest's one offer
    ========================================================================== */
-/* Five characters and a button. It sits in the bar because joining a table
-   is what nearly everybody arrives to do, and it used to be two screens in. */
-.topbar-join { display: none; align-items: center; gap: 8px; flex: none; }
-.topbar-join-label {
-  font: 700 11px var(--font-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
-}
-.topbar-code {
-  width: 122px; height: 38px; padding: 0 11px;
-  border-radius: 11px; border: 1px solid var(--line-2); background: rgba(0, 0, 0, 0.32);
-  color: var(--text-1); font: 600 15px/1 var(--font-ui);
-  /* Spaced out and upper case, so a code read aloud over a call can be
-     typed and checked without squinting at it. */
-  letter-spacing: 0.14em; text-transform: uppercase;
-}
-.topbar-code::placeholder { letter-spacing: 0.02em; text-transform: none; color: var(--text-3); font-weight: 500; }
-.topbar-code:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
-.btn.topbar-go { height: 38px; border-radius: 11px; }
-/* The guest's one offer, said plainly rather than shouted. Gold in this bar
-   means "you are here" - the lit pill - and a second gold thing beside it
-   was arguing with it for the eye. */
 .topbar-keep {
   height: 38px; white-space: nowrap;
   color: var(--text-1); border-color: var(--line-2); background: rgba(255, 255, 255, 0.04);
@@ -6018,9 +5998,6 @@ html { scroll-behavior: smooth; }
 .topbar-keep:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.28); }
 /* Only once the bar has width for it. Below this the lobby's own form is
    the way in, and it is the first thing on that page. */
-@media (min-width: 1060px) {
-  .topbar-join { display: flex; }
-}
 /* The landing page's own sections. They are paragraphs on a page rather
    than places, so they are the first thing to go when the bar runs short of
    room - the page scrolls to them and the footer lists them either way. */
@@ -6032,3 +6009,104 @@ html { scroll-behavior: smooth; }
    is not colour alone doing the telling. */
 .bottom-nav-mark { width: 18px; height: 2px; border-radius: 2px; background: transparent; }
 .bottom-nav-item.is-on .bottom-nav-mark { background: var(--gold); }
+
+/* ==========================================================================
+   Tables: the open list, as a card each
+   ========================================================================== */
+.lobby-tables-page { --page-w: 1180px; }
+.rooms-section { display: flex; flex-direction: column; gap: 18px; }
+.rooms-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px; }
+.rooms-head-text { min-width: 0; }
+.rooms-head .help-text { margin: 6px 0 0; max-width: 56ch; }
+
+/* The filters. A row of four, the chosen one lifted out of the ground it
+   sits in rather than coloured gold - gold is the bar's "you are here". */
+.rooms-filter {
+  display: flex; gap: 4px; padding: 4px; flex: none;
+  border-radius: var(--r-m); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
+}
+.rooms-filter-btn {
+  height: 34px; padding: 0 13px; border: 0; border-radius: 9px; cursor: pointer;
+  background: transparent; color: var(--text-2); font: 600 13.5px var(--font-ui);
+  transition: background-color 0.15s, color 0.15s;
+}
+.rooms-filter-btn:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.05); }
+.rooms-filter-btn.is-on { color: var(--text-1); background: rgba(255, 255, 255, 0.1); font-weight: 700; }
+.rooms-filter-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.rooms-note { margin: 0; padding: 22px 2px; color: var(--text-3); font-size: var(--fs-body); }
+
+.rooms-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.room-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px; text-align: left;
+  border-radius: var(--r-l); border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(21, 38, 31, 0.9), rgba(12, 22, 18, 0.9));
+  box-shadow: var(--shadow-1);
+}
+.room-card.is-new { animation: roomIn 0.4s var(--ease-out) both; }
+@keyframes roomIn { from { opacity: 0; transform: translateY(8px); } }
+
+.room-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.room-card-code { margin: 0; display: flex; align-items: center; gap: 9px; font: inherit; }
+.room-card-code .code { font: 800 19px var(--font-display); letter-spacing: 0.12em; color: var(--text-1); }
+.room-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-3); }
+.room-dot.is-live { background: var(--green); }
+.room-dot.is-waiting { background: var(--text-3); }
+.room-dot.is-full { background: var(--gold-lo); }
+.room-card-status { font: 700 11px var(--font-ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.room-card-status.is-live { color: #7be3ad; }
+.room-card-host { margin: -4px 0 0; font-size: var(--fs-small); color: var(--text-3); }
+
+.room-card-figures { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.room-card-figures dt { font: 600 11.5px var(--font-ui); color: var(--text-3); margin-bottom: 3px; }
+.room-card-figures dd { margin: 0; font: 700 16px var(--font-ui); color: var(--text-1); font-variant-numeric: tabular-nums; }
+.room-card-figures .of { color: var(--text-3); font-weight: 600; }
+
+/* How full it is, drawn as the seats themselves. */
+.room-card-seats { display: flex; align-items: center; gap: 10px; }
+.seat-pips { display: flex; gap: 3px; }
+.seat-pips i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+.seat-pips i.is-taken { background: var(--gold); }
+.seat-pips i.is-free { background: rgba(255, 255, 255, 0.16); }
+.room-card-count { font: 600 12.5px var(--font-ui); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.room-card-watchers { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font: 600 12.5px var(--font-ui); color: var(--text-3); }
+.room-card-watchers .icon { width: 14px; height: 14px; }
+
+.room-card-acts { margin-top: auto; padding-top: 2px; display: flex; gap: 8px; }
+.room-card-shut { font-size: var(--fs-small); color: var(--text-3); }
+
+/* Hosting, at the end of the list rather than under it. */
+.room-card.is-host {
+  border-style: dashed; border-color: rgba(230, 180, 80, 0.4);
+  background: rgba(230, 180, 80, 0.05); cursor: pointer; justify-content: center; gap: 8px;
+}
+.room-card.is-host:hover { background: rgba(230, 180, 80, 0.1); border-color: var(--gold); }
+.room-card.is-host:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.room-host-title { font: 700 17px var(--font-ui); color: var(--text-1); }
+.room-host-text { font-size: var(--fs-body); line-height: 1.55; color: var(--text-2); }
+.room-host-cta { margin-top: 4px; display: inline-flex; align-items: center; gap: 7px; font: 800 14px var(--font-ui); color: var(--gold-hi); }
+.room-host-cta .icon { width: 16px; height: 16px; }
+
+.rooms-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* The way from Play to the list, across the bottom of the front page. */
+.lobby-to-tables {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%;
+  margin-top: 20px; padding: 16px 18px; text-align: left; cursor: pointer;
+  border-radius: var(--r-l); border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.lobby-to-tables:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--line-2); }
+.lobby-to-tables:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.lobby-to-tables-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lobby-to-tables-text b { font: 700 15px var(--font-ui); color: var(--text-1); }
+.lobby-to-tables-text em { font-style: normal; font-size: var(--fs-small); color: var(--text-3); }
+.lobby-to-tables .icon { width: 18px; height: 18px; color: var(--text-3); rotate: -90deg; flex: none; }
+
+@media (max-width: 1080px) {
+  .rooms-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .rooms-cards { grid-template-columns: minmax(0, 1fr); }
+  .rooms-filter { width: 100%; overflow-x: auto; }
+}

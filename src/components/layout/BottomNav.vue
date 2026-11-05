@@ -30,6 +30,7 @@ const emit = defineEmits(['pick']);
 // everything the drawer used to hide sits behind it.
 const items = computed(() => [
   { id: 'lobby', icon: 'cards', label: 'Play' },
+  { id: 'tables', icon: 'trophy', label: 'Tables' },
   { id: 'equity', icon: 'percent', label: 'Equity' },
   { id: 'friends', icon: 'chat', label: 'Friends' },
   props.guest

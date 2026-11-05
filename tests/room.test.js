@@ -136,3 +136,16 @@ test("a game's stats count hands dealt, won and the best hand shown", () => {
   assert.deepEqual(room.statsFor(2), { dealt: 2, won: 1, showdownsWon: 0, biggestPot: 15, bestHand: 'Pair of Nines' });
   assert.equal(room.statsFor(3), null);
 });
+
+test('every page a reload can land on is served the app shell', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(require('node:path').join(__dirname, '..', 'server', 'index.js'), 'utf8');
+  // The one route that answers a bare page address. A page added to the
+  // client without being added here is a 404 on reload, which is how both
+  // /equity and /tables shipped broken.
+  const line = src.split('\n').find((l) => l.startsWith('app.get(/^') && l.includes('settings'));
+  assert.ok(line, 'the page route should still be a single regex');
+  for (const page of ['lobby', 'tables', 'equity', 'settings', 'friends']) {
+    assert.ok(line.includes(page), `${page} should be served the shell on reload`);
+  }
+});

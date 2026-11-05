@@ -94,7 +94,7 @@ function readProfilePath() {
 // looking at. Until these existed the address only ever changed when a
 // profile was opened, and never changed back - so refreshing anywhere after
 // that reopened somebody's profile, because that was still what the bar said.
-const LOBBY_PATHS = { main: '/lobby', settings: '/settings', friends: '/friends' };
+const LOBBY_PATHS = { main: '/lobby', tables: '/tables', settings: '/settings', friends: '/friends' };
 // The equity calculator: a tool page of its own, open to anybody, signed in
 // or not - there is no game, seat or chip on it.
 const EQUITY_PATH = '/equity';
@@ -208,6 +208,7 @@ async function onMenuPick(id, from = null, tab = null) {
   if (id === 'signup') return openAuth('signup');
   if (id === 'login') return openAuth('login');
   if (id === 'lobby') return goLobby();
+  if (id === 'tables') return goTables();
   if (id === 'equity') return goEquity();
   // Their own page, the same one anybody else would be given. "Edit profile"
   // is on it, and in Settings; this is the thing being edited.
@@ -250,13 +251,6 @@ async function onMenuPick(id, from = null, tab = null) {
   }
 }
 
-// The bar's code box is a shortcut to the lobby's own form, so on the lobby
-// itself it is the same field twice on one screen. It goes there, and comes
-// back the moment you are anywhere else.
-const showBarJoin = computed(
-  () => !!barUser.value && !(view.value === 'lobby' && lobbyPage.value === 'main')
-);
-
 // Which page the lobby is showing. Settings lives inside the lobby view, so
 // the view alone cannot say which of the two is on screen - and the bottom
 // tray has to light the right one.
@@ -283,7 +277,8 @@ const navActive = computed(() => {
     // Settings is part of you rather than a place of its own, so the You tab
     // stays lit while you are in it - the tray has no tab to light otherwise.
     if (lobbyPage.value === 'settings') return 'profile';
-    return lobbyPage.value === 'friends' ? 'friends' : 'lobby';
+    if (lobbyPage.value === 'friends') return 'friends';
+    return lobbyPage.value === 'tables' ? 'tables' : 'lobby';
   }
   return '';
 });
@@ -323,6 +318,16 @@ function goHome() {
     // A sandboxed frame. The view has changed either way.
   }
   window.scrollTo({ top: 0 });
+}
+
+// The open tables, as a page of the lobby. Signed out there is nothing to
+// list and no socket to list it with, so this is the one door that asks.
+async function goTables() {
+  if (!user.value && !auth.signedIn.value) return openAuth('login');
+  notice.value = '';
+  view.value = 'lobby';
+  await nextTick();
+  lobby.value?.showPage('tables');
 }
 
 // The equity calculator. Nothing to sign in for, so no guard: it is a tool,
@@ -407,6 +412,7 @@ const showGuestOption = computed(
 // phone's tray, where a tab is a target before it is a word.
 const APP_LINKS = [
   { id: 'lobby', label: 'Play' },
+  { id: 'tables', label: 'Tables' },
   { id: 'equity', label: 'Equity' },
   { id: 'friends', label: 'Friends', account: true },
 ];
@@ -432,7 +438,7 @@ const barLinks = computed(() => {
   if (auth.signedIn.value) return places;
   return [
     { id: 'home', label: 'Home', href: '/' },
-    places[1],
+    places[2],
     { ...SECTION_LINKS[0], startsGroup: true },
     ...SECTION_LINKS.slice(1),
   ];
@@ -442,7 +448,10 @@ const barLinks = computed(() => {
 // for themselves - they are lit by what is on screen, not by the view - so
 // they are not named here.
 const barActive = computed(() => {
-  if (view.value === 'lobby') return lobbyPage.value === 'friends' ? 'friends' : 'lobby';
+  if (view.value === 'lobby') {
+    if (lobbyPage.value === 'friends') return 'friends';
+    return lobbyPage.value === 'tables' ? 'tables' : 'lobby';
+  }
   if (view.value === 'equity') return 'equity';
   if (view.value === 'home' || view.value === 'boot') return 'home';
   return '';
@@ -457,6 +466,7 @@ async function onNav(link) {
   // this opens the auth sheet instead of navigating, which is what goLobby
   // has always done.
   if (link.id === 'lobby') return goLobby();
+  if (link.id === 'tables') return goTables();
   if (link.id === 'equity') return goEquity();
   // A place a guest cannot go yet offers the way to go there, rather than
   // opening an empty version of it.
@@ -946,32 +956,6 @@ async function followInvite({ code, invite, fromInvite = true }) {
   }
 }
 
-// A room code, typed into the bar. The same call the lobby's own form
-// makes - the point of having it up here is only that it is always within
-// reach, not that it joins any differently.
-async function joinByCode(code) {
-  const wanted = String(code || '').trim().toUpperCase();
-  if (!/^[A-Z0-9]{5}$/.test(wanted)) {
-    showToast('A room code is five letters and numbers.', { atPage: true });
-    return false;
-  }
-  try {
-    const res = await emitAck('joinRoom', { code: wanted });
-    // A private room's host has to answer the door; the lobby is where that
-    // waiting is shown, so that is where they are sent to do it.
-    if (res.knocking) {
-      showToast('Asking the host to let you in…', { info: true, atPage: true });
-      await goLobby();
-      return true;
-    }
-    onEnterRoom({ code: res.code, notice: null });
-    return true;
-  } catch (err) {
-    showToast(err.message, { atPage: true });
-    return false;
-  }
-}
-
 function onEnterRoom({ code, notice: message }) {
   roomCode.value = code;
   notice.value = message || '';
@@ -1173,8 +1157,6 @@ onBeforeUnmount(() => {
       :links="barLinks"
       :active="barActive"
       :guest-upgrade="guestUpgrade"
-      :can-join="showBarJoin"
-      @join="joinByCode"
       @pick="onMenuPick"
       @nav="onNav"
       @auth="openAuth"

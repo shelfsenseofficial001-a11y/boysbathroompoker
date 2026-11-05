@@ -31,18 +31,8 @@ const props = defineProps({
   // A guest is already somebody, so the bar offers them the one thing they
   // have not got rather than a second way to be someone.
   guestUpgrade: { type: Boolean, default: false },
-  // Whether there is anybody to join a table as.
-  canJoin: { type: Boolean, default: false },
 });
-const emit = defineEmits(['pick', 'renamed', 'auth', 'home', 'guest', 'nav', 'join']);
-
-// The room code box. The shortest path to the thing everybody is here for,
-// so it rides in the bar rather than waiting two screens in.
-//
-// The code is left in the box: a join that works takes the whole bar with
-// it, table screens having their own, and a join that fails is one the
-// typist wants back rather than cleared from under them.
-const code = ref('');
+const emit = defineEmits(['pick', 'renamed', 'auth', 'home', 'guest', 'nav']);
 
 // Which part of the landing page is under the reader. Watched only while
 // that page is the one being shown: everywhere else the sections do not
@@ -235,23 +225,6 @@ function onBrandClick(e) {
       @nav="emit('nav', $event)"
       @home="emit('home')"
     />
-
-    <!-- Five characters and a button: the whole of joining a table, kept
-         where it can be reached from any screen. -->
-    <form v-if="canJoin && !loading" class="topbar-join" @submit.prevent="emit('join', code)">
-      <label class="topbar-join-label" for="bar-code">Join</label>
-      <input
-        id="bar-code"
-        v-model="code"
-        class="topbar-code"
-        type="text"
-        maxlength="5"
-        autocomplete="off"
-        spellcheck="false"
-        placeholder="Room code"
-      />
-      <button class="btn btn-ghost btn-sm topbar-go" type="submit" :disabled="!code.trim()">Go</button>
-    </form>
 
     <div class="topbar-user">
       <span v-if="loading" class="topbar-wait" aria-hidden="true">
